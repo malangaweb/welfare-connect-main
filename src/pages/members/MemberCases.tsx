@@ -20,6 +20,7 @@ const MemberCases = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [filteredCases, setFilteredCases] = useState<any[]>([]);
+  const [memberCount, setMemberCount] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -36,18 +37,33 @@ const MemberCases = () => {
           .from("cases")
           .select("*")
           .order("created_at", { ascending: false });
-        
-        // Fetch member's contributions
+        // Fetch all members to get count
+        const { data: membersData } = await supabase
+          .from("members")
+          .select("*");
+        setMemberCount((membersData || []).length);
+        // Fetch all transactions
         const { data: transactionsData } = await supabase
           .from("transactions")
-          .select("*")
-          .eq("member_id", member_id)
-          .eq("transaction_type", "contribution")
-          .order("created_at", { ascending: false });
-        
-        setCases(casesData || []);
-        setFilteredCases(casesData || []);
+          .select("amount, description, case_id, created_at");
         setTransactions(transactionsData || []);
+        // Map cases to include calculated actual_amount and expected_amount
+        const mappedCases = (casesData || []).map(c => {
+          // Calculate collected amount for this case
+          let collected = 0;
+          if (transactionsData && c.case_number) {
+            collected = transactionsData
+              .filter(tx => tx.description && tx.description.toLowerCase().includes(c.case_number.toLowerCase()))
+              .reduce((sum, tx) => sum + Number(tx.amount), 0);
+          }
+          return {
+            ...c,
+            actual_amount: collected,
+            expected_amount: c.contribution_per_member * (membersData ? membersData.length : 0),
+          };
+        });
+        setCases(mappedCases);
+        setFilteredCases(mappedCases);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching data:", error);

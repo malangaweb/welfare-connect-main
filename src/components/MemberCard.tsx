@@ -1,23 +1,30 @@
 
-import { User, Phone, MapPin, Calendar, ChevronRight } from 'lucide-react';
+import { User, Phone, MapPin, Calendar, ChevronRight, Edit } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { Member } from '@/lib/types';
 import { format } from 'date-fns';
 
 interface MemberCardProps {
   member: Member;
   onClick?: () => void;
+  onEdit?: () => void;
 }
 
-const MemberCard = ({ member, onClick }: MemberCardProps) => {
+const MemberCard = ({ member, onClick, onEdit }: MemberCardProps) => {
   const initials = member.name
     .split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase()
     .substring(0, 2);
+
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit?.();
+  };
 
   return (
     <Card 
@@ -72,9 +79,21 @@ const MemberCard = ({ member, onClick }: MemberCardProps) => {
             </div>
           </div>
           
-          {onClick && (
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          )}
+          <div className="flex items-center space-x-2">
+            {onEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleEditClick}
+                className="h-8 w-8 p-0"
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+            )}
+            {onClick && (
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            )}
+          </div>
         </div>
         
         <div className="mt-4 flex justify-between">

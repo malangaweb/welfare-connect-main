@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@/components/ui/use-toast';
@@ -21,6 +20,8 @@ const CaseDetails = () => {
   const [loading, setLoading] = useState(true);
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [collectedAmount, setCollectedAmount] = useState<number>(0);
+  const [memberCount, setMemberCount] = useState<number>(0);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -72,6 +73,31 @@ const CaseDetails = () => {
         
         const mappedCase = mapDbCaseToCase(dbCase, memberData as DbMember);
         setCaseData(mappedCase);
+
+        // Fetch cumulative collected from transactions for this case
+        if (mappedCase.caseNumber) {
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('amount, description');
+          if (!error && data) {
+            const total = data
+              .filter(row => row.description && row.description.toLowerCase().includes(mappedCase.caseNumber.toLowerCase()))
+              .reduce((sum, row) => sum + Number(row.amount), 0);
+            setCollectedAmount(total);
+          } else {
+            setCollectedAmount(0);
+          }
+        }
+
+        // Fetch number of members
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select('*');
+        if (!membersError && membersData) {
+          setMemberCount(membersData.length);
+        } else {
+          setMemberCount(0);
+        }
       } catch (error) {
         console.error('Error fetching case:', error);
         setError(error instanceof Error ? error.message : 'Failed to load case details');
@@ -112,7 +138,8 @@ const CaseDetails = () => {
     );
   }
 
-  const progress = caseData ? (caseData.actualAmount / caseData.expectedAmount) * 100 : 0;
+  const expectedAmount = caseData ? caseData.contributionPerMember * memberCount : 0;
+  const progress = caseData && expectedAmount > 0 ? (collectedAmount / expectedAmount) * 100 : 0;
   
   const getCaseTypeColor = (type: CaseType) => {
     switch (type) {
@@ -182,11 +209,11 @@ const CaseDetails = () => {
               <div className="flex justify-between text-sm">
                 <div>
                   <p className="text-muted-foreground">Collected</p>
-                  <p className="font-medium">KES {caseData.actualAmount.toLocaleString()}</p>
+                  <p className="font-medium">KES {collectedAmount.toLocaleString()}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-muted-foreground">Target</p>
-                  <p className="font-medium">KES {caseData.expectedAmount.toLocaleString()}</p>
+                  <p className="font-medium">KES {expectedAmount.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>

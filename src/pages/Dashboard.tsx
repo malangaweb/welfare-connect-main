@@ -199,6 +199,11 @@ const Dashboard = () => {
       const { data: membersData } = await supabase
         .from('members')
         .select('*');
+      const memberCount = (membersData || []).length;
+      // Fetch all transactions
+      const { data: transactionsData } = await supabase
+        .from('transactions')
+        .select('amount, description');
       // Create a lookup map for members
       const membersById = {};
       (membersData || []).forEach(m => {
@@ -220,7 +225,15 @@ const Dashboard = () => {
         };
       });
       // Map cases to expected CaseCard props
-      const mapped = (casesData || []).map(c => ({
+      const mapped = (casesData || []).map(c => {
+        // Calculate collected amount for this case
+        let collected = 0;
+        if (transactionsData && c.case_number) {
+          collected = transactionsData
+            .filter(tx => tx.description && tx.description.toLowerCase().includes(c.case_number.toLowerCase()))
+            .reduce((sum, tx) => sum + Number(tx.amount), 0);
+        }
+        return {
         id: c.id,
         caseNumber: c.case_number,
         affectedMemberId: c.affected_member_id,
@@ -230,13 +243,13 @@ const Dashboard = () => {
         contributionPerMember: c.contribution_per_member,
         startDate: c.start_date ? new Date(c.start_date) : new Date(),
         endDate: c.end_date ? new Date(c.end_date) : new Date(),
-        expectedAmount: c.expected_amount,
-        actualAmount: c.actual_amount,
+          expectedAmount: c.contribution_per_member * memberCount,
+          actualAmount: collected,
         isActive: c.is_active,
         isFinalized: c.is_finalized,
         createdAt: c.created_at ? new Date(c.created_at) : new Date(),
-      }));
-      console.log('Mapped active cases:', mapped);
+        };
+      });
       setRecentActiveCases(mapped);
     };
     fetchActiveCases();

@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useSearchParams } from 'react-router-dom';
 
 const transactionTypes = [
   { value: 'all', label: 'All Types' },
@@ -37,13 +38,16 @@ const Transactions = () => {
   const [newCaseId, setNewCaseId] = useState('');
   const [cases, setCases] = useState<{ id: string; caseNumber: string }[]>([]);
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const memberId = searchParams.get('memberId');
   
   const fetchTransactions = async () => {
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('created_at', { ascending: false });
+      let query = supabase.from('transactions').select('*').order('created_at', { ascending: false });
+      if (memberId) {
+        query = query.eq('member_id', memberId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       if (data) {
         const formattedTransactions: Transaction[] = data.map(t => ({
@@ -134,10 +138,6 @@ const Transactions = () => {
             <Button variant="outline" onClick={() => window.location.reload()}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
-            </Button>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Transaction
             </Button>
           </div>
         </div>

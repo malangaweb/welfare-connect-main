@@ -69,12 +69,13 @@ interface MemberFormProps {
   onSubmit: (data: any) => void;
   initialData?: any;
   isSubmitting?: boolean;
+  isEditMode?: boolean;
 }
 
-const MemberForm = ({ onSubmit, initialData, isSubmitting = false }: MemberFormProps) => {
+const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = false }: MemberFormProps) => {
   const [dependants, setDependants] = useState<DependantFormData[]>(initialData?.dependants || []);
   const [defaultFee, setDefaultFee] = useState(500);
-  const [isLoadingMemberId, setIsLoadingMemberId] = useState(!initialData);
+  const [isLoadingMemberId, setIsLoadingMemberId] = useState(!initialData && !isEditMode);
 
   // Fetch default fee from settings
   useEffect(() => {
@@ -127,7 +128,7 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false }: MemberFormP
   // Get next member ID
   useEffect(() => {
     const getNextMemberId = async () => {
-      if (!initialData && form.getValues().memberNumber === '') {
+      if (!initialData && !isEditMode && form.getValues().memberNumber === '') {
         setIsLoadingMemberId(true);
         try {
           const nextId = await generateMemberId();
@@ -141,7 +142,7 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false }: MemberFormP
     };
     
     getNextMemberId();
-  }, [form, initialData]);
+  }, [form, initialData, isEditMode]);
 
   // Update the registration fee when the default fee is fetched
   useEffect(() => {
@@ -151,7 +152,7 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false }: MemberFormP
   useEffect(() => {
     // Set default residence to Malanga if available and no residence is selected
     const setDefaultResidence = async () => {
-      if (!form.getValues().residence) {
+      if (!form.getValues().residence && !isEditMode) {
         try {
           const { data, error } = await supabase
             .from('residences')
@@ -175,20 +176,32 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false }: MemberFormP
     };
 
     setDefaultResidence();
-  }, [form]);
+  }, [form, isEditMode]);
 
   const handleSubmit = (values: z.infer<typeof formSchema>) => {
+    console.log('=== FORM SUBMISSION DEBUG ===');
+    console.log('Form values:', values);
+    console.log('Is edit mode:', isEditMode);
+    console.log('Dependants:', dependants);
+    
     // Validate dependants before submission
     if (dependants.length > 0 && !validateDependants(dependants, setDependants)) {
+      console.log('Dependants validation failed');
       return;
     }
     
-    // Always use the default fee from settings
-    const submissionData = {
+    // For edit mode, don't include registration fee
+    const submissionData = isEditMode ? {
+      ...values,
+      dependants,
+    } : {
       ...values,
       registrationFee: defaultFee,
       dependants,
     };
+    
+    console.log('Final submission data:', submissionData);
+    console.log('=== FORM SUBMISSION DEBUG END ===');
     
     onSubmit(submissionData);
   };
@@ -224,7 +237,7 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false }: MemberFormP
         <div className="flex justify-end space-x-4">
           <Button type="button" variant="outline">Cancel</Button>
           <Button type="submit" disabled={isSubmitting || isLoadingMemberId}>
-            {isSubmitting ? 'Registering...' : 'Register Member'}
+            {isSubmitting ? (isEditMode ? 'Updating...' : 'Registering...') : (isEditMode ? 'Update Member' : 'Register Member')}
           </Button>
         </div>
       </form>

@@ -50,6 +50,7 @@ const Cases = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mpesaCollectedByCase, setMpesaCollectedByCase] = useState<{ [caseNumber: string]: number }>({});
 
   useEffect(() => {
     const fetchCases = async () => {
@@ -88,13 +89,39 @@ const Cases = () => {
           return acc;
         }, {});
 
+        // Get all members to determine the count
+        const memberCount = membersData.length;
+
         // Map database cases to the application Case model
-        const mappedCases = casesData.map(dbCase => 
-          mapDbCaseToCase(dbCase, membersById[dbCase.affected_member_id])
-        );
+        const mappedCases = casesData.map(dbCase => {
+          const caseObj = mapDbCaseToCase(dbCase, membersById[dbCase.affected_member_id]);
+          // Overwrite expectedAmount to be contributionPerMember * memberCount
+          return {
+            ...caseObj,
+            expectedAmount: caseObj.contributionPerMember * memberCount
+          };
+        });
 
         console.log('Mapped cases:', mappedCases);
         setCases(mappedCases);
+
+        // Fetch cumulative collected from transactions for each case
+        const totals: { [caseNumber: string]: number } = {};
+        for (const c of mappedCases) {
+          if (!c.caseNumber) continue;
+          const { data, error } = await supabase
+            .from('transactions')
+            .select('amount, description');
+          if (!error && data) {
+            // Sum amounts where description contains the case number (e.g., 'C276')
+            totals[c.caseNumber] = data
+              .filter(row => row.description && row.description.includes(c.caseNumber))
+              .reduce((sum, row) => sum + Number(row.amount), 0);
+          } else {
+            totals[c.caseNumber] = 0;
+          }
+        }
+        setMpesaCollectedByCase(totals);
       } catch (error) {
         console.error('Error in fetchCases:', error);
         toast({
@@ -202,11 +229,6 @@ const Cases = () => {
               <SelectItem value="death">Death</SelectItem>
             </SelectContent>
           </Select>
-          
-          <Button variant="outline" className="w-full sm:w-auto">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
         </div>
 
         {loading ? (
@@ -273,7 +295,8 @@ const Cases = () => {
                   <div className="text-right">
                     <div className="text-xs text-muted-foreground">Progress</div>
                     <div className="font-medium">
-                      {formatCurrency(caseItem.actualAmount)} / {formatCurrency(caseItem.expectedAmount)}
+                      {formatCurrency(mpesaCollectedByCase[caseItem.caseNumber] || 0)} / {formatCurrency(caseItem.expectedAmount)}
+                      <div className="text-xs text-muted-foreground">(Collected)</div>
                     </div>
                   </div>
                 </CardFooter>

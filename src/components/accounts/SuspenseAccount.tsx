@@ -16,25 +16,62 @@ const SuspenseAccount = () => {
     setIsLoading(true);
     
     try {
-      // In a real implementation, you would fetch actual suspense transactions
-      // For now, we'll query transactions marked as suspense
-      const { data, error } = await supabase
+      // First, get all members to check their names and member numbers
+      const { data: membersData, error: membersError } = await supabase
+        .from('members')
+        .select('id, name, member_number');
+        
+      if (membersError) throw membersError;
+      
+      // Create a list of all member identifiers (names and member numbers)
+      const memberIdentifiers = membersData.map(member => ({
+        id: member.id,
+        name: member.name.toLowerCase(),
+        memberNumber: member.member_number.toLowerCase()
+      }));
+      
+      // Get all transactions
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
         .select('*')
-        .eq('transaction_type', 'suspense')
         .order('created_at', { ascending: false });
         
-      if (error) throw error;
+      if (transactionsError) throw transactionsError;
+      
+      // Filter transactions that are not associated with any member
+      const suspenseTransactions = (transactionsData || []).filter(tx => {
+        const description = tx.description?.toLowerCase() || '';
+        
+        // Check if the description contains any member name or member number
+        const isAssociatedWithMember = memberIdentifiers.some(member => 
+          description.includes(member.name) || 
+          description.includes(member.memberNumber) ||
+          description.includes(member.id)
+        );
+        
+        // Also check if the transaction has a member_id but the description doesn't match any member
+        const hasMemberId = tx.member_id && tx.member_id !== 'unknown';
+        const memberExists = hasMemberId ? memberIdentifiers.find(m => m.id === tx.member_id) : false;
+        
+        // Transaction is in suspense if:
+        // 1. Description doesn't contain any member identifier, OR
+        // 2. Has member_id but that member doesn't exist in our system, OR
+        // 3. Description is empty or unclear
+        return !isAssociatedWithMember || 
+               (hasMemberId && !memberExists) || 
+               !description || 
+               description.trim() === '';
+      });
       
       // Transform data to match Transaction type
-      const transformedData = (data || []).map(tx => ({
+      const transformedData = suspenseTransactions.map(tx => ({
         id: tx.id,
         memberId: tx.member_id || 'unknown',
         amount: tx.amount,
-        transactionType: tx.transaction_type,
+        transactionType: 'suspense' as const,
         mpesaReference: tx.mpesa_reference,
         createdAt: new Date(tx.created_at),
-        description: tx.description
+        description: tx.description || 'No description provided'
       }));
       
       setTransactions(transformedData);
@@ -44,6 +81,10 @@ const SuspenseAccount = () => {
       setTotalBalance(credits);
       setTotalCredits(credits);
       setTotalDebits(0);
+      
+      console.log('Suspense transactions found:', transformedData.length);
+      console.log('Member identifiers:', memberIdentifiers.length);
+      
     } catch (error) {
       console.error('Error fetching suspense transactions:', error);
       toast({
@@ -113,10 +154,7 @@ const SuspenseAccount = () => {
       />
       
       <AccountTransactionsList 
-        transactions={transactions}
         title="Suspense Account"
-        isSuspenseAccount={true}
-        onTransactionAssigned={handleTransactionAssigned}
       />
     </div>
   );

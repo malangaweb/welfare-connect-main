@@ -1,17 +1,31 @@
 
 import { format } from 'date-fns';
+import { Edit } from 'lucide-react';
 import { Member } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface PersonalDetailsCardProps {
   member: Member;
+  onEdit?: () => void;
 }
 
-const PersonalDetailsCard = ({ member }: PersonalDetailsCardProps) => {
+const PersonalDetailsCard = ({ member, onEdit }: PersonalDetailsCardProps) => {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Personal Information</CardTitle>
+        {onEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onEdit}
+            className="h-8"
+          >
+            <Edit className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">

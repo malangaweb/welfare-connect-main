@@ -22,10 +22,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Gender, Member } from '@/lib/types';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
 import { mapDbMemberToMember } from '@/lib/db-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
+import * as XLSX from 'xlsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import MemberForm from '@/components/forms/MemberForm';
 
 
 const Members = () => {
@@ -36,6 +39,10 @@ const Members = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editMemberOpen, setEditMemberOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editInitialData, setEditInitialData] = useState<any>(null);
   
   const handleLogout = async () => {
     try {
@@ -62,12 +69,6 @@ const Members = () => {
           .limit(1);
 
         console.log('Database connection test:', { testData, testError });
-
-        // Then try to get the table structure
-        const { data: tableInfo, error: tableError } = await supabase
-          .rpc('get_table_info', { table_name: 'members' });
-
-        console.log('Table structure:', { tableInfo, tableError });
 
         // Now try to fetch members
         const { data: membersData, error: membersError } = await supabase
@@ -157,6 +158,23 @@ const Members = () => {
           throw txError;
         }
 
+        // Fetch all dependants for all members
+        const { data: dependantsData, error: dependantsError } = await supabase
+          .from('dependants')
+          .select('member_id');
+        if (dependantsError) {
+          console.error('Error fetching dependants:', dependantsError);
+          throw dependantsError;
+        }
+        // Count dependants per member
+        const dependantsCountMap: Record<string, number> = {};
+        if (dependantsData) {
+          for (const dep of dependantsData) {
+            if (!dependantsCountMap[dep.member_id]) dependantsCountMap[dep.member_id] = 0;
+            dependantsCountMap[dep.member_id] += 1;
+          }
+        }
+
         // Calculate wallet balance per member
         const walletMap: Record<string, number> = {};
         if (transactions) {
@@ -181,7 +199,7 @@ const Members = () => {
           registrationDate: new Date(dbMember.registration_date || new Date()),
           walletBalance: walletMap[dbMember.id] || 0,
           isActive: Boolean(dbMember.is_active),
-          dependants: [] // Since there's no dependants in the schema
+          dependants: Array(dependantsCountMap[dbMember.id] || 0).fill({}) // Only for count
         }));
 
         console.log('Mapped members:', mappedMembers);
@@ -223,6 +241,220 @@ const Members = () => {
     return matchesSearch && matchesStatus && matchesLocation;
   });
 
+  // Import handler
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      // Map and insert members
+      for (const row of json) {
+        // Map Excel/CSV template columns to your schema
+        let nextOfKinObj = null;
+        try {
+          nextOfKinObj = row.NextOfKin ? JSON.parse(row.NextOfKin) : null;
+        } catch (e) {
+          nextOfKinObj = null;
+        }
+        const member = {
+          member_number: row.MemberNumber || '',
+          name: row.Name || '',
+          gender: row.Gender || '',
+          date_of_birth: row.DateOfBirth ? new Date(row.DateOfBirth).toISOString().split('T')[0] : null,
+          national_id_number: row.NationalIdNumber || '',
+          phone_number: row.PhoneNumber || '',
+          email_address: row.EmailAddress || '',
+          residence: row.Residence || '',
+          next_of_kin: nextOfKinObj,
+          registration_date: row.RegistrationDate ? new Date(row.RegistrationDate).toISOString().split('T')[0] : null,
+          is_active: String(row.IsActive).toLowerCase() === 'true' || row.IsActive === true,
+        };
+        const { error } = await supabase.from('members').insert(member);
+        console.log('Inserting:', member, 'Error:', error);
+        if (error) {
+          toast({ variant: 'destructive', title: 'Import error', description: error.message });
+        }
+      }
+      toast({ title: 'Import complete', description: 'Members imported from Excel.' });
+      // Optionally, refresh members list
+      window.location.reload();
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Import failed', description: error.message });
+    }
+  };
+
+  const handleEditMember = async (data: any) => {
+    if (!selectedMember) return;
+    
+    setIsSubmitting(true);
+    try {
+      console.log('=== EDIT MEMBER DEBUG START (MEMBERS PAGE) ===');
+      console.log('Edit member data received:', data);
+      console.log('Selected member:', selectedMember);
+      
+      // Get the residence name for this ID
+      let residenceName = data.residence;
+      if (data.residence && typeof data.residence === 'string' && data.residence.length > 0) {
+        console.log('Fetching residence name for ID:', data.residence);
+        const { data: residenceData, error: residenceError } = await supabase
+          .from('residences')
+          .select('name')
+          .eq('id', data.residence)
+          .single();
+          
+        if (residenceError) {
+          console.error('Error fetching residence name:', residenceError);
+          throw new Error('Failed to fetch residence information');
+        }
+        
+        residenceName = residenceData.name;
+        console.log('Residence name resolved:', residenceName);
+      }
+      
+      // Prepare the data for update
+      const updateData = {
+        name: data.name,
+        gender: data.gender,
+        date_of_birth: data.dateOfBirth.toISOString().split('T')[0],
+        national_id_number: data.nationalIdNumber,
+        phone_number: data.phoneNumber || null,
+        email_address: data.emailAddress || null,
+        residence: residenceName,
+        next_of_kin: data.nextOfKin,
+      };
+
+      console.log('Update data being sent to database:', updateData);
+      console.log('Member ID being updated:', selectedMember.id);
+
+      // First, let's check what's currently in the database
+      const { data: currentData, error: currentError } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', selectedMember.id)
+        .single();
+      
+      console.log('Current database data:', currentData);
+      if (currentError) {
+        console.error('Error fetching current data:', currentError);
+      }
+
+      // Try using admin client for update
+      const { data: result, error } = await supabaseAdmin
+        .from('members')
+        .update(updateData)
+        .eq('id', selectedMember.id)
+        .select();
+
+      console.log('Update result:', { result, error });
+
+      if (error) {
+        console.error('Supabase update error:', error);
+        
+        // Try with regular client as fallback
+        console.log('Trying with regular client...');
+        const { data: fallbackResult, error: fallbackError } = await supabase
+          .from('members')
+          .update(updateData)
+          .eq('id', selectedMember.id)
+          .select();
+          
+        console.log('Fallback update result:', { fallbackResult, fallbackError });
+        
+        if (fallbackError) {
+          throw fallbackError;
+        }
+      }
+
+      // Verify the update by fetching the data again
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', selectedMember.id)
+        .single();
+      
+      console.log('Verification data after update:', verifyData);
+      if (verifyError) {
+        console.error('Error verifying update:', verifyError);
+      }
+
+      console.log('=== EDIT MEMBER DEBUG END (MEMBERS PAGE) ===');
+
+      toast({
+        title: "Success",
+        description: "Member information updated successfully.",
+      });
+
+      setEditMemberOpen(false);
+      setSelectedMember(null);
+      
+      // Refresh members list
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating member:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update member information.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getResidenceId = async (residenceName: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('residences')
+        .select('id')
+        .eq('name', residenceName)
+        .single();
+        
+      if (error) {
+        console.error('Error fetching residence ID:', error);
+        return null;
+      }
+      
+      return data?.id || null;
+    } catch (error) {
+      console.error('Error in getResidenceId:', error);
+      return null;
+    }
+  };
+
+  const handleEditClick = async (member: Member) => {
+    try {
+      // Get residence ID for the form
+      const residenceId = await getResidenceId(member.residence);
+      
+      setEditInitialData({
+        memberNumber: member.memberNumber,
+        name: member.name,
+        gender: member.gender,
+        dateOfBirth: member.dateOfBirth,
+        nationalIdNumber: member.nationalIdNumber,
+        phoneNumber: member.phoneNumber,
+        emailAddress: member.emailAddress,
+        residence: residenceId,
+        nextOfKin: member.nextOfKin,
+        dependants: member.dependants,
+      });
+      
+      setSelectedMember(member);
+      setEditMemberOpen(true);
+    } catch (error) {
+      console.error('Error preparing edit data:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to prepare edit form data.",
+      });
+    }
+  };
+
   return (
     <DashboardLayout customLogout={handleLogout}>
       <div className="space-y-8">
@@ -235,6 +467,29 @@ const Members = () => {
             <UserPlus className="h-4 w-4 mr-2" />
             Add New Member
           </Button>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            id="import-excel-input"
+            onChange={handleImport}
+          />
+          <Button
+            variant="outline"
+            className="ml-2"
+            onClick={() => document.getElementById('import-excel-input')?.click()}
+          >
+            Import Excel
+          </Button>
+          <a
+            href="/members-import-template.csv"
+            download
+            style={{ textDecoration: 'none' }}
+          >
+            <Button variant="outline" className="ml-2">
+              Download Template
+            </Button>
+          </a>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
@@ -330,6 +585,7 @@ const Members = () => {
                 key={member.id}
                 member={member}
                 onClick={() => navigate(`/members/${member.id}`)}
+                onEdit={() => handleEditClick(member)}
               />
             ))}
           </div>
@@ -350,6 +606,23 @@ const Members = () => {
         </div>
         )}
       </div>
+
+      {/* Edit Member Dialog */}
+      <Dialog open={editMemberOpen} onOpenChange={setEditMemberOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Member Information</DialogTitle>
+          </DialogHeader>
+          {editInitialData && (
+            <MemberForm
+              onSubmit={handleEditMember}
+              initialData={editInitialData}
+              isSubmitting={isSubmitting}
+              isEditMode={true}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

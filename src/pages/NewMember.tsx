@@ -9,7 +9,7 @@ import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
 import { UserRole } from '@/lib/types';
 
 // Function to send SMS
-const sendSMS = async (name: string, phoneNumber: string) => {
+const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) => {
   try {
     const response = await fetch('https://siha.javanet.co.ke/send_notification.php', {
       method: 'POST',
@@ -19,6 +19,7 @@ const sendSMS = async (name: string, phoneNumber: string) => {
       body: JSON.stringify({
         name,
         phone_number: phoneNumber,
+        member_number: memberNumber,
       }),
     });
 
@@ -111,9 +112,10 @@ const NewMember = () => {
       if (data.phoneNumber && data.name) {
         const name = String(data.name).trim();
         const phoneNumber = String(data.phoneNumber).trim();
-        console.log('Sending SMS with:', { name, phoneNumber });
-        if (name && phoneNumber) {
-          await sendSMS(name, phoneNumber);
+        const memberNumber = String(data.memberNumber).trim();
+        console.log('Sending SMS with:', { name, phoneNumber, memberNumber });
+        if (name && phoneNumber && memberNumber) {
+          await sendSMS(name, phoneNumber, memberNumber);
         }
       }
 

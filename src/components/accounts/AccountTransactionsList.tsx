@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Download, Filter } from "lucide-react";
+import { Search, Download, Filter, UserPlus } from "lucide-react";
 import { 
   Table, 
   TableHeader, 
@@ -17,11 +17,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Transaction } from "@/lib/types";
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/components/ui/use-toast';
 
 interface AccountTransactionsListProps {
   title: string;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  member_number: string;
 }
 
 const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
@@ -30,11 +45,90 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [yearFilter, setYearFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [transferring, setTransferring] = useState(false);
+
+  // Fetch members for transfer dialog
+  const fetchMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, name, member_number')
+        .order('name');
+      
+      if (error) throw error;
+      setMembers(data || []);
+    } catch (error) {
+      console.error('Error fetching members:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load members for transfer."
+      });
+    }
+  };
+
+  const handleTransferClick = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setSelectedMemberId('');
+    setTransferDialogOpen(true);
+    fetchMembers();
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedTransaction || !selectedMemberId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please select a member to transfer to."
+      });
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      // Update the transaction with the selected member ID
+      const { error } = await supabase
+        .from('transactions')
+        .update({ 
+          member_id: selectedMemberId,
+          description: `Transferred from suspense: ${selectedTransaction.description}`
+        })
+        .eq('id', selectedTransaction.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Transaction transferred successfully."
+      });
+
+      setTransferDialogOpen(false);
+      setSelectedTransaction(null);
+      setSelectedMemberId('');
+      
+      // Refresh the transactions list
+      window.location.reload();
+    } catch (error) {
+      console.error('Error transferring transaction:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to transfer transaction."
+      });
+    } finally {
+      setTransferring(false);
+    }
+  };
 
   useEffect(() => {
     const fetchTransactions = async () => {
       setLoading(true);
       let query = supabase.from('transactions').select('*');
+      
       // Filter by account type based on title
       if (title.toLowerCase().includes('registration')) {
         query = query.ilike('description', 'Registration%');
@@ -43,8 +137,79 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
       } else if (title.toLowerCase().includes('penalty')) {
         query = query.eq('transaction_type', 'penalty');
       } else if (title.toLowerCase().includes('suspense')) {
-        query = query.eq('transaction_type', 'suspense');
+        // For suspense account, we need to find transactions not associated with any member
+        // First get all members
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select('id, name, member_number');
+          
+        if (membersError) {
+          console.error('Error fetching members for suspense filter:', membersError);
+          setLoading(false);
+          return;
+        }
+        
+        // Create a list of all member identifiers
+        const memberIdentifiers = membersData.map(member => ({
+          id: member.id,
+          name: member.name.toLowerCase(),
+          memberNumber: member.member_number.toLowerCase()
+        }));
+        
+        // Get all transactions first
+        const { data: allTransactions, error: transactionsError } = await supabase
+          .from('transactions')
+          .select('*')
+          .order('created_at', { ascending: false });
+          
+        if (transactionsError) {
+          console.error('Error fetching transactions for suspense filter:', transactionsError);
+          setLoading(false);
+          return;
+        }
+        
+        // Filter transactions that are not associated with any member
+        const suspenseTransactions = (allTransactions || []).filter(tx => {
+          const description = tx.description?.toLowerCase() || '';
+          
+          // Check if the description contains any member name or member number
+          const isAssociatedWithMember = memberIdentifiers.some(member => 
+            description.includes(member.name) || 
+            description.includes(member.memberNumber) ||
+            description.includes(member.id)
+          );
+          
+          // Also check if the transaction has a member_id but the description doesn't match any member
+          const hasMemberId = tx.member_id && tx.member_id !== 'unknown';
+          const memberExists = hasMemberId ? memberIdentifiers.find(m => m.id === tx.member_id) : false;
+          
+          // Transaction is in suspense if:
+          // 1. Description doesn't contain any member identifier, OR
+          // 2. Has member_id but that member doesn't exist in our system, OR
+          // 3. Description is empty or unclear
+          return !isAssociatedWithMember || 
+                 (hasMemberId && !memberExists) || 
+                 !description || 
+                 description.trim() === '';
+        });
+        
+        // Transform suspense transactions
+        const transformedData = suspenseTransactions.map((t: any) => ({
+          id: t.id,
+          memberId: t.member_id || 'unknown',
+          caseId: t.case_id || undefined,
+          amount: Number(t.amount),
+          transactionType: 'suspense' as const,
+          mpesaReference: t.mpesa_reference || undefined,
+          createdAt: new Date(t.created_at),
+          description: t.description || 'No description provided',
+        }));
+        
+        setTransactions(transformedData);
+        setLoading(false);
+        return;
       }
+      
       query = query.order('created_at', { ascending: false });
       const { data, error } = await query;
       if (!error && data) {
@@ -167,6 +332,9 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
               <TableHead>Reference</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead className="text-right">Type</TableHead>
+              {title.toLowerCase().includes('suspense') && (
+                <TableHead className="text-right">Actions</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -199,11 +367,23 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
                           : transaction.transactionType.replace('_', ' ')}
                     </span>
                   </TableCell>
+                  {title.toLowerCase().includes('suspense') && (
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTransferClick(transaction)}
+                      >
+                        <UserPlus className="h-4 w-4 mr-1" />
+                        Transfer
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-4">
+                <TableCell colSpan={title.toLowerCase().includes('suspense') ? 7 : 6} className="text-center py-4">
                   No transactions found.
                 </TableCell>
               </TableRow>
@@ -211,6 +391,55 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
           </TableBody>
         </Table>
       </div>
+
+      {/* Transfer Dialog */}
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer Transaction to Member</DialogTitle>
+          </DialogHeader>
+          {selectedTransaction && (
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium mb-2">Transaction Details</h4>
+                <div className="text-sm space-y-1">
+                  <div><span className="font-medium">Amount:</span> KES {selectedTransaction.amount.toLocaleString()}</div>
+                  <div><span className="font-medium">Description:</span> {selectedTransaction.description}</div>
+                  <div><span className="font-medium">Reference:</span> {selectedTransaction.mpesaReference || 'N/A'}</div>
+                  <div><span className="font-medium">Date:</span> {new Date(selectedTransaction.createdAt).toLocaleDateString()}</div>
+                </div>
+              </div>
+              
+              <div>
+                <Label htmlFor="member-select">Select Member</Label>
+                <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue placeholder="Choose a member..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.name} ({member.member_number})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleTransfer} 
+              disabled={!selectedMemberId || transferring}
+            >
+              {transferring ? 'Transferring...' : 'Transfer Transaction'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

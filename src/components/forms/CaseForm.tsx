@@ -31,6 +31,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { CaseType, Member, Dependant } from '@/lib/types';
 import { generateCaseId } from '@/utils/idGenerators';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
 
 const formSchema = z.object({
   caseNumber: z.string().min(1, 'Case number is required'),
@@ -61,6 +62,8 @@ interface CaseFormProps {
 const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
   const [isLoadingCaseId, setIsLoadingCaseId] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
+  const [dependants, setDependants] = useState<Dependant[]>([]);
+  const [loadingDependants, setLoadingDependants] = useState(false);
   
   console.log('CaseForm - Members data:', members);
   console.log('CaseForm - Members length:', members?.length);
@@ -104,6 +107,22 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
   
   console.log('Selected member:', selectedMember);
 
+  useEffect(() => {
+    if (!selectedMemberId) {
+      setDependants([]);
+      return;
+    }
+    setLoadingDependants(true);
+    supabase
+      .from('dependants')
+      .select('*')
+      .eq('member_id', selectedMemberId)
+      .then(({ data }) => {
+        setDependants(data || []);
+        setLoadingDependants(false);
+      });
+  }, [selectedMemberId]);
+
   const handleSubmit = (values: z.infer<typeof formSchema>) => {
     try {
       onSubmit(values);
@@ -114,8 +133,7 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
   };
 
   const getDependantsOptions = () => {
-    if (!selectedMember) return [];
-    return selectedMember.dependants || [];
+    return dependants;
   };
 
   if (error) {
