@@ -1,10 +1,10 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { supabase } from '@/integrations/supabase/client';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -33,10 +33,22 @@ const Login = () => {
 
   // Check if user is already logged in
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      navigate('/dashboard');
-    }
+    const checkSession = async () => {
+      // Check Supabase session first
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        navigate('/dashboard');
+        return;
+      }
+      
+      // Fallback to token check
+      const token = localStorage.getItem('token');
+      if (token) {
+        navigate('/dashboard');
+      }
+    };
+    
+    checkSession();
   }, [navigate]);
 
   // Initialize form with react-hook-form
@@ -55,33 +67,78 @@ const Login = () => {
     try {
       console.log('Login attempt:', values.username);
       
-      // Simulate API call
-      setTimeout(() => {
-        if (values.username === 'admin' && values.password === 'password') {
-          localStorage.setItem('token', 'demo-token');
-          localStorage.setItem('user', JSON.stringify({
-            id: '1',
-            name: 'Admin User',
-            role: 'admin'
-          }));
-          
-          navigate('/dashboard');
-        } else {
-          toast({
-            variant: "destructive",
-            title: "Login failed",
-            description: "Invalid username or password. Please try again.",
+      // For the demo credentials
+      if (values.username === 'admin' && values.password === 'password') {
+        // Special handling for demo user
+        // First try to sign in with Supabase (if configured)
+        try {
+          const { error } = await supabase.auth.signInWithPassword({ 
+            email: 'admin@example.com', // Use a default email for the demo admin
+            password: values.password 
           });
-          setIsLoading(false);
+          
+          if (!error) {
+            // Set token for our app
+            localStorage.setItem('token', 'demo-admin-token');
+            
+            // Add small delay to allow state to update
+            setTimeout(() => {
+              navigate("/dashboard");
+            }, 100);
+            
+            return;
+          }
+        } catch (authError) {
+          console.warn('Supabase auth failed, using fallback:', authError);
         }
-      }, 1000);
+        
+        // Fallback for demo if Supabase auth fails
+        localStorage.setItem('token', 'demo-admin-token');
+        
+        // Toast notification for successful login
+        toast({
+          title: "Login successful",
+          description: "Welcome to the admin dashboard!",
+        });
+        
+        // Add small delay to allow state to update
+        setTimeout(() => {
+          navigate("/dashboard");
+        }, 100);
+        
+        return;
+      }
       
-    } catch (error) {
+      // Regular Supabase login for non-demo users
+      const { error } = await supabase.auth.signInWithPassword({ 
+        email: values.username, 
+        password: values.password 
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Set token for our app
+      localStorage.setItem('token', 'authenticated');
+      
+      // Toast notification for successful login
+      toast({
+        title: "Login successful",
+        description: "Welcome to the admin dashboard!",
+      });
+      
+      // Add small delay to allow state to update
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 100);
+      
+    } catch (error: any) {
       console.error('Login error:', error);
       toast({
         variant: "destructive",
         title: "Login failed",
-        description: "There was an error processing your request. Please try again.",
+        description: error.message || "Invalid credentials. Please try again.",
       });
       setIsLoading(false);
     }

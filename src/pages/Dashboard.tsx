@@ -1,7 +1,6 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, CreditCard, CalendarDays, TrendingUp, AlertCircle, UserPlus } from 'lucide-react';
+import { Users, CreditCard, CalendarDays, Calendar, TrendingUp, BarChart3, AlertCircle, UserPlus, LogOut, Home, Wallet, UserCog, Settings } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import StatsCard from '@/components/StatsCard';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,7 @@ import MemberCard from '@/components/MemberCard';
 import CaseCard from '@/components/CaseCard';
 import TransactionList from '@/components/TransactionList';
 import { Gender, CaseType, Member, Case, Transaction } from '@/lib/types';
+import { supabase } from "@/integrations/supabase/client";
 
 // Mock data for demonstration
 const mockMembers: Member[] = [
@@ -134,8 +134,30 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
 
+  // Define admin navigation links
+  const adminLinks = [
+    { icon: <Home className="w-5 h-5" />, label: "Dashboard", href: "/dashboard" },
+    { icon: <Users className="w-5 h-5" />, label: "Members", href: "/members" },
+    { icon: <Calendar className="w-5 h-5" />, label: "Cases", href: "/cases" },
+    { icon: <CreditCard className="w-5 h-5" />, label: "Transactions", href: "/transactions" },
+    { icon: <Wallet className="w-5 h-5" />, label: "Accounts", href: "/accounts" },
+    { icon: <BarChart3 className="w-5 h-5" />, label: "Reports", href: "/reports" },
+    { icon: <UserCog className="w-5 h-5" />, label: "Users", href: "/users" },
+    { icon: <Settings className="w-5 h-5" />, label: "Settings", href: "/settings" }
+  ];
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+    localStorage.removeItem('token');
+    navigate("/login");
+  };
+
   return (
-    <DashboardLayout>
+    <DashboardLayout customLinks={adminLinks} customLogout={handleLogout}>
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <div>

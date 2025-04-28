@@ -102,6 +102,39 @@ const MemberDetails = () => {
     navigate(`/transactions?memberId=${id}`);
   };
 
+  const handleFundingSuccess = async () => {
+    // Refresh member data after funding
+    try {
+      setLoading(true);
+      const { data: memberData } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+        
+      const { data: dependantsData } = await supabase
+        .from('dependants')
+        .select('*')
+        .eq('member_id', id);
+        
+      if (memberData) {
+        const dbMember = memberData as DbMember;
+        const dependants = dependantsData as DbDependant[] || [];
+        const updatedMember = mapDbMemberToMember(dbMember, dependants);
+        setMember(updatedMember);
+      }
+    } catch (error) {
+      console.error('Error refreshing member data:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to refresh member data.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -138,6 +171,10 @@ const MemberDetails = () => {
             <WalletCard 
               balance={member.walletBalance} 
               onViewTransactions={handleViewTransactions}
+              memberId={member.id}
+              memberName={member.name}
+              onFundingSuccess={handleFundingSuccess}
+              showFundingOption={true}
             />
           </div>
           

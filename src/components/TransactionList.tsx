@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { format } from 'date-fns';
 import {
@@ -12,12 +11,14 @@ import {
 } from 'lucide-react';
 import { Transaction } from '@/lib/types';
 import TransactionDetailModal from './TransactionDetailModal';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface TransactionListProps {
   transactions: Transaction[];
+  loading?: boolean;
 }
 
-const TransactionList = ({ transactions }: TransactionListProps) => {
+const TransactionList = ({ transactions, loading = false }: TransactionListProps) => {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -68,6 +69,30 @@ const TransactionList = ({ transactions }: TransactionListProps) => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="p-4 rounded-lg border bg-card">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Skeleton className="h-9 w-9 rounded-full" />
+                <div>
+                  <Skeleton className="h-5 w-32 mb-2" />
+                  <Skeleton className="h-4 w-40" />
+                </div>
+              </div>
+              <div className="text-right">
+                <Skeleton className="h-5 w-24 mb-2" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {transactions.length === 0 ? (
@@ -92,11 +117,11 @@ const TransactionList = ({ transactions }: TransactionListProps) => {
             </div>
             <div className="text-right">
               <p className={`font-medium ${
-                ['contribution', 'registration', 'renewal', 'penalty'].includes(transaction.transactionType) 
+                ['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
                   ? 'text-green-600' 
                   : 'text-red-600'
               }`}>
-                {['contribution', 'registration', 'renewal', 'penalty'].includes(transaction.transactionType) ? '+' : '-'}
+                {['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
                 KES {transaction.amount.toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">

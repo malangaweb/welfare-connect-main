@@ -1,16 +1,21 @@
-
 import { ReactNode } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
 
 interface DashboardLayoutProps {
   children: ReactNode;
+  customLinks?: any[];
+  customLogout?: () => void;
 }
 
-const DashboardLayout = ({ children }: DashboardLayoutProps) => {
+const DashboardLayout = ({ 
+  children, 
+  customLinks, 
+  customLogout 
+}: DashboardLayoutProps) => {
   return (
     <div className="min-h-screen bg-background flex">
-      <Sidebar />
+      <Sidebar sidebarItems={customLinks} handleLogout={customLogout} />
       <div className="flex-1 flex flex-col">
         <Navbar />
         <main className="flex-1 p-6 overflow-auto">

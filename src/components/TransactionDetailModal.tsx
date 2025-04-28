@@ -1,4 +1,4 @@
-
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Dialog,
@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Transaction } from '@/lib/types';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   ArrowUpRight, 
   ArrowDownLeft, 
@@ -26,7 +28,54 @@ interface TransactionDetailModalProps {
   onClose: () => void;
 }
 
+type MemberInfo = {
+  name: string;
+  member_number: string;
+  loading: boolean;
+};
+
 const TransactionDetailModal = ({ transaction, isOpen, onClose }: TransactionDetailModalProps) => {
+  const [memberInfo, setMemberInfo] = useState<MemberInfo>({
+    name: '',
+    member_number: '',
+    loading: true
+  });
+
+  useEffect(() => {
+    if (transaction && isOpen) {
+      fetchMemberDetails(transaction.memberId);
+    }
+  }, [transaction, isOpen]);
+
+  const fetchMemberDetails = async (memberId: string) => {
+    setMemberInfo(prev => ({ ...prev, loading: true }));
+    
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('name, member_number')
+        .eq('id', memberId)
+        .single();
+        
+      if (error) throw error;
+      
+      if (data) {
+        setMemberInfo({
+          name: data.name,
+          member_number: data.member_number,
+          loading: false
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching member details:', error);
+      setMemberInfo({
+        name: 'Unknown',
+        member_number: 'Unknown',
+        loading: false
+      });
+    }
+  };
+
   if (!transaction) return null;
 
   const getTransactionIcon = (type: string) => {
@@ -131,9 +180,28 @@ const TransactionDetailModal = ({ transaction, isOpen, onClose }: TransactionDet
               <p className="text-xs text-muted-foreground">{format(transaction.createdAt, 'h:mm a')}</p>
             </div>
             
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Member ID</p>
-              <p className="font-medium">{transaction.memberId}</p>
+            {/* Member info section - spans 2 columns */}
+            <div className="col-span-2 bg-muted/20 p-3 rounded-md">
+              <p className="text-sm font-medium text-muted-foreground mb-2">Member Details</p>
+              
+              {memberInfo.loading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-full" />
+                  <Skeleton className="h-5 w-3/4" />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <p className="font-medium">{memberInfo.name}</p>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-muted-foreground">Member ID:</p>
+                    <p className="text-sm font-medium">{transaction.memberId}</p>
+                  </div>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-muted-foreground">Member Number:</p>
+                    <p className="text-sm font-medium">{memberInfo.member_number}</p>
+                  </div>
+                </div>
+              )}
             </div>
             
             {transaction.caseId && (

@@ -27,6 +27,7 @@ import { mapDbMemberToMember } from '@/lib/db-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
 
+
 const Members = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,55 +36,76 @@ const Members = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+    localStorage.removeItem('token');
+    navigate('/login');
+  };
 
   useEffect(() => {
     const fetchMembers = async () => {
       try {
         setLoading(true);
+        console.log('Starting to fetch members...');
+
+        // First, try to fetch residences
+        const { data: residencesData, error: residencesError } = await supabase
+          .from('residences')
+          .select('*');
+
+        if (residencesError) {
+          console.error('Error fetching residences:', residencesError);
+          throw residencesError;
+        }
+
+        console.log('Residences data:', residencesData);
 
         // Get all members from Supabase
         const { data: membersData, error: membersError } = await supabase
           .from('members')
-          .select('*');
+          .select(`
+            *,
+            dependants (*)
+          `);
 
         if (membersError) {
+          console.error('Error fetching members:', membersError);
           throw membersError;
         }
 
-        // Get all dependants to pass to the mapping function
-        const { data: dependantsData, error: dependantsError } = await supabase
-          .from('dependants')
-          .select('*');
-
-        if (dependantsError) {
-          throw dependantsError;
-        }
-
-        // Group dependants by member_id for easier mapping
-        const dependantsByMemberId = dependantsData.reduce((acc, dep) => {
-          if (!acc[dep.member_id]) {
-            acc[dep.member_id] = [];
-          }
-          acc[dep.member_id].push(dep);
-          return acc;
-        }, {});
+        console.log('Members data:', membersData);
 
         // Map database members to the application Member model
-        const mappedMembers = membersData.map(dbMember => 
-          mapDbMemberToMember(dbMember, dependantsByMemberId[dbMember.id] || [])
-        );
+        const mappedMembers = membersData.map(dbMember => {
+          try {
+            return mapDbMemberToMember(dbMember, dbMember.dependants || []);
+          } catch (error) {
+            console.error('Error mapping member:', dbMember, error);
+            return null;
+          }
+        }).filter(Boolean) as Member[]; // Remove any null values from mapping errors
 
-        // Extract unique locations for the filter
-        const uniqueLocations = [...new Set(mappedMembers.map(member => member.residence))];
+        console.log('Mapped members:', mappedMembers);
+
+        // Extract unique locations from residences
+        const uniqueLocations = [...new Set(residencesData.map(r => r.name))];
+        console.log('Unique locations:', uniqueLocations);
 
         setMembers(mappedMembers);
         setLocations(uniqueLocations);
       } catch (error) {
-        console.error('Error fetching members:', error);
+        console.error('Error in fetchMembers:', error);
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: 'Failed to load members. Please try again.',
+          description: error instanceof Error 
+            ? error.message 
+            : 'Failed to load members. Please try again.',
         });
       } finally {
         setLoading(false);
@@ -114,7 +136,7 @@ const Members = () => {
   });
 
   return (
-    <DashboardLayout>
+    <DashboardLayout customLogout={handleLogout}>
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <div>
@@ -212,14 +234,14 @@ const Members = () => {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
         ) : filteredMembers.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredMembers.map((member) => (
-              <MemberCard 
-                key={member.id} 
-                member={member} 
-                onClick={() => navigate(`/members/${member.id}`)} 
+              <MemberCard
+                key={member.id}
+                member={member}
+                onClick={() => navigate(`/members/${member.id}`)}
               />
             ))}
           </div>
@@ -236,8 +258,8 @@ const Members = () => {
                 <Plus className="h-4 w-4 mr-2" />
                 Add Member
               </Button>
-            )}
-          </div>
+          )}
+        </div>
         )}
       </div>
     </DashboardLayout>
