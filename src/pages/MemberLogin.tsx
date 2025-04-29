@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "@/components/ui/input";
@@ -118,6 +118,16 @@ const MemberLogin = () => {
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? "Logging in..." : "Login"}
             </Button>
+
+            <div className="mt-6 text-center">
+              <span className="text-sm text-muted-foreground">Are you an admin? </span>
+              <Link
+                to="/admin/login"
+                className="text-blue-600 hover:underline font-medium"
+              >
+                Admin Login
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>
