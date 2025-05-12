@@ -1,4 +1,3 @@
-
 import { useForm } from 'react-hook-form';
 import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -59,7 +58,10 @@ interface CaseFormProps {
 
 const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
   const [isLoadingCaseId, setIsLoadingCaseId] = useState(!initialData);
+  const [error, setError] = useState<string | null>(null);
   
+  console.log('Members data:', members);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: initialData || {
@@ -83,6 +85,7 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
           form.setValue('caseNumber', nextId);
         } catch (error) {
           console.error('Error generating case ID:', error);
+          setError('Failed to generate case ID');
         } finally {
           setIsLoadingCaseId(false);
         }
@@ -93,16 +96,38 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
   }, [form, initialData]);
 
   const selectedMemberId = form.watch('affectedMemberId');
-  const selectedMember = members.find(m => m.id === selectedMemberId);
+  const selectedMember = members?.find(m => m.id === selectedMemberId);
   
+  console.log('Selected member:', selectedMember);
+
   const handleSubmit = (values: z.infer<typeof formSchema>) => {
-    onSubmit(values);
+    try {
+      onSubmit(values);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      setError('Failed to submit form');
+    }
   };
 
   const getDependantsOptions = () => {
     if (!selectedMember) return [];
-    return selectedMember.dependants;
+    return selectedMember.dependants || [];
   };
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+        <p className="text-red-600">{error}</p>
+        <Button 
+          onClick={() => setError(null)} 
+          variant="outline" 
+          className="mt-2"
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <Form {...form}>
@@ -158,14 +183,24 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Affected Member*</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select 
+                  onValueChange={(value) => {
+                    try {
+                      field.onChange(value);
+                    } catch (error) {
+                      console.error('Error selecting member:', error);
+                      setError('Failed to select member');
+                    }
+                  }} 
+                  defaultValue={field.value}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select member" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {members.map((member) => (
+                    {members?.map((member) => (
                       <SelectItem key={member.id} value={member.id}>
                         {member.name} (#{member.memberNumber})
                       </SelectItem>
@@ -212,14 +247,13 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
             name="contributionPerMember"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Contribution Per Member (KES)*</FormLabel>
+                <FormLabel>Contribution Per Member*</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
-                    placeholder="Enter amount" 
+                    placeholder="Enter contribution amount" 
                     {...field} 
-                    onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                    value={field.value}
+                    onChange={(e) => field.onChange(Number(e.target.value))} 
                   />
                 </FormControl>
                 <FormMessage />
@@ -231,13 +265,13 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
             control={form.control}
             name="startDate"
             render={({ field }) => (
-              <FormItem className="flex flex-col">
+              <FormItem>
                 <FormLabel>Start Date*</FormLabel>
                 <Popover>
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button
-                        variant={"outline"}
+                        variant="outline"
                         className={cn(
                           "w-full pl-3 text-left font-normal",
                           !field.value && "text-muted-foreground"
@@ -257,8 +291,10 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
                       mode="single"
                       selected={field.value}
                       onSelect={field.onChange}
+                      disabled={(date) =>
+                        date < new Date("1900-01-01")
+                      }
                       initialFocus
-                      className={cn("p-3 pointer-events-auto")}
                     />
                   </PopoverContent>
                 </Popover>
@@ -271,13 +307,13 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
             control={form.control}
             name="endDate"
             render={({ field }) => (
-              <FormItem className="flex flex-col">
+              <FormItem>
                 <FormLabel>End Date*</FormLabel>
                 <Popover>
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button
-                        variant={"outline"}
+                        variant="outline"
                         className={cn(
                           "w-full pl-3 text-left font-normal",
                           !field.value && "text-muted-foreground"
@@ -297,9 +333,10 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
                       mode="single"
                       selected={field.value}
                       onSelect={field.onChange}
-                      fromDate={form.watch('startDate') || new Date()}
+                      disabled={(date) =>
+                        date < new Date("1900-01-01")
+                      }
                       initialFocus
-                      className={cn("p-3 pointer-events-auto")}
                     />
                   </PopoverContent>
                 </Popover>
@@ -309,12 +346,9 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
           />
         </div>
 
-        <div className="flex justify-end space-x-4 mt-8">
-          <Button type="button" variant="outline">Cancel</Button>
-          <Button type="submit" disabled={isLoadingCaseId}>
-            Create Case
-          </Button>
-        </div>
+        <Button type="submit" disabled={isLoadingCaseId}>
+          {isLoadingCaseId ? "Loading..." : "Create Case"}
+        </Button>
       </form>
     </Form>
   );
