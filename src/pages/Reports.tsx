@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Filter, ChevronDown, Calendar, FileText, Printer } from 'lucide-react';
 import { format } from 'date-fns';
@@ -39,6 +39,9 @@ import { Gender, Member, Case, CaseType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
+import { supabase } from '@/integrations/supabase/client';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const mockMembers: Member[] = [
   {
@@ -187,26 +190,162 @@ const mockCases: Case[] = [
   },
 ];
 
+// Utility: Export array of objects to CSV and trigger download
+function exportToCSV(filename: string, rows: any[], headers: string[]) {
+  if (!rows.length) return;
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => headers.map(h => JSON.stringify(row[h] ?? '')).join(','))
+  ].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Real PDF export using jsPDF
+function exportToPDF(filename: string, rows: any[], headers: string[]) {
+  if (!rows.length) return;
+  const doc = new jsPDF();
+  // Prepare table data
+  const data = rows.map(row => headers.map(h => row[h] ?? ''));
+  // Add table
+  (doc as any).autoTable({
+    head: [headers],
+    body: data,
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [41, 128, 185] },
+    margin: { top: 20 },
+  });
+  doc.save(filename);
+}
+
+// Pagination utility
+function usePagination<T>(data: T[], rowsPerPage: number) {
+  const [page, setPage] = useState(1);
+  const maxPage = Math.ceil(data.length / rowsPerPage);
+  const pagedData = data.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  return { page, setPage, maxPage, pagedData };
+}
+
 const Reports = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('defaulters');
   const [locationFilter, setLocationFilter] = useState('all');
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: undefined,
-    to: undefined,
-  });
+  const [dateRange, setDateRange] = useState<DateRange>({ from: undefined, to: undefined });
+  const [members, setMembers] = useState<Member[]>([]);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const defaulters = mockMembers.filter(member => member.walletBalance < 0);
-  
-  const filteredDefaulters = defaulters.filter(member => 
-    locationFilter === 'all' || member.residence.toLowerCase() === locationFilter.toLowerCase()
+  useEffect(() => {
+    const fetchAll = async () => {
+      setLoading(true);
+      const [membersRes, casesRes, txRes] = await Promise.all([
+        supabase.from('members').select('*'),
+        supabase.from('cases').select('*'),
+        supabase.from('transactions').select('*'),
+      ]);
+      // Map members to camelCase fields
+      const mappedMembers = (membersRes.data || []).map((m: any) => ({
+        ...m,
+        memberNumber: m.member_number,
+        phoneNumber: m.phone_number,
+        registrationDate: m.registration_date,
+      }));
+      setMembers(mappedMembers);
+      setCases(casesRes.data || []);
+      setTransactions(txRes.data || []);
+      setLoading(false);
+    };
+    fetchAll();
+  }, []);
+
+  // Derived data for summary cards
+  const totalMembers = members.length;
+  const totalActiveCases = cases.filter(c => c.isActive).length;
+  const totalContributions = transactions
+    .filter(tx => tx.description && tx.description.toLowerCase().startsWith('contribution'))
+    .reduce((acc, tx) => acc + Number(tx.amount), 0);
+  const totalRegistrationFees = transactions
+    .filter(tx => tx.description && tx.description.toLowerCase().startsWith('registration'))
+    .reduce((acc, tx) => acc + Number(tx.amount), 0);
+
+  // Defaulters
+  const defaulters = members.filter(member => member.walletBalance < 0);
+  const filteredDefaulters = defaulters.filter(member =>
+    locationFilter === 'all' || (member.residence || '').toLowerCase() === locationFilter.toLowerCase()
   );
-  
-  const locations = [...new Set(mockMembers.map(member => member.residence))];
+  const locations = [...new Set(members.map(member => member.residence))];
+
+  // Chart data (placeholder logic)
+  const contributionsByMonth = (() => {
+    const map = new Map();
+    transactions.forEach(tx => {
+      if (tx.description && tx.description.toLowerCase().startsWith('contribution')) {
+        const date = new Date(tx.created_at);
+        const key = `${date.getFullYear()}-${date.getMonth() + 1}`;
+        map.set(key, (map.get(key) || 0) + Number(tx.amount));
+      }
+    });
+    return Array.from(map.entries()).map(([month, amount]) => ({ month, amount }));
+  })();
+  const newMembersByMonth = (() => {
+    const map = new Map();
+    members.forEach(m => {
+      const date = new Date(m.registrationDate);
+      const key = `${date.getFullYear()}-${date.getMonth() + 1}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([month, count]) => ({ month, count }));
+  })();
 
   return (
     <DashboardLayout>
       <div className="space-y-8">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Members</CardTitle>
+              <CardDescription>All registered members</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{loading ? '...' : totalMembers}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Active Cases</CardTitle>
+              <CardDescription>Cases currently active</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{loading ? '...' : totalActiveCases}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Contributions</CardTitle>
+              <CardDescription>Sum of all case contributions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{loading ? '...' : totalContributions.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Registration Fees</CardTitle>
+              <CardDescription>Sum of all registration fees</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{loading ? '...' : totalRegistrationFees.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-1">Reports</h1>
@@ -253,153 +392,156 @@ const Reports = () => {
 
         <Tabs defaultValue="defaulters" className="space-y-6" onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="defaulters">Defaulters</TabsTrigger>
             <TabsTrigger value="contributions">Contributions</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
             <TabsTrigger value="financial">Financial</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="defaulters" className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="Location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Locations</SelectItem>
-                  {locations.map((location) => (
-                    <SelectItem key={location} value={location.toLowerCase()}>
-                      {location}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full sm:w-auto justify-start text-left font-normal",
-                      !dateRange.from && "text-muted-foreground"
-                    )}
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {dateRange.from ? (
-                      dateRange.to ? (
-                        <>
-                          {format(dateRange.from, "LLL dd, y")} -{" "}
-                          {format(dateRange.to, "LLL dd, y")}
-                        </>
-                      ) : (
-                        format(dateRange.from, "LLL dd, y")
-                      )
-                    ) : (
-                      <span>Date range</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    initialFocus
-                    mode="range"
-                    defaultMonth={dateRange.from}
-                    selected={dateRange}
-                    onSelect={(range) => {
-                      if (range) {
-                        setDateRange(range);
-                      }
-                    }}
-                    numberOfMonths={2}
-                    className={cn("p-3 pointer-events-auto")}
-                  />
-                </PopoverContent>
-              </Popover>
-              
-              <Button variant="outline" className="ml-auto">
-                <Filter className="h-4 w-4 mr-2" />
-                More Filters
-              </Button>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Defaulters Report</CardTitle>
-                <CardDescription>Members with negative wallet balance</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {filteredDefaulters.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No defaulters found</p>
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Member #</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Residence</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Balance (KES)</TableHead>
-                        <TableHead className="text-right">Cases Defaulted</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredDefaulters.map((member) => (
-                        <TableRow key={member.id} onClick={() => navigate(`/members/${member.id}`)} className="cursor-pointer hover:bg-secondary/50">
-                          <TableCell>{member.memberNumber}</TableCell>
-                          <TableCell>{member.name}</TableCell>
-                          <TableCell>{member.residence}</TableCell>
-                          <TableCell>{member.isActive ? 'Active' : 'Inactive'}</TableCell>
-                          <TableCell className="text-right font-medium text-destructive">
-                            {member.walletBalance.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {Math.abs(Math.floor(member.walletBalance / 1000))}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           <TabsContent value="contributions" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Contributions Report</CardTitle>
-                <CardDescription>Case contributions by members</CardDescription>
-              </CardHeader>
-              <CardContent className="text-center py-12">
-                <p className="text-muted-foreground mb-4">Select a case to view detailed contributions</p>
-                <Select>
-                  <SelectTrigger className="w-80 mx-auto">
-                    <SelectValue placeholder="Select a case" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockCases.map((caseItem) => (
-                      <SelectItem key={caseItem.id} value={caseItem.id}>
-                        Case #{caseItem.caseNumber} - {caseItem.caseType} ({caseItem.affectedMember?.name})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
+            {(() => {
+              const contributions = transactions.filter(tx => tx.description && tx.description.toLowerCase().startsWith('contribution'));
+              const { page, setPage, maxPage, pagedData } = usePagination(contributions, 10);
+              return (
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle>Contributions Report</CardTitle>
+                      <CardDescription>All contributions to cases by members</CardDescription>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" onClick={() => exportToCSV('contributions.csv',
+                        pagedData.map(tx => ({
+                          member: members.find(m => m.id === tx.member_id)?.name || 'Unknown',
+                          amount: tx.amount,
+                          mpesaReference: tx.mpesa_reference,
+                          description: tx.description,
+                          date: tx.created_at
+                        })),
+                        ['member','amount','mpesaReference','description','date'])}>
+                        Export Excel
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => exportToPDF('contributions.pdf',
+                        pagedData.map(tx => ({
+                          member: members.find(m => m.id === tx.member_id)?.name || 'Unknown',
+                          amount: tx.amount,
+                          mpesaReference: tx.mpesa_reference,
+                          description: tx.description,
+                          date: tx.created_at
+                        })),
+                        ['member','amount','mpesaReference','description','date'])}>
+                        Export PDF
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Member</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Mpesa Ref</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagedData.map(tx => (
+                          <TableRow key={tx.id}>
+                            <TableCell>{members.find(m => m.id === tx.member_id)?.name || 'Unknown'}</TableCell>
+                            <TableCell>{Number(tx.amount).toLocaleString()}</TableCell>
+                            <TableCell>{tx.mpesa_reference}</TableCell>
+                            <TableCell>{tx.description}</TableCell>
+                            <TableCell>{tx.created_at ? format(new Date(tx.created_at), 'yyyy-MM-dd') : ''}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <div className="flex justify-between items-center mt-4">
+                      <span>Page {page} of {maxPage}</span>
+                      <div className="space-x-2">
+                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
+                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(maxPage, p + 1))} disabled={page === maxPage}>Next</Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="members" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Members Report</CardTitle>
-                <CardDescription>Member statistics and demographics</CardDescription>
-              </CardHeader>
-              <CardContent className="text-center py-12">
-                <p className="text-muted-foreground">Members report coming soon</p>
-              </CardContent>
-            </Card>
+            {(() => {
+              const { page, setPage, maxPage, pagedData } = usePagination(members, 10);
+              return (
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle>Members Report</CardTitle>
+                      <CardDescription>All registered members</CardDescription>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" onClick={() => exportToCSV('members.csv',
+                        pagedData.map(m => ({
+                          member_number: m.memberNumber,
+                          name: m.name,
+                          gender: m.gender,
+                          phone_number: m.phoneNumber,
+                          residence: m.residence,
+                          registration_date: m.registrationDate
+                        })),
+                        ['member_number','name','gender','phone_number','residence','registration_date'])}>
+                        Export Excel
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => exportToPDF('members.pdf',
+                        pagedData.map(m => ({
+                          member_number: m.memberNumber,
+                          name: m.name,
+                          gender: m.gender,
+                          phone_number: m.phoneNumber,
+                          residence: m.residence,
+                          registration_date: m.registrationDate
+                        })),
+                        ['member_number','name','gender','phone_number','residence','registration_date'])}>
+                        Export PDF
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Member #</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Gender</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Residence</TableHead>
+                          <TableHead>Registration Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagedData.map(m => (
+                          <TableRow key={m.id}>
+                            <TableCell>{m.memberNumber}</TableCell>
+                            <TableCell>{m.name}</TableCell>
+                            <TableCell>{m.gender}</TableCell>
+                            <TableCell>{m.phoneNumber}</TableCell>
+                            <TableCell>{m.residence}</TableCell>
+                            <TableCell>{m.registrationDate ? format(new Date(m.registrationDate), 'yyyy-MM-dd') : ''}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <div className="flex justify-between items-center mt-4">
+                      <span>Page {page} of {maxPage}</span>
+                      <div className="space-x-2">
+                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
+                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(maxPage, p + 1))} disabled={page === maxPage}>Next</Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="financial" className="space-y-6">

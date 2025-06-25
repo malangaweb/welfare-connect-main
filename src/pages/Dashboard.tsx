@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, CreditCard, CalendarDays, Calendar, TrendingUp, BarChart3, AlertCircle, UserPlus, LogOut, Home, Wallet, UserCog, Settings } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
@@ -133,6 +133,172 @@ const mockTransactions: Transaction[] = [
 const Dashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [totalContributions, setTotalContributions] = useState<number>(0);
+  const [recentMembers, setRecentMembers] = useState<Member[]>([]);
+  const [recentActiveCases, setRecentActiveCases] = useState<Case[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [totalMembers, setTotalMembers] = useState<number>(0);
+  const [activeCasesCount, setActiveCasesCount] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      const { data: transactionsData } = await supabase
+        .from('transactions')
+        .select('*');
+      setTransactions(transactionsData || []);
+      // Calculate total contributions
+      const total = (transactionsData || [])
+        .filter(t => t.description && t.description.startsWith('Contribution for case'))
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      setTotalContributions(total);
+    };
+    fetchTransactions();
+  }, []);
+
+  useEffect(() => {
+    const fetchRecentMembers = async () => {
+      const { data: membersData } = await supabase
+        .from('members')
+        .select('*')
+        .order('registration_date', { ascending: false })
+        .limit(3);
+      console.log('Fetched recent members:', membersData);
+      // Map to expected MemberCard props, ensure valid Date objects
+      const mapped = (membersData || []).map(m => ({
+        id: m.id,
+        memberNumber: m.member_number,
+        name: m.name,
+        gender: m.gender,
+        dateOfBirth: m.date_of_birth ? new Date(m.date_of_birth) : new Date(),
+        nationalIdNumber: m.national_id_number,
+        phoneNumber: m.phone_number,
+        emailAddress: m.email_address,
+        residence: m.residence,
+        nextOfKin: m.next_of_kin,
+        dependants: Array.isArray(m.dependants) ? m.dependants : [],
+        registrationDate: m.registration_date ? new Date(m.registration_date) : new Date(),
+        walletBalance: m.wallet_balance || 0,
+        isActive: m.is_active,
+      }));
+      setRecentMembers(mapped);
+    };
+    fetchRecentMembers();
+  }, []);
+
+  useEffect(() => {
+    const fetchActiveCases = async () => {
+      // Fetch active cases
+      const { data: casesData } = await supabase
+        .from('cases')
+        .select('*')
+        .eq('is_active', true)
+        .order('start_date', { ascending: false })
+        .limit(2);
+      // Fetch all members (or you could optimize to just those needed)
+      const { data: membersData } = await supabase
+        .from('members')
+        .select('*');
+      // Create a lookup map for members
+      const membersById = {};
+      (membersData || []).forEach(m => {
+        membersById[m.id] = {
+          id: m.id,
+          memberNumber: m.member_number,
+          name: m.name,
+          gender: m.gender,
+          dateOfBirth: m.date_of_birth ? new Date(m.date_of_birth) : new Date(),
+          nationalIdNumber: m.national_id_number,
+          phoneNumber: m.phone_number,
+          emailAddress: m.email_address,
+          residence: m.residence,
+          nextOfKin: m.next_of_kin,
+          dependants: Array.isArray(m.dependants) ? m.dependants : [],
+          registrationDate: m.registration_date ? new Date(m.registration_date) : new Date(),
+          walletBalance: m.wallet_balance || 0,
+          isActive: m.is_active,
+        };
+      });
+      // Map cases to expected CaseCard props
+      const mapped = (casesData || []).map(c => ({
+        id: c.id,
+        caseNumber: c.case_number,
+        affectedMemberId: c.affected_member_id,
+        affectedMember: membersById[c.affected_member_id],
+        caseType: typeof c.case_type === 'string' ? c.case_type.toLowerCase() : c.case_type,
+        dependantId: c.dependant_id,
+        contributionPerMember: c.contribution_per_member,
+        startDate: c.start_date ? new Date(c.start_date) : new Date(),
+        endDate: c.end_date ? new Date(c.end_date) : new Date(),
+        expectedAmount: c.expected_amount,
+        actualAmount: c.actual_amount,
+        isActive: c.is_active,
+        isFinalized: c.is_finalized,
+        createdAt: c.created_at ? new Date(c.created_at) : new Date(),
+      }));
+      console.log('Mapped active cases:', mapped);
+      setRecentActiveCases(mapped);
+    };
+    fetchActiveCases();
+  }, []);
+
+  useEffect(() => {
+    const fetchRecentTransactions = async () => {
+      // Fetch recent transactions
+      const { data: transactionsData, error: txError } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (txError) {
+        console.error('Error fetching transactions:', txError);
+        setRecentTransactions([]);
+        return;
+      }
+      // Fetch all members (for sender name lookup)
+      const { data: membersData, error: membersError } = await supabase
+        .from('members')
+        .select('id, name');
+      if (membersError) {
+        console.error('Error fetching members:', membersError);
+      }
+      const membersById = {};
+      (membersData || []).forEach(m => {
+        membersById[m.id] = m.name;
+      });
+      // Map to expected TransactionList props, ensure valid Date objects
+      const mapped = (transactionsData || []).map(t => ({
+        id: t.id,
+        memberId: t.member_id,
+        caseId: t.case_id,
+        amount: t.amount,
+        transactionType: t.transaction_type,
+        mpesaReference: t.mpesa_reference,
+        createdAt: t.created_at ? new Date(t.created_at) : new Date(),
+        description: t.description,
+        senderName: membersById[t.member_id] || 'Unknown',
+      }));
+      setRecentTransactions(mapped);
+    };
+    fetchRecentTransactions();
+  }, []);
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      // Fetch total members count
+      const { count: membersCount } = await supabase
+        .from('members')
+        .select('*', { count: 'exact', head: true });
+      setTotalMembers(membersCount || 0);
+      // Fetch active cases count
+      const { count: casesCount } = await supabase
+        .from('cases')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
+      setActiveCasesCount(casesCount || 0);
+    };
+    fetchCounts();
+  }, []);
 
   // Define admin navigation links
   const adminLinks = [
@@ -158,71 +324,75 @@ const Dashboard = () => {
 
   return (
     <DashboardLayout customLinks={adminLinks} customLogout={handleLogout}>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
+      <div className="space-y-10 bg-gradient-to-br from-gray-50 via-white to-blue-50 min-h-screen px-2 md:px-8 py-8">
+        <div className="flex items-center justify-between sticky top-0 z-10 bg-gradient-to-r from-white/90 to-blue-50/80 backdrop-blur-md py-4 px-2 md:px-8 rounded-xl shadow-sm mb-6">
           <div>
-            <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
-            <p className="text-muted-foreground">Welcome to MCWG management portal</p>
+            <h1 className="text-4xl font-extrabold mb-1 text-primary tracking-tight">Dashboard</h1>
+            <p className="text-lg text-muted-foreground font-medium">Welcome to MCWG management portal</p>
           </div>
           <div className="flex space-x-4">
-            <Button onClick={() => navigate('/members/new')}>
-              <UserPlus className="h-4 w-4 mr-2" />
+            <Button size="lg" className="font-semibold shadow-md" onClick={() => navigate('/members/new')}>
+              <UserPlus className="h-5 w-5 mr-2" />
               New Member
             </Button>
-            <Button onClick={() => navigate('/cases/new')}>
-              <CalendarDays className="h-4 w-4 mr-2" />
+            <Button size="lg" className="font-semibold shadow-md" onClick={() => navigate('/cases/new')}>
+              <CalendarDays className="h-5 w-5 mr-2" />
               New Case
             </Button>
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title="Total Members"
-            value="240"
-            icon={<Users className="h-4 w-4" />}
+            value={totalMembers}
+            icon={<Users className="h-5 w-5" />}
             description="Active and inactive members"
             trend={{ value: 12, isPositive: true }}
+            className="shadow-md rounded-xl"
           />
           <StatsCard
             title="Active Cases"
-            value="3"
-            icon={<CalendarDays className="h-4 w-4" />}
+            value={activeCasesCount}
+            icon={<CalendarDays className="h-5 w-5" />}
             description="Cases in progress"
+            className="shadow-md rounded-xl"
           />
           <StatsCard
             title="Total Contributions"
-            value="KES 1,256,000"
-            icon={<CreditCard className="h-4 w-4" />}
+            value={`KES ${totalContributions.toLocaleString()}`}
+            icon={<CreditCard className="h-5 w-5" />}
             trend={{ value: 8.5, isPositive: true }}
+            className="shadow-md rounded-xl"
           />
           <StatsCard
             title="Defaulting Members"
             value="18"
-            icon={<AlertCircle className="h-4 w-4" />}
+            icon={<AlertCircle className="h-5 w-5" />}
             description="Members with negative balance"
             trend={{ value: 5, isPositive: false }}
+            className="shadow-md rounded-xl"
           />
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6" onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="members">Members</TabsTrigger>
-            <TabsTrigger value="cases">Cases</TabsTrigger>
-            <TabsTrigger value="transactions">Transactions</TabsTrigger>
+        <Tabs defaultValue="overview" className="space-y-8" onValueChange={setActiveTab}>
+          <TabsList className="flex gap-4 bg-white/80 rounded-lg shadow-sm p-2 mb-4">
+            <TabsTrigger value="overview" className="text-lg font-semibold">Overview</TabsTrigger>
+            <TabsTrigger value="members" className="text-lg font-semibold">Members</TabsTrigger>
+            <TabsTrigger value="cases" className="text-lg font-semibold">Cases</TabsTrigger>
+            <TabsTrigger value="transactions" className="text-lg font-semibold">Transactions</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
+          <TabsContent value="overview" className="space-y-8">
+            <div className="grid gap-8 md:grid-cols-2">
+              <Card className="shadow-lg rounded-xl">
                 <CardHeader>
-                  <CardTitle>Recent Members</CardTitle>
-                  <CardDescription>Latest member registrations</CardDescription>
+                  <CardTitle className="text-xl font-bold">Recent Members</CardTitle>
+                  <CardDescription className="text-base">Latest member registrations</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {mockMembers.slice(0, 2).map((member) => (
+                    {recentMembers.map((member) => (
                       <MemberCard
                         key={member.id}
                         member={member}
@@ -230,7 +400,7 @@ const Dashboard = () => {
                       />
                     ))}
                     <div className="flex justify-center mt-4">
-                      <Button variant="outline" size="sm" onClick={() => setActiveTab('members')}>
+                      <Button variant="outline" size="lg" className="font-semibold" onClick={() => setActiveTab('members')}>
                         View All Members
                       </Button>
                     </div>
@@ -238,14 +408,14 @@ const Dashboard = () => {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="shadow-lg rounded-xl">
                 <CardHeader>
-                  <CardTitle>Active Cases</CardTitle>
-                  <CardDescription>Cases currently in progress</CardDescription>
+                  <CardTitle className="text-xl font-bold">Active Cases</CardTitle>
+                  <CardDescription className="text-base">Cases currently in progress</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {mockCases.filter(c => c.isActive).map((caseItem) => (
+                    {recentActiveCases.map((caseItem) => (
                       <CaseCard
                         key={caseItem.id}
                         case={caseItem}
@@ -253,7 +423,7 @@ const Dashboard = () => {
                       />
                     ))}
                     <div className="flex justify-center mt-4">
-                      <Button variant="outline" size="sm" onClick={() => setActiveTab('cases')}>
+                      <Button variant="outline" size="lg" className="font-semibold" onClick={() => setActiveTab('cases')}>
                         View All Cases
                       </Button>
                     </div>
@@ -262,15 +432,15 @@ const Dashboard = () => {
               </Card>
             </div>
 
-            <Card>
+            <Card className="shadow-lg rounded-xl">
               <CardHeader>
-                <CardTitle>Recent Transactions</CardTitle>
-                <CardDescription>Latest financial activities</CardDescription>
+                <CardTitle className="text-xl font-bold">Recent Transactions</CardTitle>
+                <CardDescription className="text-base">Latest financial activities</CardDescription>
               </CardHeader>
               <CardContent>
-                <TransactionList transactions={mockTransactions} />
+                <TransactionList transactions={recentTransactions} />
                 <div className="flex justify-center mt-6">
-                  <Button variant="outline" size="sm" onClick={() => navigate('/transactions')}>
+                  <Button variant="outline" size="lg" className="font-semibold" onClick={() => navigate('/transactions')}>
                     View All Transactions
                   </Button>
                 </div>
@@ -278,11 +448,11 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="members" className="space-y-6">
-            <Card>
+          <TabsContent value="members" className="space-y-8">
+            <Card className="shadow-lg rounded-xl">
               <CardHeader>
-                <CardTitle>Members</CardTitle>
-                <CardDescription>All registered members</CardDescription>
+                <CardTitle className="text-xl font-bold">Members</CardTitle>
+                <CardDescription className="text-base">All registered members</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -295,7 +465,7 @@ const Dashboard = () => {
                   ))}
                 </div>
                 <div className="flex justify-center mt-6">
-                  <Button variant="outline" onClick={() => navigate('/members')}>
+                  <Button variant="outline" size="lg" className="font-semibold" onClick={() => navigate('/members')}>
                     View All Members
                   </Button>
                 </div>
@@ -303,11 +473,11 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="cases" className="space-y-6">
-            <Card>
+          <TabsContent value="cases" className="space-y-8">
+            <Card className="shadow-lg rounded-xl">
               <CardHeader>
-                <CardTitle>Cases</CardTitle>
-                <CardDescription>All welfare cases</CardDescription>
+                <CardTitle className="text-xl font-bold">Cases</CardTitle>
+                <CardDescription className="text-base">All welfare cases</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -320,7 +490,7 @@ const Dashboard = () => {
                   ))}
                 </div>
                 <div className="flex justify-center mt-6">
-                  <Button variant="outline" onClick={() => navigate('/cases')}>
+                  <Button variant="outline" size="lg" className="font-semibold" onClick={() => navigate('/cases')}>
                     View All Cases
                   </Button>
                 </div>
@@ -328,16 +498,16 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="transactions" className="space-y-6">
-            <Card>
+          <TabsContent value="transactions" className="space-y-8">
+            <Card className="shadow-lg rounded-xl">
               <CardHeader>
-                <CardTitle>Transactions</CardTitle>
-                <CardDescription>All financial transactions</CardDescription>
+                <CardTitle className="text-xl font-bold">Transactions</CardTitle>
+                <CardDescription className="text-base">All financial transactions</CardDescription>
               </CardHeader>
               <CardContent>
-                <TransactionList transactions={mockTransactions} />
+                <TransactionList transactions={recentTransactions} />
                 <div className="flex justify-center mt-6">
-                  <Button variant="outline" onClick={() => navigate('/transactions')}>
+                  <Button variant="outline" size="lg" className="font-semibold" onClick={() => navigate('/transactions')}>
                     View All Transactions
                   </Button>
                 </div>

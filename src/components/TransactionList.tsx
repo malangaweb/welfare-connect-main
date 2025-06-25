@@ -16,9 +16,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface TransactionListProps {
   transactions: Transaction[];
   loading?: boolean;
+  renderAction?: (tx: Transaction) => React.ReactNode;
 }
 
-const TransactionList = ({ transactions, loading = false }: TransactionListProps) => {
+const TransactionList = ({ transactions, loading = false, renderAction }: TransactionListProps) => {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -103,20 +104,22 @@ const TransactionList = ({ transactions, loading = false }: TransactionListProps
         transactions.map((transaction) => (
           <div 
             key={transaction.id} 
-            className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/10 transition-colors cursor-pointer"
-            onClick={() => handleTransactionClick(transaction)}
+            className="flex items-center justify-between p-6 rounded-xl border bg-gradient-to-br from-card via-white to-gray-50 shadow-sm hover:shadow-lg hover:scale-[1.01] transition-all group"
           >
-            <div className="flex items-center space-x-4">
-              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
+            <div className="flex items-center space-x-5 flex-1 cursor-pointer" onClick={() => handleTransactionClick(transaction)}>
+              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm">
                 {getTransactionIcon(transaction.transactionType)}
               </div>
               <div>
-                <p className="font-medium">{getTransactionTitle(transaction.transactionType)}</p>
-                <p className="text-sm text-muted-foreground">{transaction.description}</p>
+                <p className="font-semibold text-base text-foreground">{getTransactionTitle(transaction.transactionType)}</p>
+                <p className="text-sm text-muted-foreground mb-1">{transaction.description}</p>
+                {('senderName' in transaction) && (transaction as any).senderName && (
+                  <p className="text-xs text-muted-foreground italic">From: <span className="font-medium text-foreground">{(transaction as any).senderName}</span></p>
+                )}
               </div>
             </div>
-            <div className="text-right">
-              <p className={`font-medium ${
+            <div className="flex flex-col items-end min-w-[140px] h-full">
+              <p className={`text-lg font-bold tracking-tight ${
                 ['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
                   ? 'text-green-600' 
                   : 'text-red-600'
@@ -124,15 +127,18 @@ const TransactionList = ({ transactions, loading = false }: TransactionListProps
                 {['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
                 KES {transaction.amount.toLocaleString()}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {format(transaction.createdAt, 'MMM d, yyyy HH:mm')}
-              </p>
-              {transaction.mpesaReference && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ref: {transaction.mpesaReference}
-                </p>
-              )}
+              <div className="flex flex-col items-end mt-2 space-y-0.5">
+                <span className="text-xs text-muted-foreground">
+                  {format(transaction.createdAt, 'MMM d, yyyy HH:mm')}
+                </span>
+                {transaction.mpesaReference && (
+                  <span className="text-xs text-blue-700 bg-blue-50 rounded px-2 py-0.5 mt-0.5">Ref: {transaction.mpesaReference}</span>
+                )}
+              </div>
             </div>
+            {renderAction && (
+              <div className="ml-4 flex-shrink-0">{renderAction(transaction)}</div>
+            )}
           </div>
         ))
       )}

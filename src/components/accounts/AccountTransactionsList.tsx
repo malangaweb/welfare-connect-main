@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Download, Filter } from "lucide-react";
 import { 
   Table, 
@@ -19,17 +18,53 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Transaction } from "@/lib/types";
+import { supabase } from '@/integrations/supabase/client';
 
 interface AccountTransactionsListProps {
-  transactions: Transaction[];
   title: string;
 }
 
-const AccountTransactionsList = ({ transactions, title }: AccountTransactionsListProps) => {
+const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [periodFilter, setPeriodFilter] = useState('all');
   const [yearFilter, setYearFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      setLoading(true);
+      let query = supabase.from('transactions').select('*');
+      // Filter by account type based on title
+      if (title.toLowerCase().includes('registration')) {
+        query = query.ilike('description', 'Registration%');
+      } else if (title.toLowerCase().includes('renewal')) {
+        query = query.eq('transaction_type', 'renewal');
+      } else if (title.toLowerCase().includes('penalty')) {
+        query = query.eq('transaction_type', 'penalty');
+      } else if (title.toLowerCase().includes('suspense')) {
+        query = query.eq('transaction_type', 'suspense');
+      }
+      query = query.order('created_at', { ascending: false });
+      const { data, error } = await query;
+      if (!error && data) {
+        setTransactions(
+          data.map((t: any) => ({
+            id: t.id,
+            memberId: t.member_id,
+            caseId: t.case_id || undefined,
+            amount: Number(t.amount),
+            transactionType: t.transaction_type,
+            mpesaReference: t.mpesa_reference || undefined,
+            createdAt: new Date(t.created_at),
+            description: t.description || '',
+          }))
+        );
+      }
+      setLoading(false);
+    };
+    fetchTransactions();
+  }, [title]);
 
   const years = Array.from(new Set(
     transactions.map(tx => new Date(tx.createdAt).getFullYear())
@@ -72,6 +107,9 @@ const AccountTransactionsList = ({ transactions, title }: AccountTransactionsLis
     console.log('Exporting data...');
   };
 
+  if (loading) {
+    return <div className="py-10 text-center text-muted-foreground">Loading transactions...</div>;
+  }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
