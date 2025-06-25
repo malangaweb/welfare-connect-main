@@ -48,56 +48,144 @@ const Members = () => {
   };
 
   useEffect(() => {
+    console.log('Environment variables:', {
+      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'exists' : 'missing'
+    });
+
+    const testConnection = async () => {
+      try {
+        // First, test the connection
+        const { data: testData, error: testError } = await supabase
+          .from('members')
+          .select('count')
+          .limit(1);
+
+        console.log('Database connection test:', { testData, testError });
+
+        // Then try to get the table structure
+        const { data: tableInfo, error: tableError } = await supabase
+          .rpc('get_table_info', { table_name: 'members' });
+
+        console.log('Table structure:', { tableInfo, tableError });
+
+        // Now try to fetch members
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select('*');
+
+        console.log('Raw members data:', membersData);
+        console.log('Members error:', membersError);
+
+        if (membersError) {
+          throw membersError;
+        }
+
+        if (!membersData || membersData.length === 0) {
+          console.log('No members found in database');
+          // Let's check if the table exists
+          const { data: tables, error: tablesError } = await supabase
+            .from('information_schema.tables')
+            .select('table_name')
+            .eq('table_schema', 'public');
+
+          console.log('Available tables:', tables);
+        }
+
+      } catch (error) {
+        console.error('Database connection test failed:', error);
+      }
+    };
+
+    testConnection();
+  }, []);
+
+  useEffect(() => {
+    console.log('Environment variables check:', {
+      hasUrl: !!import.meta.env.VITE_SUPABASE_URL,
+      hasKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+      url: import.meta.env.VITE_SUPABASE_URL,
+    });
+  }, []);
+
+  useEffect(() => {
     const fetchMembers = async () => {
       try {
         setLoading(true);
         console.log('Starting to fetch members...');
 
-        // First, try to fetch residences
-        const { data: residencesData, error: residencesError } = await supabase
-          .from('residences')
-          .select('*');
-
-        if (residencesError) {
-          console.error('Error fetching residences:', residencesError);
-          throw residencesError;
-        }
-
-        console.log('Residences data:', residencesData);
-
-        // Get all members from Supabase
-        const { data: membersData, error: membersError } = await supabase
+        // Query matching the exact schema
+        const { data, error } = await supabase
           .from('members')
           .select(`
-            *,
-            dependants (*)
+            id,
+            member_number,
+            name,
+            gender,
+            date_of_birth,
+            national_id_number,
+            phone_number,
+            email_address,
+            residence,
+            next_of_kin,
+            registration_date,
+            is_active
           `);
 
-        if (membersError) {
-          console.error('Error fetching members:', membersError);
-          throw membersError;
+        console.log('Query result:', { data, error });
+
+        if (error) {
+          console.error('Error fetching members:', error);
+          throw error;
         }
 
-        console.log('Members data:', membersData);
+        if (!data || data.length === 0) {
+          console.log('No members found in database');
+          toast({
+            title: "No Members Found",
+            description: "There are no members in the system. Please add members first.",
+          });
+          return;
+        }
 
-        // Map database members to the application Member model
-        const mappedMembers = membersData.map(dbMember => {
-          try {
-            return mapDbMemberToMember(dbMember, dbMember.dependants || []);
-          } catch (error) {
-            console.error('Error mapping member:', dbMember, error);
-            return null;
+        // Fetch all transactions for all members
+        const { data: transactions, error: txError } = await supabase
+          .from('transactions')
+          .select('member_id, amount');
+        if (txError) {
+          console.error('Error fetching transactions:', txError);
+          throw txError;
+        }
+
+        // Calculate wallet balance per member
+        const walletMap: Record<string, number> = {};
+        if (transactions) {
+          for (const tx of transactions) {
+            if (!walletMap[tx.member_id]) walletMap[tx.member_id] = 0;
+            walletMap[tx.member_id] += Number(tx.amount) || 0;
           }
-        }).filter(Boolean) as Member[]; // Remove any null values from mapping errors
+        }
+
+        // Map the data to match your Member interface
+        const mappedMembers = data.map(dbMember => ({
+          id: dbMember.id,
+          memberNumber: dbMember.member_number,
+          name: dbMember.name,
+          gender: dbMember.gender as Gender,
+          dateOfBirth: new Date(dbMember.date_of_birth),
+          nationalIdNumber: dbMember.national_id_number,
+          phoneNumber: dbMember.phone_number || '',
+          emailAddress: dbMember.email_address || '',
+          residence: dbMember.residence,
+          nextOfKin: dbMember.next_of_kin,
+          registrationDate: new Date(dbMember.registration_date || new Date()),
+          walletBalance: walletMap[dbMember.id] || 0,
+          isActive: Boolean(dbMember.is_active),
+          dependants: [] // Since there's no dependants in the schema
+        }));
 
         console.log('Mapped members:', mappedMembers);
-
-        // Extract unique locations from residences
-        const uniqueLocations = [...new Set(residencesData.map(r => r.name))];
-        console.log('Unique locations:', uniqueLocations);
-
         setMembers(mappedMembers);
-        setLocations(uniqueLocations);
       } catch (error) {
         console.error('Error in fetchMembers:', error);
         toast({

@@ -1,4 +1,3 @@
-
 import { format } from 'date-fns';
 import { Calendar, User } from 'lucide-react';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';

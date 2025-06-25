@@ -60,7 +60,8 @@ const Cases = () => {
         // Get all cases from Supabase
         const { data: casesData, error: casesError } = await supabase
           .from('cases')
-          .select('*');
+          .select('*')
+          .order('created_at', { ascending: false });
 
         if (casesError) {
           console.error('Error fetching cases:', casesError);

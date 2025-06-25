@@ -2,20 +2,87 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = "https://hfojxbfcjozguobwtcgt.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhmb2p4YmZjam96Z3VvYnd0Y2d0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MTA0MzIsImV4cCI6MjA1Nzk4NjQzMn0.sY5Gr1xbXBJRLK_vSTAS_kPT46h4x3Vprl9FQag59nc";
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Debug environment variables
+console.log('Supabase Configuration:', {
+  url: supabaseUrl,
+  hasKey: !!supabaseAnonKey,
+  keyLength: supabaseAnonKey?.length
+});
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables:', {
+    url: supabaseUrl,
+    hasKey: !!supabaseAnonKey
+  });
+  throw new Error('Missing Supabase environment variables');
+}
+
+console.log('Supabase URL:', supabaseUrl);
+console.log('Supabase Key exists:', !!supabaseAnonKey);
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+// Regular client for normal operations
 export const supabase = createClient<Database>(
-  SUPABASE_URL, 
-  SUPABASE_PUBLISHABLE_KEY,
+  supabaseUrl, 
+  supabaseAnonKey,
   {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      storageKey: 'wssf-auth-token'
+      detectSessionInUrl: true
+    },
+    db: {
+      schema: 'public'
+    },
+    global: {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    }
+  }
+);
+
+// Test the connection
+const testConnection = async () => {
+  try {
+    // Test database connection
+    const { data: dbData, error: dbError } = await supabase
+      .from('members')
+      .select('count')
+      .limit(1);
+    
+    console.log('Database connection test:', { dbData, dbError });
+
+    // Test auth connection
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    console.log('Auth connection test:', { 
+      hasSession: !!authData.session,
+      authError 
+    });
+
+  } catch (error) {
+    console.error('Connection test failed:', error);
+  }
+};
+
+testConnection();
+
+// Service role client for admin operations
+export const supabaseAdmin = createClient<Database>(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: 'wssf-admin-token'
     }
   }
 );

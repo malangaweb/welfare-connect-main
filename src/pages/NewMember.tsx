@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/components/ui/use-toast';
@@ -6,8 +5,57 @@ import { ChevronLeft } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MemberForm from '@/components/forms/MemberForm';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
 import { UserRole } from '@/lib/types';
+
+// Function to send SMS
+const sendSMS = async (name: string, phoneNumber: string) => {
+  try {
+    const response = await fetch('https://siha.javanet.co.ke/send_notification.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+        phone_number: phoneNumber,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to send SMS:', response.statusText);
+      return;
+    }
+
+    const result = await response.json();
+    console.log('SMS API response:', result);
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+  }
+};
+
+// Format phone number to ensure it starts with +254
+const formatPhoneNumber = (phone: string) => {
+  if (!phone) return null;
+  
+  // Remove any spaces or special characters
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // If number starts with 0, replace with +254
+  if (cleaned.startsWith('0')) {
+    cleaned = '+254' + cleaned.substring(1);
+  }
+  // If number starts with 254, add +
+  else if (cleaned.startsWith('254')) {
+    cleaned = '+' + cleaned;
+  }
+  // If number doesn't start with +, add it
+  else if (!cleaned.startsWith('+')) {
+    cleaned = '+' + cleaned;
+  }
+  
+  return cleaned;
+};
 
 const NewMember = () => {
   const navigate = useNavigate();
@@ -18,8 +66,8 @@ const NewMember = () => {
     console.log('Member data to submit:', data);
     
     try {
-      // Get the residence name for this ID
-      const { data: residenceData, error: residenceError } = await supabase
+      // Get the residence name for this ID using service role client
+      const { data: residenceData, error: residenceError } = await supabaseAdmin
         .from('residences')
         .select('name')
         .eq('id', data.residence)
@@ -27,124 +75,94 @@ const NewMember = () => {
         
       if (residenceError) throw residenceError;
       
-      // Create the member record
+      // Create the member record using the database function
       const { data: memberData, error: memberError } = await supabase
-        .from('members')
-        .insert({
-          member_number: data.memberNumber,
-          name: data.name,
-          gender: data.gender,
-          date_of_birth: data.dateOfBirth.toISOString().split('T')[0],
-          national_id_number: data.nationalIdNumber,
-          phone_number: data.phoneNumber || null,
-          email_address: data.emailAddress || null,
-          residence: residenceData.name, // Store the residence name, not the ID
-          next_of_kin: {
+        .rpc('insert_member', {
+          p_member_number: data.memberNumber,
+          p_name: data.name,
+          p_gender: data.gender,
+          p_date_of_birth: data.dateOfBirth.toISOString().split('T')[0],
+          p_national_id_number: data.nationalIdNumber,
+          p_phone_number: data.phoneNumber || null,
+          p_email_address: data.emailAddress || null,
+          p_residence: residenceData.name,
+          p_next_of_kin: {
             name: data.nextOfKin.name,
             relationship: data.nextOfKin.relationship,
             phoneNumber: data.nextOfKin.phoneNumber
           },
-          wallet_balance: 0,
-          is_active: true
-        })
-        .select()
-        .single();
+          p_wallet_balance: 0,
+          p_is_active: true,
+          p_registration_date: new Date().toISOString().split('T')[0]
+        });
         
-      if (memberError) throw memberError;
-      
-      console.log('Member created:', memberData);
-      
-      // Add dependants if any
-      if (data.dependants && data.dependants.length > 0) {
-        const dependantsToInsert = data.dependants.map((dep: any) => ({
-          member_id: memberData.id,
-          name: dep.name,
-          gender: dep.gender,
-          relationship: dep.relationship,
-          date_of_birth: dep.dateOfBirth.toISOString().split('T')[0],
-          is_disabled: dep.isDisabled,
-          is_eligible: true // Default all dependants to eligible
-        }));
-        
-        const { error: dependantsError } = await supabase
-          .from('dependants')
-          .insert(dependantsToInsert);
-          
-        if (dependantsError) throw dependantsError;
+      if (memberError) {
+        console.error('Error creating member:', memberError);
+        throw memberError;
       }
-      
+
+      if (!memberData) {
+        throw new Error('Failed to create member: No data returned');
+      }
+
+      console.log('Member created:', memberData);
+
+      // Send welcome SMS if phone number is provided
+      if (data.phoneNumber && data.name) {
+        const name = String(data.name).trim();
+        const phoneNumber = String(data.phoneNumber).trim();
+        console.log('Sending SMS with:', { name, phoneNumber });
+        if (name && phoneNumber) {
+          await sendSMS(name, phoneNumber);
+        }
+      }
+
       // Create login credentials if provided
       if (data.credentials && data.credentials.username && data.credentials.password) {
-        // First check if username already exists
-        const { data: existingUser, error: checkError } = await supabase
-          .from('users')
-          .select('id')
-          .eq('username', data.credentials.username);
+        try {
+          // First check if username already exists using service role client
+          const { data: existingUser, error: checkError } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('username', data.credentials.username);
+            
+          if (checkError) throw checkError;
           
-        if (checkError) throw checkError;
-        
-        if (existingUser && existingUser.length > 0) {
-          throw new Error('Username already exists. Please choose a different username.');
-        }
-        
-        // Create user record
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .insert({
-            username: data.credentials.username,
-            name: data.name,
-            role: UserRole.MEMBER,
-            is_active: true,
-            member_id: memberData.id
-          })
-          .select()
-          .single();
+          if (existingUser && existingUser.length > 0) {
+            throw new Error('Username already exists. Please choose a different username.');
+          }
           
-        if (userError) throw userError;
-        
-        // Create credentials
-        const { error: credError } = await supabase
-          .from('user_credentials')
-          .insert({
-            user_id: userData.id,
-            password: data.credentials.password, // In real app, this would be hashed
-          });
+          // Create user record in users table using service role client
+          const { data: userData, error: userError } = await supabaseAdmin
+            .from('users')
+            .insert({
+              username: data.credentials.username,
+              name: data.name,
+              role: 'member',
+              is_active: true,
+              member_id: memberData.id
+            })
+            .select()
+            .single();
+            
+          if (userError) throw userError;
           
-        if (credError) throw credError;
-      }
-      
-      // Create registration fee transaction if fee status is checked
-      if (data.feeStatus && data.registrationFee && data.registrationFee > 0) {
-        const { error: transactionError } = await supabase
-          .from('transactions')
-          .insert({
-            member_id: memberData.id,
-            amount: data.registrationFee,
-            transaction_type: 'registration',
-            description: 'Registration fee payment'
-          });
+          if (!userData) {
+            throw new Error('Failed to create user account');
+          }
           
-        if (transactionError) {
-          console.error('Error creating registration transaction:', transactionError);
-          // Continue without failing the whole process
-        }
-        
-        // Update member's wallet balance with the paid amount
-        const { error: updateError } = await supabase
-          .from('members')
-          .update({ wallet_balance: data.registrationFee })
-          .eq('id', memberData.id);
-          
-        if (updateError) {
-          console.error('Error updating member wallet balance:', updateError);
-        }
-      }
-      
-      // Update member ID start in settings if this ID is higher than current start
-      if (data.memberNumber.startsWith('M')) {
-        const memberId = parseInt(data.memberNumber.substring(1));
-        if (!isNaN(memberId)) {
-          await supabase.rpc('update_member_id_start', { new_id: memberId + 1 });
+          // Create credentials
+          const { error: credError } = await supabaseAdmin
+            .from('user_credentials')
+            .insert({
+              user_id: userData.id,
+              password: data.credentials.password
+            });
+            
+          if (credError) throw credError;
+        } catch (error) {
+          console.error('Error creating user account:', error);
+          // Don't throw, just log the error
         }
       }
       

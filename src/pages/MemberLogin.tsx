@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Loader2, User, Lock } from "lucide-react";
 
 const MemberLogin = () => {
-  const [memberId, setMemberId] = useState("");
+  const [memberNumber, setMemberNumber] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -17,51 +17,102 @@ const MemberLogin = () => {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Find the user by memberId (username)
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .select("id, member_id, is_active")
-      .eq("username", memberId)
-      .eq("role", "member")
-      .maybeSingle();
+    try {
+      console.log('Login attempt for member:', memberNumber);
 
-    if (userError || !user) {
+      // 1. Find the member by member_number
+      const { data: member, error: memberError } = await supabase
+        .from("members")
+        .select("id, member_number, name, is_active")
+        .eq("member_number", memberNumber)
+        .single();
+
+      console.log('Member lookup result:', { member, memberError });
+
+      if (memberError || !member) {
+        console.error('Member lookup error:', memberError);
+        toast({ 
+          variant: "destructive", 
+          title: "Login failed", 
+          description: "Invalid Member Number or password." 
+        });
+        return;
+      }
+
+      if (!member.is_active) {
+        console.log('Member account inactive:', memberNumber);
+        toast({ 
+          variant: "destructive", 
+          title: "Account inactive", 
+          description: "Your account is not active. Please contact support." 
+        });
+        return;
+      }
+
+      // 2. Check credentials in user_credentials table
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("member_id", member.id)
+        .single();
+
+      if (userError || !userData) {
+        console.error('User lookup error:', userError);
+        toast({ 
+          variant: "destructive", 
+          title: "Login failed", 
+          description: "Invalid Member Number or password." 
+        });
+        return;
+      }
+
+      const { data: credData, error: credError } = await supabase
+        .from("user_credentials")
+        .select("password")
+        .eq("user_id", userData.id)
+        .single();
+
+      if (credError || !credData) {
+        console.error('Credentials lookup error:', credError);
+        toast({ 
+          variant: "destructive", 
+          title: "Login failed", 
+          description: "Invalid Member Number or password." 
+        });
+        return;
+      }
+
+      // 3. Check password
+      if (credData.password !== password) {
+        console.log('Invalid password for member:', memberNumber);
+        toast({ 
+          variant: "destructive", 
+          title: "Login failed", 
+          description: "Invalid Member Number or password." 
+        });
+        return;
+      }
+
+      // 4. Store member info in localStorage
+      localStorage.setItem("member_member_id", member.id);
+      localStorage.setItem("member_name", member.name);
+
+      toast({
+        title: "Login successful",
+        description: `Welcome back, ${member.name}!`,
+      });
+
+      navigate("/member/dashboard");
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+      });
+    } finally {
       setLoading(false);
-      toast({ variant: "destructive", title: "Login failed", description: "Invalid Member ID or password." });
-      return;
     }
-    if (!user.is_active) {
-      setLoading(false);
-      toast({ variant: "destructive", title: "Account inactive", description: "Your account is not active." });
-      return;
-    }
-
-    // 2. Check password in user_credentials
-    const { data: cred, error: credError } = await supabase
-      .from("user_credentials")
-      .select("password")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (credError || !cred) {
-      setLoading(false);
-      toast({ variant: "destructive", title: "Login failed", description: "Invalid Member ID or password." });
-      return;
-    }
-
-    // NOTE: In production, passwords should be hashed and compared securely!
-    if (cred.password !== password) {
-      setLoading(false);
-      toast({ variant: "destructive", title: "Login failed", description: "Invalid Member ID or password." });
-      return;
-    }
-
-    // 3. Store session info (for example, in localStorage)
-    localStorage.setItem("member_user_id", user.id);
-    localStorage.setItem("member_member_id", user.member_id);
-
-    setLoading(false);
-    navigate("/member/dashboard");
   };
 
   return (
@@ -75,18 +126,18 @@ const MemberLogin = () => {
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium mb-1" htmlFor="memberId">
-                Member ID
+              <label className="block text-sm font-medium mb-1" htmlFor="memberNumber">
+                Member Number
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="memberId"
+                  id="memberNumber"
                   type="text"
                   placeholder="e.g. M001"
                   className="pl-10"
-                  value={memberId}
-                  onChange={e => setMemberId(e.target.value)}
+                  value={memberNumber}
+                  onChange={e => setMemberNumber(e.target.value)}
                   required
                   autoFocus
                 />
@@ -119,7 +170,7 @@ const MemberLogin = () => {
               {loading ? "Logging in..." : "Login"}
             </Button>
 
-            <div className="mt-6 text-center">
+            <div className="text-center">
               <span className="text-sm text-muted-foreground">Are you an admin? </span>
               <Link
                 to="/admin/login"

@@ -1,4 +1,3 @@
-
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { FormLabel } from '@/components/ui/form';
@@ -9,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 // Restricted gender for dependants
 enum RestrictedGender {
@@ -119,38 +120,21 @@ const DependantCard = ({ dependant, index, onRemove, onUpdate }: DependantCardPr
 
           <div>
             <FormLabel htmlFor={`dependant-${index}-dob`}>Date of Birth*</FormLabel>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id={`dependant-${index}-dob`}
-                  variant={"outline"}
-                  className={cn(
-                    "w-full pl-3 text-left font-normal",
-                    !dependant.dateOfBirth && "text-muted-foreground",
-                    dependant.errors?.dateOfBirth && "border-destructive focus-visible:ring-destructive"
-                  )}
-                >
-                  {dependant.dateOfBirth ? (
-                    format(dependant.dateOfBirth, "PPP")
-                  ) : (
-                    <span>Pick a date</span>
-                  )}
-                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={dependant.dateOfBirth}
-                  onSelect={(date) => onUpdate(dependant.id, 'dateOfBirth', date)}
-                  disabled={(date) =>
-                    date > new Date() || date < new Date("1900-01-01")
-                  }
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePicker
+              selected={dependant.dateOfBirth}
+              onChange={(date) => onUpdate(dependant.id, 'dateOfBirth', date)}
+              dateFormat="yyyy-MM-dd"
+              showYearDropdown
+              showMonthDropdown
+              dropdownMode="select"
+              yearDropdownItemNumber={100}
+              scrollableYearDropdown
+              maxDate={new Date()}
+              className={cn(
+                "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              )}
+              placeholderText="Select date of birth"
+            />
             {dependant.errors?.dateOfBirth && (
               <p className="text-sm font-medium text-destructive mt-1">
                 {dependant.errors.dateOfBirth}

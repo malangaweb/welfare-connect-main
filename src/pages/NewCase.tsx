@@ -7,26 +7,56 @@ import CaseForm from '@/components/forms/CaseForm';
 import { Button } from '@/components/ui/button';
 import { Gender, Member } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
+import { mapDbMemberToMember } from '@/lib/db-types';
 
 const NewCase = () => {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchMembers = async () => {
       try {
-        const { data, error } = await supabase
-          .from('members')
-          .select('*');
+        setIsLoading(true);
+        console.log('Starting to fetch members...');
 
-        if (error) {
-          console.error('Error fetching members:', error);
-          throw error;
+        // Get all members from Supabase with the same query structure as Members.tsx
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select(`
+            *,
+            dependants (*)
+          `);
+
+        if (membersError) {
+          console.error('Error fetching members:', membersError);
+          throw membersError;
         }
 
-        console.log('Fetched members:', data); // Debug log
-        setMembers(data);
+        console.log('Members data:', membersData);
+
+        // Map database members to the application Member model
+        const mappedMembers = membersData.map(dbMember => {
+          try {
+            return mapDbMemberToMember(dbMember, dbMember.dependants || []);
+          } catch (error) {
+            console.error('Error mapping member:', dbMember, error);
+            return null;
+          }
+        }).filter(Boolean) as Member[]; // Remove any null values from mapping errors
+
+        console.log('Mapped members:', mappedMembers);
+
+        if (!mappedMembers || mappedMembers.length === 0) {
+          console.log('No members found in database');
+          toast({
+            title: "No Members Found",
+            description: "There are no members in the system. Please add members first.",
+          });
+        }
+
+        setMembers(mappedMembers);
       } catch (error) {
         console.error('Error in fetchMembers:', error);
         toast({
@@ -34,6 +64,8 @@ const NewCase = () => {
           title: "Error",
           description: "Failed to load members. Please try again.",
         });
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -42,99 +74,83 @@ const NewCase = () => {
 
   const handleSubmit = async (data: any) => {
     setIsSubmitting(true);
-    console.log('Starting case creation with data:', data);
     
     try {
-      // 1. Get all members first to calculate expected amount
-      console.log('Fetching members...');
-      const { data: allMembers, error: membersError } = await supabase
-        .from('members')
-        .select('id, wallet_balance');
-
-      if (membersError) {
-        console.error('Error fetching members:', membersError);
-        throw new Error(`Failed to fetch members: ${membersError.message}`);
-      }
-
-      // Calculate expected amount
-      const expectedAmount = data.contributionPerMember * allMembers.length;
-      console.log('Expected amount:', expectedAmount);
-
-      // 2. Create the case with expected_amount
-      console.log('Creating case...');
-      const { data: caseData, error: caseError } = await supabase
+      // Create the case directly in the cases table
+      const { data: result, error } = await supabase
         .from('cases')
         .insert([
           {
             case_number: data.caseNumber,
             affected_member_id: data.affectedMemberId,
-            dependant_id: data.dependantId || null,
             case_type: data.caseType,
+            expected_amount: data.contributionPerMember,
             contribution_per_member: data.contributionPerMember,
-            expected_amount: expectedAmount,
-            start_date: data.startDate.toISOString(),
-            end_date: data.endDate.toISOString(),
-            created_at: new Date().toISOString(),
-          },
+            start_date: data.startDate,
+            end_date: data.endDate,
+            is_active: true,
+            is_finalized: false,
+            actual_amount: 0,
+            dependant_id: data.dependantId || null
+          }
         ])
-        .select();
+        .select()
+        .single();
 
-      if (caseError) {
-        console.error('Error creating case:', caseError);
-        throw new Error(`Failed to create case: ${caseError.message}`);
-      }
-
-      console.log('Case created successfully:', caseData);
-
-      // 3. Process each member
-      for (const member of allMembers) {
-        console.log(`Processing member ${member.id}...`);
-
-        // Calculate new balance
-        const currentBalance = member.wallet_balance || 0;
-        const newBalance = currentBalance - data.contributionPerMember;
-
-        // Create transaction record
-        const { error: transactionError } = await supabase
-          .from('transactions')
-          .insert({
-            member_id: member.id,
-            amount: -data.contributionPerMember, // Negative amount for deduction
-            transaction_type: 'case_contribution',
-            description: `Contribution for case: ${data.caseNumber}`,
-            created_at: new Date().toISOString(),
-          });
-
-        if (transactionError) {
-          console.error(`Error creating transaction for member ${member.id}:`, transactionError);
-          throw new Error(`Failed to create transaction for member ${member.id}: ${transactionError.message}`);
-        }
-
-        // Update member's wallet balance
-        const { error: updateError } = await supabase
-          .from('members')
-          .update({ wallet_balance: newBalance })
-          .eq('id', member.id);
-
-        if (updateError) {
-          console.error(`Error updating wallet for member ${member.id}:`, updateError);
-          throw new Error(`Failed to update wallet for member ${member.id}: ${updateError.message}`);
-        }
-
-        console.log(`Updated balance for member ${member.id}:`, newBalance);
+      if (error) {
+        console.error('Error creating case:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message || "Failed to create case. Please try again.",
+        });
+        return;
       }
 
       toast({
-        title: "Case created successfully",
-        description: `Case ${data.caseNumber} has been created and contributions have been deducted from all members`,
+        title: "Success",
+        description: "Case created successfully.",
       });
+
+      // Send SMS notification for new case
+      try {
+        const affectedMember = members.find(m => m.id === result.affected_member_id);
+        if (affectedMember) {
+          const payload = {
+            case_number: result.case_number,
+            affected_member: affectedMember.name,
+            residence: affectedMember.residence,
+            member_number: affectedMember.memberNumber,
+            amount: result.expected_amount,
+            end_date: result.end_date,
+          };
+          console.log('Sending case SMS with:', payload);
+          if (
+            payload.case_number &&
+            payload.affected_member &&
+            payload.residence &&
+            payload.member_number &&
+            payload.amount &&
+            payload.end_date
+          ) {
+            await fetch('https://siha.javanet.co.ke/send_case_sms.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+        }
+      } catch (smsError) {
+        console.error('Error sending case SMS:', smsError);
+      }
+
       navigate('/cases');
     } catch (error) {
-      console.error('Error in handleSubmit:', error);
+      console.error('Error:', error);
       toast({
         variant: "destructive",
-        title: "Case creation failed",
-        description: error instanceof Error ? error.message : "There was an error creating the case. Please try again.",
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
       });
     } finally {
       setIsSubmitting(false);
@@ -156,7 +172,13 @@ const NewCase = () => {
         </div>
 
         <div className="bg-card rounded-lg border p-6">
-          <CaseForm onSubmit={handleSubmit} members={members} />
+          {isLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <p>Loading members...</p>
+            </div>
+          ) : (
+            <CaseForm onSubmit={handleSubmit} members={members} />
+          )}
         </div>
       </div>
     </DashboardLayout>

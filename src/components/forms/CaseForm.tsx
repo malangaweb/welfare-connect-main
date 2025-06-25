@@ -34,7 +34,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const formSchema = z.object({
   caseNumber: z.string().min(1, 'Case number is required'),
-  affectedMemberId: z.string().min(1, 'Affected member is required'),
+  affectedMemberId: z.string({
+    required_error: 'Affected member is required',
+  }).min(1, 'Affected member is required'),
   caseType: z.nativeEnum(CaseType, {
     errorMap: () => ({ message: 'Please select a case type' }),
   }),
@@ -60,15 +62,17 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
   const [isLoadingCaseId, setIsLoadingCaseId] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   
-  console.log('Members data:', members);
+  console.log('CaseForm - Members data:', members);
+  console.log('CaseForm - Members length:', members?.length);
+  console.log('CaseForm - First member:', members?.[0]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: initialData || {
       caseNumber: '',
-      affectedMemberId: '',
+      affectedMemberId: undefined,
       caseType: undefined,
-      dependantId: '',
+      dependantId: undefined,
       contributionPerMember: 0,
       startDate: new Date(),
       endDate: new Date(new Date().setDate(new Date().getDate() + 14)),
@@ -184,15 +188,8 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
               <FormItem>
                 <FormLabel>Affected Member*</FormLabel>
                 <Select 
-                  onValueChange={(value) => {
-                    try {
-                      field.onChange(value);
-                    } catch (error) {
-                      console.error('Error selecting member:', error);
-                      setError('Failed to select member');
-                    }
-                  }} 
-                  defaultValue={field.value}
+                  onValueChange={field.onChange} 
+                  value={field.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -200,11 +197,20 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {members?.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
-                        {member.name} (#{member.memberNumber})
+                    {members && members.length > 0 ? (
+                      members.map((member) => {
+                        console.log('Rendering member:', member);
+                        return (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.name} (#{member.memberNumber})
+                          </SelectItem>
+                        );
+                      })
+                    ) : (
+                      <SelectItem value="no-members" disabled>
+                        {members === undefined ? 'Loading members...' : 'No members available'}
                       </SelectItem>
-                    ))}
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />

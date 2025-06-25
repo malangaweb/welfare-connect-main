@@ -71,8 +71,18 @@ const MemberDetails = () => {
         const dbMember = memberData as DbMember;
         const dependants = dependantsData as DbDependant[] || [];
         const memberWithDependants = mapDbMemberToMember(dbMember, dependants);
-        
-        setMember(memberWithDependants);
+
+        // Fetch all transactions for this member and sum the amount
+        const { data: transactions, error: txError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('member_id', id);
+        if (txError) {
+          console.error('Error fetching transactions:', txError);
+          throw txError;
+        }
+        const walletBalance = (transactions || []).reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+        setMember({ ...memberWithDependants, walletBalance });
       } catch (error) {
         console.error('Error in fetchMember:', error);
         setError(error instanceof Error ? error.message : 'Failed to load member details');

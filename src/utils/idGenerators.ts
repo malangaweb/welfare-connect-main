@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export async function generateMemberId(): Promise<string> {
@@ -63,9 +62,15 @@ export async function generateCaseId(): Promise<string> {
     
     let nextNumber = startFrom;
     
-    if (data && data.case_number) {
-      const currentNumber = parseInt(data.case_number.replace('C', ''));
-      nextNumber = Math.max(currentNumber + 1, startFrom);
+    if (data && typeof data.case_number === 'string') {
+      // Only parse if it matches the expected format (e.g., C001, C123)
+      const match = data.case_number.match(/^C(\d+)$/);
+      if (match && match[1]) {
+        const currentNumber = parseInt(match[1], 10);
+        if (!isNaN(currentNumber)) {
+          nextNumber = Math.max(currentNumber + 1, startFrom);
+        }
+      }
     }
     
     return `C${String(nextNumber).padStart(3, '0')}`;
