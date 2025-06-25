@@ -11,7 +11,8 @@ import { memberLinks, memberLogout } from "./memberLinks";
 
 const MemberDashboard = () => {
   const [member, setMember] = useState<any>(null);
-  const [contributions, setContributions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -29,17 +30,18 @@ const MemberDashboard = () => {
         .eq("id", member_id)
         .single();
 
-      // Fetch contributions
-      const { data: contribData } = await supabase
+      // Fetch all transactions for the member
+      const { data: allTransData } = await supabase
         .from("transactions")
         .select("*")
         .eq("member_id", member_id)
-        .eq("transaction_type", "contribution")
-        .order("created_at", { ascending: false })
-        .limit(5);
+        .order("created_at", { ascending: false });
 
       setMember(memberData);
-      setContributions(contribData || []);
+      setTransactions(allTransData || []);
+      // Calculate wallet balance as sum of all transaction amounts
+      const balance = (allTransData || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      setWalletBalance(balance);
       setLoading(false);
     };
     fetchData();
@@ -205,7 +207,7 @@ const MemberDashboard = () => {
             </CardHeader>
             <CardContent className="pt-6">
               <div className="text-3xl font-bold text-green-600">
-                KES {member.wallet_balance?.toLocaleString()}
+                KES {walletBalance.toLocaleString()}
               </div>
               <div className="text-sm text-muted-foreground mt-1">
                 Last updated: {new Date().toLocaleDateString()}
@@ -219,7 +221,7 @@ const MemberDashboard = () => {
             <div className="flex justify-between items-center">
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-primary" />
-                Recent Contributions
+                Recent Transactions
               </CardTitle>
               <Button
                 variant="ghost"
@@ -230,12 +232,12 @@ const MemberDashboard = () => {
                 View All
               </Button>
             </div>
-            <CardDescription>Your most recent contribution transactions</CardDescription>
+            <CardDescription>Your most recent transactions</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
-            {contributions.length === 0 ? (
+            {transactions.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
-                No contributions found. Start contributing to see your transactions here.
+                No transactions found. Start contributing to see your transactions here.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -244,15 +246,17 @@ const MemberDashboard = () => {
                     <tr className="border-b">
                       <th className="py-3 px-2 font-medium">Date</th>
                       <th className="py-3 px-2 font-medium">Amount</th>
+                      <th className="py-3 px-2 font-medium">Type</th>
                       <th className="py-3 px-2 font-medium">Description</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {contributions.map((c) => (
-                      <tr key={c.id} className="border-b border-border/30 hover:bg-muted/30">
-                        <td className="py-3 px-2">{new Date(c.created_at).toLocaleDateString()}</td>
-                        <td className="py-3 px-2 font-medium text-green-600">KES {c.amount?.toLocaleString()}</td>
-                        <td className="py-3 px-2">{c.description || "Contribution payment"}</td>
+                    {transactions.slice(0, 5).map((t) => (
+                      <tr key={t.id} className="border-b border-border/30 hover:bg-muted/30">
+                        <td className="py-3 px-2">{new Date(t.created_at).toLocaleDateString()}</td>
+                        <td className="py-3 px-2 font-medium text-green-600">KES {t.amount?.toLocaleString()}</td>
+                        <td className="py-3 px-2">{t.transaction_type}</td>
+                        <td className="py-3 px-2">{t.description || "-"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -7,11 +7,23 @@ import { memberLinks, memberLogout } from "./memberLinks";
 import { Badge } from "@/components/ui/badge";
 import { User, Mail, Phone, Home, FileText, CreditCard, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/use-toast';
+import { Button } from '@/components/ui/button';
 
 const MemberSummary = () => {
   const [member, setMember] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editData, setEditData] = useState<any>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
   useEffect(() => {
     const member_id = localStorage.getItem("member_member_id");
@@ -28,7 +40,86 @@ const MemberSummary = () => {
         setMember(data);
         setLoading(false);
       });
+    // Fetch all transactions and calculate wallet balance
+    supabase
+      .from("transactions")
+      .select("*")
+      .eq("member_id", member_id)
+      .then(({ data }) => {
+        setTransactions(data || []);
+        const balance = (data || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        setWalletBalance(balance);
+      });
   }, [navigate]);
+
+  // Fetch user_id for this member
+  const fetchUserId = async (memberId: string) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('member_id', memberId)
+      .single();
+    if (error) return null;
+    return data?.id;
+  };
+
+  const handleEdit = () => {
+    setEditData({
+      name: member.name,
+      email_address: member.email_address,
+      phone_number: member.phone_number,
+      residence: member.residence,
+    });
+    setEditOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('members')
+        .update({
+          name: editData.name,
+          email_address: editData.email_address,
+          phone_number: editData.phone_number,
+          residence: editData.residence,
+        })
+        .eq('id', member.id);
+      if (error) throw error;
+      toast({ title: 'Profile updated', description: 'Your details have been updated.' });
+      setEditOpen(false);
+      // Add a short delay before refetching
+      setTimeout(async () => {
+        const { data } = await supabase.from('members').select('*').eq('id', member.id).single();
+        console.log('Refetched member after update:', data);
+        setMember(data);
+      }, 500);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Update failed', description: err.message });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePasswordSave = async () => {
+    setIsPasswordSaving(true);
+    try {
+      const userId = await fetchUserId(member.id);
+      if (!userId) throw new Error('User not found');
+      const { error } = await supabase
+        .from('user_credentials')
+        .update({ password: newPassword })
+        .eq('user_id', userId);
+      if (error) throw error;
+      toast({ title: 'Password updated', description: 'Your password has been changed.' });
+      setPasswordOpen(false);
+      setNewPassword('');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Password update failed', description: err.message });
+    } finally {
+      setIsPasswordSaving(false);
+    }
+  };
 
   if (loading) return (
     <DashboardLayout
@@ -146,6 +237,10 @@ const MemberSummary = () => {
                   </div>
                 </div>
               </div>
+              <div className="flex gap-2 mt-4">
+                <Button size="sm" variant="outline" onClick={handleEdit}>Edit Details</Button>
+                <Button size="sm" variant="outline" onClick={() => setPasswordOpen(true)}>Change Password</Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -161,7 +256,7 @@ const MemberSummary = () => {
                 <div>
                   <div className="text-sm text-muted-foreground">Wallet Balance</div>
                   <div className="text-2xl font-bold text-green-600">
-                    KES {member.wallet_balance?.toLocaleString() || "0"}
+                    KES {walletBalance.toLocaleString()}
                   </div>
                 </div>
                 <div>
@@ -182,6 +277,54 @@ const MemberSummary = () => {
           </Card>
         </div>
       </div>
+      {/* Edit Details Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Personal Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Full Name</label>
+              <Input value={editData?.name || ''} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Email</label>
+              <Input value={editData?.email_address || ''} onChange={e => setEditData({ ...editData, email_address: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Phone</label>
+              <Input value={editData?.phone_number || ''} onChange={e => setEditData({ ...editData, phone_number: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Residence</label>
+              <Input value={editData?.residence || ''} onChange={e => setEditData({ ...editData, residence: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Change Password Dialog */}
+      <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Password</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">New Password</label>
+              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasswordOpen(false)}>Cancel</Button>
+            <Button onClick={handlePasswordSave} disabled={isPasswordSaving || !newPassword}>{isPasswordSaving ? 'Saving...' : 'Save'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

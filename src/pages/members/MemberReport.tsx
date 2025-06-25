@@ -14,7 +14,9 @@ import {
   PieChart, 
   ArrowUp, 
   ArrowDown,
-  Download
+  Download,
+  User,
+  Wallet
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -155,6 +157,18 @@ const MemberReport = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Filter for 'Contribution for case' transactions
+  const caseContributionTransactions = (transactions || []).filter(
+    t => t.description && t.description.toLowerCase().includes('contribution for case')
+  );
+
+  // Group for monthly chart
+  const monthlyCaseContribData = groupByMonth(caseContributionTransactions);
+
+  // Calculate total contributions for case
+  const totalCaseContributions = caseContributionTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const caseContributionCount = caseContributionTransactions.length;
+
   useEffect(() => {
     const member_id = localStorage.getItem("member_member_id");
     if (!member_id) {
@@ -190,8 +204,11 @@ const MemberReport = () => {
         setCases(casesData || []);
         
         // Process data for charts and stats
-        const monthlyTransactions = groupByMonth(transactionsData || []);
-        setMonthlyData(monthlyTransactions);
+        // Only use 'Contribution for case' transactions for monthly chart and total contributions
+        const filteredContribs = (transactionsData || []).filter(
+          t => t.description && t.description.toLowerCase().includes('contribution for case')
+        );
+        setMonthlyData(groupByMonth(filteredContribs));
         
         const caseTypeData = groupCasesByType(
           (casesData || []).filter(c => c.affected_member_id === member_id)
@@ -202,22 +219,16 @@ const MemberReport = () => {
         setContributionsByType(contribByType);
         
         // Calculate statistics
-        const totalContrib = (transactionsData || [])
-          .filter(t => t.transaction_type === "contribution")
-          .reduce((sum, t) => sum + (t.amount || 0), 0);
-          
+        const totalContrib = filteredContribs.reduce((sum, t) => sum + (t.amount || 0), 0);
+        const contribCount = filteredContribs.length;
         const totalDisb = (transactionsData || [])
           .filter(t => t.transaction_type === "disbursement")
           .reduce((sum, t) => sum + (t.amount || 0), 0);
-          
-        const contribCount = (transactionsData || [])
-          .filter(t => t.transaction_type === "contribution")
-          .length;
         
         const activeCases = (casesData || [])
           .filter(c => c.is_active && !c.is_finalized && c.affected_member_id === member_id)
           .length;
-          
+        
         const completedCases = (casesData || [])
           .filter(c => c.is_finalized && c.affected_member_id === member_id)
           .length;
@@ -346,392 +357,286 @@ const MemberReport = () => {
     }
   };
 
+  // --- Wallet balance from all transactions ---
+  const walletBalance = transactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  // --- Net financial impact ---
+  const netImpact = stats.totalContributions - stats.totalDisbursements;
+
+  // --- Member's own cases ---
+  const memberCases = cases.filter(c => c.affected_member_id === member?.id);
+
   return (
     <DashboardLayout
       customLinks={memberLinks}
       customLogout={() => memberLogout(navigate)}
     >
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold mb-1">Financial Report</h1>
-            <p className="text-muted-foreground">Your contribution and case statistics</p>
-          </div>
-          <Button 
-            variant="outline" 
-            className="gap-2"
-            onClick={handleExportPDF}
-            disabled={loading || exporting}
-          >
-            {exporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            Export Report
-          </Button>
+      <div className="space-y-8">
+        {/* Profile & Wallet Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-primary" />
+                {member?.name || 'Member'}
+              </CardTitle>
+              <CardDescription>Member #{member?.member_number}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="text-sm text-muted-foreground">Email: <span className="font-medium text-foreground">{member?.email_address || 'Not provided'}</span></div>
+              <div className="text-sm text-muted-foreground">Phone: <span className="font-medium text-foreground">{member?.phone_number || 'Not provided'}</span></div>
+              <div className="text-sm text-muted-foreground">Residence: <span className="font-medium text-foreground">{member?.residence || 'Not provided'}</span></div>
+              <div className="text-sm text-muted-foreground">National ID: <span className="font-medium text-foreground">{member?.national_id_number || 'Not provided'}</span></div>
+              <div className="text-sm text-muted-foreground">Join Date: <span className="font-medium text-foreground">{member?.created_at ? new Date(member.created_at).toLocaleDateString() : 'Unknown'}</span></div>
+              <Badge variant={member?.is_active ? 'outline' : 'destructive'}>{member?.is_active ? 'Active' : 'Inactive'}</Badge>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/10 dark:to-green-900/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-green-600" />
+                Wallet Balance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-green-600">KES {walletBalance.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground mt-1">Calculated from all transactions</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/10 dark:to-blue-900/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-blue-600" />
+                Net Financial Impact
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-3xl font-bold ${netImpact >= 0 ? 'text-green-600' : 'text-red-600'}`}>KES {netImpact.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground mt-1">Contributions minus Disbursements</div>
+            </CardContent>
+          </Card>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
-          </div>
-        ) : (
-          <div ref={reportRef}>
-            {/* Report Header */}
-            <div className="mb-6 pb-6 border-b">
-              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
-                <div>
-                  <h2 className="text-xl font-semibold">{member?.name || 'Member'} - Financial Report</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Generated on {format(new Date(), "MMMM d, yyyy")}
-                  </p>
+        {/* Key Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Contributions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">KES {totalCaseContributions.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground">{caseContributionCount} payments (case contributions)</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Disbursements</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">KES {stats.totalDisbursements.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground">Received in past 12 months</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Total Transactions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{transactions.length}</div>
+              <div className="text-sm text-muted-foreground">All time</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Contribution & Disbursement</CardTitle>
+            </CardHeader>
+            <CardContent className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={monthlyCaseContribData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => [`KES ${value.toLocaleString()}`, undefined]} labelFormatter={(label) => `Month: ${label}`} />
+                  <Legend />
+                  <Area type="monotone" dataKey="contributions" name="Contributions" stackId="1" stroke="#4ade80" fill="#4ade80" fillOpacity={0.6} />
+                  <Area type="monotone" dataKey="disbursements" name="Disbursements" stackId="2" stroke="#60a5fa" fill="#60a5fa" fillOpacity={0.6} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Contributions by Case Type</CardTitle>
+            </CardHeader>
+            <CardContent className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPieChart>
+                  <Pie data={contributionsByType} cx="50%" cy="50%" labelLine={false} outerRadius={80} fill="#8884d8" dataKey="value" nameKey="name" label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
+                    {contributionsByType.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [`KES ${value.toLocaleString()}`, undefined]} />
+                  <Legend />
+                </RechartsPieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Transaction Count by Month */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Transaction Activity</CardTitle>
+            <CardDescription>Number of transactions per month</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="count" name="Transactions" fill="#8884d8" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Recent Transactions Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Transactions</CardTitle>
+            <CardDescription>Last 5 transactions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {transactions.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No transactions available</p>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <div className="overflow-x-auto">
+                  <table className="w-full table-fixed">
+                    <thead>
+                      <tr className="bg-muted/50">
+                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground w-1/4">Date</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground w-1/4">Type</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground w-1/4">Description</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground w-1/4">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions
+                        .slice()
+                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                        .slice(0, 5)
+                        .map((transaction, index) => (
+                          <tr key={transaction.id} className={index % 2 ? "bg-muted/20" : ""}>
+                            <td className="px-4 py-3 text-sm">{format(new Date(transaction.created_at), "MMM d, yyyy")}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <Badge variant="outline" className={transaction.transaction_type === "contribution" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}>{transaction.transaction_type}</Badge>
+                            </td>
+                            <td className="px-4 py-3 text-sm truncate">{transaction.description || "N/A"}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-right"><span className={transaction.transaction_type === "contribution" ? "text-green-600" : "text-blue-600"}>{`KES ${transaction.amount?.toLocaleString()}`}</span></td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="flex flex-col items-end">
-                  <p className="text-sm font-semibold">Malanga Community Welfare Group</p>
-                  <p className="text-sm text-muted-foreground">Member #{member?.member_number}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Case Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle>My Cases</CardTitle>
+            <CardDescription>Summary of your welfare cases</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {memberCases.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No cases found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="py-3 px-2 font-medium">Case Number</th>
+                      <th className="py-3 px-2 font-medium">Type</th>
+                      <th className="py-3 px-2 font-medium">Status</th>
+                      <th className="py-3 px-2 font-medium">Start Date</th>
+                      <th className="py-3 px-2 font-medium">End Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {memberCases.slice(0, 5).map((c) => (
+                      <tr key={c.id} className="border-b border-border/30 hover:bg-muted/30">
+                        <td className="py-3 px-2">{c.case_number}</td>
+                        <td className="py-3 px-2">{c.case_type}</td>
+                        <td className="py-3 px-2">
+                          <Badge variant={c.is_active && !c.is_finalized ? 'outline' : 'destructive'}>
+                            {c.is_finalized ? 'Completed' : c.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-2">{c.start_date ? new Date(c.start_date).toLocaleDateString() : '-'}</td>
+                        <td className="py-3 px-2">{c.end_date ? new Date(c.end_date).toLocaleDateString() : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Annual Summary */}
+        <Card className="bg-muted/10">
+          <CardHeader>
+            <CardTitle>Annual Summary</CardTitle>
+            <CardDescription>Summary of your financial activity this year</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Contributions</span>
+                  <span className="font-medium">KES {stats.totalContributions.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Disbursements</span>
+                  <span className="font-medium">KES {stats.totalDisbursements.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Net Financial Impact</span>
+                  <span className={netImpact >= 0 ? 'font-medium text-green-600' : 'font-medium text-red-600'}>KES {netImpact.toLocaleString()}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Transactions</span>
+                  <span className="font-medium">{transactions.length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Active Cases</span>
+                  <span className="font-medium">{stats.activeCases}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Completed Cases</span>
+                  <span className="font-medium">{stats.completedCases}</span>
                 </div>
               </div>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Total Contributions Card */}
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/10 dark:to-green-900/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-green-600" />
-                    Total Contributions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-green-600">
-                    {formatCurrency(stats.totalContributions)}
-                  </div>
-                  <div className="flex items-center mt-2 text-sm">
-                    <Badge variant="outline" className="bg-green-100 text-green-800 mr-2">
-                      {stats.contributionCount} payments
-                    </Badge>
-                    <span className="text-muted-foreground">Past 12 months</span>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Total Disbursements Card */}
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/10 dark:to-blue-900/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <ArrowDown className="h-5 w-5 text-blue-600" />
-                    Total Disbursements
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-blue-600">
-                    {formatCurrency(stats.totalDisbursements)}
-                  </div>
-                  <div className="flex items-center mt-2 text-sm">
-                    <span className="text-muted-foreground">Received in past 12 months</span>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Average Contribution Card */}
-              <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/10 dark:to-amber-900/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-amber-600" />
-                    Average Contribution
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-purple-600">
-                    {stats.activeCases + stats.completedCases}
-                  </div>
-                  <div className="flex items-center mt-2 text-sm gap-2">
-                    <Badge variant="outline" className="bg-emerald-100 text-emerald-800">
-                      {stats.activeCases} Active
-                    </Badge>
-                    <Badge variant="outline" className="bg-gray-100 text-gray-800">
-                      {stats.completedCases} Completed
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Tabs defaultValue="overview" className="space-y-6">
-              <TabsList className="grid w-full max-w-md grid-cols-2">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="detailed">Detailed Analysis</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="overview" className="space-y-6">
-                {/* Monthly Contributions Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Monthly Contribution Activity</CardTitle>
-                    <CardDescription>Your financial activity over the past year</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        data={monthlyData}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip 
-                          formatter={(value) => [`KES ${value.toLocaleString()}`, undefined]}
-                          labelFormatter={(label) => `Month: ${label}`}
-                        />
-                        <Legend />
-                        <Area 
-                          type="monotone" 
-                          dataKey="contributions" 
-                          name="Contributions" 
-                          stackId="1"
-                          stroke="#4ade80" 
-                          fill="#4ade80" 
-                          fillOpacity={0.6}
-                        />
-                        <Area 
-                          type="monotone" 
-                          dataKey="disbursements" 
-                          name="Disbursements" 
-                          stackId="2"
-                          stroke="#60a5fa" 
-                          fill="#60a5fa"
-                          fillOpacity={0.6} 
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Contributions by Case Type */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Contributions by Case Type</CardTitle>
-                      <CardDescription>
-                        How your contributions are distributed
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-64">
-                      {contributionsByType.length === 0 ? (
-                        <div className="flex items-center justify-center h-full">
-                          <p className="text-muted-foreground">No contribution data available</p>
-                        </div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <RechartsPieChart>
-                            <Pie
-                              data={contributionsByType}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              outerRadius={80}
-                              fill="#8884d8"
-                              dataKey="value"
-                              nameKey="name"
-                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                            >
-                              {contributionsByType.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={entry.color || COLORS[index % COLORS.length]} 
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip 
-                              formatter={(value) => [`KES ${value.toLocaleString()}`, undefined]}
-                            />
-                            <Legend />
-                          </RechartsPieChart>
-                        </ResponsiveContainer>
-                      )}
-                    </CardContent>
-                  </Card>
-                  
-                  {/* Transaction Count by Month */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Transaction Activity</CardTitle>
-                      <CardDescription>
-                        Number of transactions per month
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={monthlyData}
-                          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar 
-                            dataKey="count" 
-                            name="Transactions" 
-                            fill="#8884d8" 
-                            radius={[4, 4, 0, 0]}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="detailed" className="space-y-6">
-                {/* Detailed Contribution Analysis */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Contribution vs Disbursement</CardTitle>
-                    <CardDescription>Monthly comparison of financial flows</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={monthlyData}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip 
-                          formatter={(value) => [`KES ${value.toLocaleString()}`, undefined]}
-                        />
-                        <Legend />
-                        <Bar 
-                          dataKey="contributions" 
-                          name="Contributions" 
-                          fill="#4ade80" 
-                          radius={[4, 4, 0, 0]}
-                        />
-                        <Bar 
-                          dataKey="disbursements" 
-                          name="Disbursements" 
-                          fill="#60a5fa" 
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-                
-                {/* Transaction History Table */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent Transactions</CardTitle>
-                    <CardDescription>Last 5 transactions</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {transactions.length === 0 ? (
-                      <div className="text-center py-8">
-                        <p className="text-muted-foreground">No transactions available</p>
-                      </div>
-                    ) : (
-                      <div className="rounded-md border">
-                        <div className="overflow-x-auto">
-                          <table className="w-full table-fixed">
-                            <thead>
-                              <tr className="bg-muted/50">
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground w-1/4">Date</th>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground w-1/4">Type</th>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground w-1/4">Description</th>
-                                <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground w-1/4">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {transactions.slice(0, 5).map((transaction, index) => (
-                                <tr key={transaction.id} className={index % 2 ? "bg-muted/20" : ""}>
-                                  <td className="px-4 py-3 text-sm">
-                                    {format(new Date(transaction.created_at), "MMM d, yyyy")}
-                                  </td>
-                                  <td className="px-4 py-3 text-sm">
-                                    <Badge variant="outline" className={
-                                      transaction.transaction_type === "contribution" 
-                                        ? "bg-green-100 text-green-800" 
-                                        : "bg-blue-100 text-blue-800"
-                                    }>
-                                      {transaction.transaction_type}
-                                    </Badge>
-                                  </td>
-                                  <td className="px-4 py-3 text-sm truncate">
-                                    {transaction.description || "N/A"}
-                                  </td>
-                                  <td className="px-4 py-3 text-sm font-medium text-right">
-                                    <span className={
-                                      transaction.transaction_type === "contribution" 
-                                        ? "text-green-600" 
-                                        : "text-blue-600"
-                                    }>
-                                      {formatCurrency(transaction.amount)}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                  <CardFooter className="flex justify-center border-t">
-                    <Button variant="outline" size="sm" onClick={() => navigate('/member/transactions')}>
-                      View All Transactions
-                    </Button>
-                  </CardFooter>
-                </Card>
-                
-                {/* Annual Summary */}
-                <Card className="bg-muted/10">
-                  <CardHeader>
-                    <CardTitle>Annual Summary</CardTitle>
-                    <CardDescription>Summary of your financial activity this year</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Total Contributions</span>
-                          <span className="font-medium">{formatCurrency(stats.totalContributions)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Total Disbursements</span>
-                          <span className="font-medium">{formatCurrency(stats.totalDisbursements)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Net Financial Impact</span>
-                          <span className={stats.totalContributions > stats.totalDisbursements ? "font-medium text-green-600" : "font-medium text-red-600"}>
-                            {formatCurrency(stats.totalContributions - stats.totalDisbursements)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Total Transactions</span>
-                          <span className="font-medium">{transactions.length}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Active Cases</span>
-                          <span className="font-medium">{stats.activeCases}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Completed Cases</span>
-                          <span className="font-medium">{stats.completedCases}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
