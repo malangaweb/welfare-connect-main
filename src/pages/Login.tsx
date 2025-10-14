@@ -67,45 +67,55 @@ const Login = () => {
     try {
       console.log('Login attempt:', values.username);
       
-      // For the demo credentials
-      if (values.username === 'admin' && values.password === 'password') {
-        // Special handling for demo user
+      // For demo credentials: maintain a list of demo users
+      const demoUsers: Array<{ username: string; password: string; email: string }> = [
+        { username: 'admin', password: 'password', email: 'admin@example.com' },
+        { username: 'nguma', password: 'Ngum@2030', email: 'ngumanyiro@gmail.com' },
+        // Add more demo users here as needed
+      ];
+
+      const matchedDemo = demoUsers.find(
+        (u) => u.username === values.username && u.password === values.password
+      );
+
+      if (matchedDemo) {
+        // Special handling for demo users
         // First try to sign in with Supabase (if configured)
         try {
-          const { error } = await supabase.auth.signInWithPassword({ 
-            email: 'admin@example.com', // Use a default email for the demo admin
-            password: values.password 
+          const { error } = await supabase.auth.signInWithPassword({
+            email: matchedDemo.email,
+            password: values.password,
           });
-          
+
           if (!error) {
             // Set token for our app
-            localStorage.setItem('token', 'demo-admin-token');
-            
+            localStorage.setItem('token', `demo-${matchedDemo.username}-token`);
+
             // Add small delay to allow state to update
             setTimeout(() => {
               navigate("/dashboard");
             }, 100);
-            
+
             return;
           }
         } catch (authError) {
           console.warn('Supabase auth failed, using fallback:', authError);
         }
-        
+
         // Fallback for demo if Supabase auth fails
-        localStorage.setItem('token', 'demo-admin-token');
-        
+        localStorage.setItem('token', `demo-${matchedDemo.username}-token`);
+
         // Toast notification for successful login
         toast({
           title: "Login successful",
-          description: "Welcome to the admin dashboard!",
+          description: `Welcome, ${matchedDemo.username}!`,
         });
-        
+
         // Add small delay to allow state to update
         setTimeout(() => {
           navigate("/dashboard");
         }, 100);
-        
+
         return;
       }
       
@@ -204,13 +214,7 @@ const Login = () => {
           </form>
         </Form>
         
-        <div className="text-center text-sm mt-6">
-          <p className="text-muted-foreground">
-            Demo credentials: <br />
-            Username: <span className="font-semibold">admin</span> <br />
-            Password: <span className="font-semibold">password</span>
-          </p>
-        </div>
+     
       </div>
     </div>
   );
