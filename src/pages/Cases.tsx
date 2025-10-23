@@ -71,26 +71,43 @@ const Cases = () => {
 
         console.log('Cases data:', casesData);
 
-        // Get affected members to pass to the mapping function
-        const { data: membersData, error: membersError } = await supabase
-          .from('members')
-          .select('*');
+        // Get affected members to pass to the mapping function (with pagination)
+        const pageSize = 1000;
+        let from = 0;
+        let allMembers: any[] = [];
+        
+        while (true) {
+          const { data: membersBatch, error: membersError } = await supabase
+            .from('members')
+            .select('*')
+            .range(from, from + pageSize - 1);
 
-        if (membersError) {
-          console.error('Error fetching members:', membersError);
-          throw membersError;
+          if (membersError) {
+            console.error('Error fetching members:', membersError);
+            throw membersError;
+          }
+
+          if (membersBatch && membersBatch.length > 0) {
+            allMembers = allMembers.concat(membersBatch);
+          }
+
+          if (!membersBatch || membersBatch.length < pageSize) {
+            break; // No more pages
+          }
+          
+          from += pageSize;
         }
 
-        console.log('Members data:', membersData);
+        console.log(`Fetched ${allMembers.length} members for cases calculation`);
 
         // Create a lookup for members by ID
-        const membersById = membersData.reduce((acc, member) => {
+        const membersById = allMembers.reduce((acc, member) => {
           acc[member.id] = member;
           return acc;
         }, {});
 
         // Get all members to determine the count
-        const memberCount = membersData.length;
+        const memberCount = allMembers.length;
 
         // Map database cases to the application Case model
         const mappedCases = casesData.map(dbCase => {
@@ -105,21 +122,39 @@ const Cases = () => {
         console.log('Mapped cases:', mappedCases);
         setCases(mappedCases);
 
-        // Fetch cumulative collected from transactions for each case
+        // Fetch cumulative collected from contribution transactions for each case (with pagination)
         const totals: { [caseNumber: string]: number } = {};
         for (const c of mappedCases) {
           if (!c.caseNumber) continue;
-          const { data, error } = await supabase
-            .from('transactions')
-            .select('amount, description');
-          if (!error && data) {
-            // Sum amounts where description contains the case number (e.g., 'C276')
-            totals[c.caseNumber] = data
-              .filter(row => row.description && row.description.includes(c.caseNumber))
-              .reduce((sum, row) => sum + Number(row.amount), 0);
-          } else {
-            totals[c.caseNumber] = 0;
+          
+          const pageSize = 1000;
+          let from = 0;
+          let totalCollected = 0;
+          
+          while (true) {
+            const { data: contribTx, error: contribError } = await supabase
+              .from('transactions')
+              .select('amount, description, transaction_type')
+              .eq('transaction_type', 'contribution')
+              .ilike('description', `%Case #${c.caseNumber}%`)
+              .range(from, from + pageSize - 1);
+              
+            if (contribError) {
+              totalCollected = 0;
+              break;
+            }
+            
+            const batch = contribTx || [];
+            totalCollected += batch.reduce((sum, row) => {
+              const amt = Number(row.amount) || 0;
+              return sum + (amt < 0 ? -amt : amt);
+            }, 0);
+            
+            if (batch.length < pageSize) break; // no more pages
+            from += pageSize;
           }
+          
+          totals[c.caseNumber] = totalCollected;
         }
         setMpesaCollectedByCase(totals);
       } catch (error) {

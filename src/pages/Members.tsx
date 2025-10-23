@@ -36,6 +36,8 @@ const Members = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [defaultersFilter, setDefaultersFilter] = useState(false);
+  const [positiveBalanceFilter, setPositiveBalanceFilter] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,32 +117,59 @@ const Members = () => {
         setLoading(true);
         console.log('Starting to fetch members...');
 
-        // Query matching the exact schema
-        const { data, error } = await supabase
-          .from('members')
-          .select(`
-            id,
-            member_number,
-            name,
-            gender,
-            date_of_birth,
-            national_id_number,
-            phone_number,
-            email_address,
-            residence,
-            next_of_kin,
-            registration_date,
-            is_active
-          `);
+        // Query matching the exact schema with pagination to get all members
+        const pageSize = 1000;
+        let from = 0;
+        let allMembersData: any[] = [];
+        
+        while (true) {
+          const { data: membersBatch, error: batchError } = await supabase
+            .from('members')
+            .select(`
+              id,
+              member_number,
+              name,
+              gender,
+              date_of_birth,
+              national_id_number,
+              phone_number,
+              email_address,
+              residence,
+              next_of_kin,
+              registration_date,
+              is_active,
+              wallet_balance
+            `)
+            .range(from, from + pageSize - 1);
 
-        console.log('Query result:', { data, error });
+          if (batchError) {
+            console.error('Error fetching members batch:', batchError);
+            throw batchError;
+          }
 
-        if (error) {
-          console.error('Error fetching members:', error);
-          throw error;
+          if (membersBatch && membersBatch.length > 0) {
+            allMembersData = allMembersData.concat(membersBatch);
+          }
+
+          if (!membersBatch || membersBatch.length < pageSize) {
+            break; // No more pages
+          }
+          
+          from += pageSize;
         }
 
-        if (!data || data.length === 0) {
+        console.log('Query result:', { data: allMembersData, error: null });
+        console.log('Members page - Total members fetched:', allMembersData.length);
+        console.log('Members page - Member names:', allMembersData.map(m => m.name));
+        
+        // Debug: Check for specific member "Ziro"
+        const ziroMember = allMembersData.find(m => m.name?.toLowerCase().includes('ziro'));
+        console.log('Members page - Ziro member found in raw data:', ziroMember);
+        if (ziroMember) {
+          console.log('Ziro member details:', JSON.stringify(ziroMember, null, 2));
+        }
+
+        if (allMembersData.length === 0) {
           console.log('No members found in database');
           toast({
             title: "No Members Found",
@@ -149,14 +178,34 @@ const Members = () => {
           return;
         }
 
-        // Fetch all transactions for all members
-        const { data: transactions, error: txError } = await supabase
-          .from('transactions')
-          .select('member_id, amount');
-        if (txError) {
-          console.error('Error fetching transactions:', txError);
-          throw txError;
+        // Fetch all transactions for all members with pagination to handle >1000 transactions
+        const txPageSize = 1000;
+        let txFrom = 0;
+        let allTransactions: any[] = [];
+        
+        while (true) {
+          const { data: transactionsBatch, error: txError } = await supabase
+            .from('transactions')
+            .select('member_id, amount')
+            .range(txFrom, txFrom + txPageSize - 1);
+
+          if (txError) {
+            console.error('Error fetching transactions batch:', txError);
+            throw txError;
+          }
+
+          if (transactionsBatch && transactionsBatch.length > 0) {
+            allTransactions = allTransactions.concat(transactionsBatch);
+          }
+
+          if (!transactionsBatch || transactionsBatch.length < txPageSize) {
+            break; // No more pages
+          }
+          
+          txFrom += txPageSize;
         }
+
+        console.log(`Fetched ${allTransactions.length} transactions for wallet balance calculation`);
 
         // Fetch all dependants for all members
         const { data: dependantsData, error: dependantsError } = await supabase
@@ -175,17 +224,18 @@ const Members = () => {
           }
         }
 
-        // Calculate wallet balance per member
+        // Calculate wallet balance per member using the same approach as member details
         const walletMap: Record<string, number> = {};
-        if (transactions) {
-          for (const tx of transactions) {
-            if (!walletMap[tx.member_id]) walletMap[tx.member_id] = 0;
-            walletMap[tx.member_id] += Number(tx.amount) || 0;
-          }
+        
+        // Calculate wallet balance for each member individually (same as member details)
+        for (const member of allMembersData) {
+          const memberTransactions = allTransactions?.filter(tx => tx.member_id === member.id) || [];
+          const balance = memberTransactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+          walletMap[member.id] = balance;
         }
 
         // Map the data to match your Member interface
-        const mappedMembers = data.map(dbMember => ({
+        const mappedMembers = allMembersData.map(dbMember => ({
           id: dbMember.id,
           memberNumber: dbMember.member_number,
           name: dbMember.name,
@@ -203,7 +253,17 @@ const Members = () => {
         }));
 
         console.log('Mapped members:', mappedMembers);
-        setMembers(mappedMembers);
+        
+        // Debug: Check for "Ziro" after mapping
+        const ziroMapped = mappedMembers?.find(m => m.name?.toLowerCase().includes('ziro'));
+        console.log('Ziro member found in mapped data:', ziroMapped);
+        if (ziroMapped) {
+          console.log('Ziro mapped member details:', JSON.stringify(ziroMapped, null, 2));
+        }
+        
+        // Sort members alphabetically by name
+        const sortedMembers = mappedMembers.sort((a, b) => a.name.localeCompare(b.name));
+        setMembers(sortedMembers);
       } catch (error) {
         console.error('Error in fetchMembers:', error);
         toast({
@@ -238,7 +298,15 @@ const Members = () => {
       locationFilter === 'all' ||
       member.residence.toLowerCase() === locationFilter.toLowerCase();
     
-    return matchesSearch && matchesStatus && matchesLocation;
+    const matchesDefaulters = 
+      !defaultersFilter || 
+      (defaultersFilter && member.walletBalance < 0);
+    
+    const matchesPositiveBalance = 
+      !positiveBalanceFilter || 
+      (positiveBalanceFilter && member.walletBalance >= 0);
+    
+    return matchesSearch && matchesStatus && matchesLocation && matchesDefaulters && matchesPositiveBalance;
   });
 
   // Import handler
@@ -455,6 +523,149 @@ const Members = () => {
     }
   };
 
+  const handleExportMembers = () => {
+    try {
+      console.log(`Exporting ${members.length} members`);
+      
+      // Prepare data for export - member number, name and phone number
+      const exportData = members.map(member => ({
+        'Member Number': member.memberNumber,
+        'Name': member.name,
+        'Phone Number': member.phoneNumber || 'N/A'
+      }));
+
+      // Create a new workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Add the worksheet to the workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Members');
+
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `members_export_${currentDate}.xlsx`;
+
+      // Save the file
+      XLSX.writeFile(wb, filename);
+
+      toast({
+        title: "Export Successful",
+        description: `${members.length} members exported to ${filename}`,
+      });
+    } catch (error) {
+      console.error('Error exporting members:', error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export members data. Please try again.",
+      });
+    }
+  };
+
+  const handleExportDefaulters = () => {
+    try {
+      // Get only members with negative wallet balance
+      const defaulters = members.filter(member => member.walletBalance < 0);
+      
+      console.log(`Exporting ${defaulters.length} defaulters`);
+      
+      if (defaulters.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Defaulters Found",
+          description: "There are no members with negative wallet balances to export.",
+        });
+        return;
+      }
+      
+      // Prepare data for export - member number, name and phone number
+      const exportData = defaulters.map(member => ({
+        'Member Number': member.memberNumber,
+        'Name': member.name,
+        'Phone Number': member.phoneNumber || 'N/A',
+        'Wallet Balance': member.walletBalance
+      }));
+
+      // Create a new workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Add the worksheet to the workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Defaulters');
+
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `defaulters_export_${currentDate}.xlsx`;
+
+      // Save the file
+      XLSX.writeFile(wb, filename);
+
+      toast({
+        title: "Export Successful",
+        description: `${defaulters.length} defaulters exported to ${filename}`,
+      });
+    } catch (error) {
+      console.error('Error exporting defaulters:', error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export defaulters data. Please try again.",
+      });
+    }
+  };
+
+  const handleExportPositiveBalance = () => {
+    try {
+      // Get only members with positive or zero wallet balance
+      const positiveBalanceMembers = members.filter(member => member.walletBalance >= 0);
+      
+      console.log(`Exporting ${positiveBalanceMembers.length} positive balance members`);
+      
+      if (positiveBalanceMembers.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Positive Balance Members Found",
+          description: "There are no members with positive or zero wallet balances to export.",
+        });
+        return;
+      }
+      
+      // Prepare data for export - member number, name and phone number
+      const exportData = positiveBalanceMembers.map(member => ({
+        'Member Number': member.memberNumber,
+        'Name': member.name,
+        'Phone Number': member.phoneNumber || 'N/A',
+        'Wallet Balance': member.walletBalance
+      }));
+
+      // Create a new workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Add the worksheet to the workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Positive Balance');
+
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `positive_balance_export_${currentDate}.xlsx`;
+
+      // Save the file
+      XLSX.writeFile(wb, filename);
+
+      toast({
+        title: "Export Successful",
+        description: `${positiveBalanceMembers.length} positive balance members exported to ${filename}`,
+      });
+    } catch (error) {
+      console.error('Error exporting positive balance members:', error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export positive balance members data. Please try again.",
+      });
+    }
+  };
+
   return (
     <DashboardLayout customLogout={handleLogout}>
       <div className="space-y-8">
@@ -534,12 +745,44 @@ const Members = () => {
               <Button variant="outline" className="w-full sm:w-auto">
                 <Filter className="h-4 w-4 mr-2" />
                 More Filters
+                {defaultersFilter && (
+                  <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
+                    Defaulters
+                  </span>
+                )}
+                {positiveBalanceFilter && (
+                  <span className="ml-2 px-1.5 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
+                    Positive
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">
               <DropdownMenuLabel>Filter Options</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => setDefaultersFilter(!defaultersFilter)}>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={defaultersFilter}
+                      onChange={() => setDefaultersFilter(!defaultersFilter)}
+                      className="rounded"
+                    />
+                    <span>Defaulters (Negative Balance)</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setPositiveBalanceFilter(!positiveBalanceFilter)}>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={positiveBalanceFilter}
+                      onChange={() => setPositiveBalanceFilter(!positiveBalanceFilter)}
+                      className="rounded"
+                    />
+                    <span>Positive Balance (0 and above)</span>
+                  </div>
+                </DropdownMenuItem>
                 <DropdownMenuItem>
                   Gender
                 </DropdownMenuItem>
@@ -552,10 +795,33 @@ const Members = () => {
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          
-          <Button variant="outline" className="w-full sm:w-auto">
+        </div>
+
+        {/* Export Buttons */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={handleExportMembers}>
             <Download className="h-4 w-4 mr-2" />
-            Export
+            Export All
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            className="w-full sm:w-auto" 
+            onClick={handleExportDefaulters}
+            disabled={members.filter(m => m.walletBalance < 0).length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Defaulters
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            className="w-full sm:w-auto" 
+            onClick={handleExportPositiveBalance}
+            disabled={members.filter(m => m.walletBalance >= 0).length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Positive Balance
           </Button>
         </div>
 
@@ -579,7 +845,23 @@ const Members = () => {
             ))}
             </div>
         ) : filteredMembers.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Showing {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
+                {defaultersFilter && (
+                  <span className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-800 rounded-full">
+                    Defaulters
+                  </span>
+                )}
+                {positiveBalanceFilter && (
+                  <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                    Positive Balance
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredMembers.map((member) => (
               <MemberCard
                 key={member.id}
@@ -588,16 +870,17 @@ const Members = () => {
                 onEdit={() => handleEditClick(member)}
               />
             ))}
+            </div>
           </div>
         ) : (
           <div className="text-center py-12 border rounded-lg">
             <p className="text-lg font-medium mb-2">No members found</p>
             <p className="text-muted-foreground mb-4">
-              {searchQuery || statusFilter !== 'all' || locationFilter !== 'all' 
+              {searchQuery || statusFilter !== 'all' || locationFilter !== 'all' || defaultersFilter || positiveBalanceFilter
                 ? "Try changing your search or filters" 
                 : "Add a new member to get started"}
             </p>
-            {!searchQuery && statusFilter === 'all' && locationFilter === 'all' && (
+            {!searchQuery && statusFilter === 'all' && locationFilter === 'all' && !defaultersFilter && !positiveBalanceFilter && (
               <Button onClick={() => navigate('/members/new')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Member

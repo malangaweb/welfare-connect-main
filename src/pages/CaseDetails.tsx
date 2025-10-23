@@ -22,6 +22,7 @@ const CaseDetails = () => {
   const [error, setError] = useState<string | null>(null);
   const [collectedAmount, setCollectedAmount] = useState<number>(0);
   const [memberCount, setMemberCount] = useState<number>(0);
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -74,27 +75,39 @@ const CaseDetails = () => {
         const mappedCase = mapDbCaseToCase(dbCase, memberData as DbMember);
         setCaseData(mappedCase);
 
-        // Fetch cumulative collected from transactions for this case
+        // Fetch cumulative collected from contribution transactions for this case (with pagination)
         if (mappedCase.caseNumber) {
-          const { data, error } = await supabase
-            .from('transactions')
-            .select('amount, description');
-          if (!error && data) {
-            const total = data
-              .filter(row => row.description && row.description.toLowerCase().includes(mappedCase.caseNumber.toLowerCase()))
-              .reduce((sum, row) => sum + Number(row.amount), 0);
-            setCollectedAmount(total);
-          } else {
-            setCollectedAmount(0);
+          const pageSize = 1000; // Supabase returns up to this many per page
+          let from = 0;
+          let totalCollected = 0;
+          while (true) {
+            const { data: contribTx, error: contribError } = await supabase
+              .from('transactions')
+              .select('amount, description, transaction_type')
+              .eq('transaction_type', 'contribution')
+              .ilike('description', `%Case #${mappedCase.caseNumber}%`)
+              .range(from, from + pageSize - 1);
+            if (contribError) {
+              totalCollected = 0;
+              break;
+            }
+            const batch = contribTx || [];
+            totalCollected += batch.reduce((sum, row) => {
+              const amt = Number(row.amount) || 0;
+              return sum + (amt < 0 ? -amt : amt);
+            }, 0);
+            if (batch.length < pageSize) break; // no more pages
+            from += pageSize;
           }
+          setCollectedAmount(totalCollected);
         }
 
-        // Fetch number of members
-        const { data: membersData, error: membersError } = await supabase
+        // Fetch number of members using count
+        const { count: memberCount, error: membersError } = await supabase
           .from('members')
-          .select('*');
-        if (!membersError && membersData) {
-          setMemberCount(membersData.length);
+          .select('*', { count: 'exact', head: true });
+        if (!membersError && memberCount !== null) {
+          setMemberCount(memberCount);
         } else {
           setMemberCount(0);
         }
@@ -174,6 +187,83 @@ const CaseDetails = () => {
         .toUpperCase()
         .substring(0, 2)
     : 'NA';
+
+  const handleFinalizeCase = async () => {
+    if (!id || !caseData || caseData.isFinalized) return;
+    const confirmed = window.confirm('Finalize this case? This will close the case for further contributions.');
+    if (!confirmed) return;
+    try {
+      setIsUpdating(true);
+      const { error: updateError } = await supabase
+        .from('cases')
+        .update({
+          is_finalized: true,
+          is_active: false,
+          actual_amount: collectedAmount,
+        })
+        .eq('id', id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setCaseData((prev) =>
+        prev
+          ? {
+              ...prev,
+              isFinalized: true,
+              isActive: false,
+              actualAmount: collectedAmount,
+            }
+          : prev
+      );
+
+      toast({
+        title: 'Case finalized',
+        description: 'The case has been marked as finalized.',
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to finalize case',
+        description: e instanceof Error ? e.message : 'Please try again.',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSuspendDeleteCase = async () => {
+    if (!id) return;
+    const confirmed = window.confirm('Are you sure you want to delete this case? This action cannot be undone.');
+    if (!confirmed) return;
+    try {
+      setIsUpdating(true);
+      const { error: deleteError } = await supabase
+        .from('cases')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      toast({
+        title: 'Case deleted',
+        description: 'The case has been removed successfully.',
+      });
+
+      navigate('/cases');
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to delete case',
+        description: e instanceof Error ? e.message : 'Please try again.',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -331,9 +421,15 @@ const CaseDetails = () => {
                         </Button>
                       )}
                       {caseData.isActive && !caseData.isFinalized && (
-                        <Button variant="outline" size="sm" className="w-full">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={handleFinalizeCase}
+                          disabled={isUpdating}
+                        >
                           <CheckCircle className="h-4 w-4 mr-2" />
-                          Finalize Case
+                          {isUpdating ? 'Finalizing...' : 'Finalize Case'}
                         </Button>
                       )}
                       {!caseData.isActive && !caseData.isFinalized && (
@@ -343,9 +439,15 @@ const CaseDetails = () => {
                         </Button>
                       )}
                       {caseData.isActive && !caseData.isFinalized && (
-                        <Button variant="outline" size="sm" className="w-full text-amber-600 hover:text-amber-700 hover:bg-amber-50">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                          onClick={handleSuspendDeleteCase}
+                          disabled={isUpdating}
+                        >
                           <TimerOff className="h-4 w-4 mr-2" />
-                          Suspend Case
+                          {isUpdating ? 'Deleting...' : 'Suspend Case'}
                         </Button>
                       )}
                     </div>

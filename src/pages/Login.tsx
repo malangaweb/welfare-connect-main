@@ -72,7 +72,6 @@ const Login = () => {
         { username: 'admin', password: 'password', email: 'admin@example.com' },
         { username: 'nguma', password: 'Ngum@2030', email: 'ngumanyiro@gmail.com' },
         { username: 'kitti', password: 'Kitti@2025', email: 'kitti@gmail.com' },
-
         // Add more demo users here as needed
       ];
 

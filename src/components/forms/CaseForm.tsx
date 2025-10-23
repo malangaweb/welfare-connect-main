@@ -216,14 +216,16 @@ const CaseForm = ({ onSubmit, initialData, members }: CaseFormProps) => {
                   </FormControl>
                   <SelectContent>
                     {members && members.length > 0 ? (
-                      members.map((member) => {
-                        console.log('Rendering member:', member);
-                        return (
-                          <SelectItem key={member.id} value={member.id}>
-                            {member.name} (#{member.memberNumber})
-                          </SelectItem>
-                        );
-                      })
+                      members
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((member) => {
+                          console.log('Rendering member:', member);
+                          return (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.name} (#{member.memberNumber})
+                            </SelectItem>
+                          );
+                        })
                     ) : (
                       <SelectItem value="no-members" disabled>
                         {members === undefined ? 'Loading members...' : 'No members available'}

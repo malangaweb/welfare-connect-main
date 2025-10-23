@@ -77,30 +77,36 @@ export interface DbSettings {
 
 // Helper function to convert DB member to domain Member model
 export function mapDbMemberToMember(dbMember: DbMember, dependants: DbDependant[] = []): Member {
-  return {
-    id: dbMember.id,
-    memberNumber: dbMember.member_number,
-    name: dbMember.name,
-    gender: dbMember.gender as Gender,
-    dateOfBirth: new Date(dbMember.date_of_birth),
-    nationalIdNumber: dbMember.national_id_number,
-    phoneNumber: dbMember.phone_number,
-    emailAddress: dbMember.email_address,
-    residence: dbMember.residence,
-    nextOfKin: dbMember.next_of_kin as NextOfKin,
-    dependants: dependants.map(dep => ({
-      id: dep.id,
-      name: dep.name,
-      gender: dep.gender as Gender,
-      relationship: dep.relationship,
-      dateOfBirth: new Date(dep.date_of_birth),
-      isDisabled: dep.is_disabled,
-      isEligible: dep.is_eligible,
-    })),
-    registrationDate: new Date(dbMember.registration_date),
-    walletBalance: Number(dbMember.wallet_balance),
-    isActive: dbMember.is_active,
-  };
+  try {
+    return {
+      id: dbMember.id,
+      memberNumber: dbMember.member_number,
+      name: dbMember.name,
+      gender: dbMember.gender as Gender,
+      dateOfBirth: new Date(dbMember.date_of_birth),
+      nationalIdNumber: dbMember.national_id_number,
+      phoneNumber: dbMember.phone_number,
+      emailAddress: dbMember.email_address,
+      residence: dbMember.residence,
+      nextOfKin: dbMember.next_of_kin as NextOfKin,
+      dependants: dependants.map(dep => ({
+        id: dep.id,
+        name: dep.name,
+        gender: dep.gender as Gender,
+        relationship: dep.relationship,
+        dateOfBirth: new Date(dep.date_of_birth),
+        isDisabled: dep.is_disabled,
+        isEligible: dep.is_eligible,
+      })),
+      registrationDate: new Date(dbMember.registration_date),
+      walletBalance: Number(dbMember.wallet_balance || 0),
+      isActive: dbMember.is_active,
+    };
+  } catch (error) {
+    console.error('Error in mapDbMemberToMember:', error);
+    console.error('dbMember data:', dbMember);
+    throw error;
+  }
 }
 
 // Helper function to convert DB case to domain Case model

@@ -35,6 +35,31 @@ const ResidenceForm = ({ onSuccess }: { onSuccess?: () => void }) => {
     setIsSubmitting(true);
     
     try {
+      // First, let's check if the residences table exists by trying to fetch from it
+      const { error: testError } = await supabase
+        .from('residences')
+        .select('id')
+        .limit(1);
+        
+      if (testError) {
+        throw new Error(`Database error: ${testError.message}`);
+      }
+      
+      // Check if a residence with this name already exists
+      const { data: existingResidence, error: checkError } = await supabase
+        .from('residences')
+        .select('id, name')
+        .eq('name', values.name)
+        .single();
+        
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found" error
+        throw checkError;
+      }
+      
+      if (existingResidence) {
+        throw new Error('A residence with this name already exists.');
+      }
+      
       const { data, error } = await supabase
         .from('residences')
         .insert({ name: values.name })
@@ -55,10 +80,27 @@ const ResidenceForm = ({ onSuccess }: { onSuccess?: () => void }) => {
       }
     } catch (error) {
       console.error('Error adding residence:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = "There was an error adding the residence.";
+      
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorObj = error as any;
+        if (errorObj.message?.includes('duplicate key')) {
+          errorMessage = "A residence with this name already exists.";
+        } else if (errorObj.message?.includes('relation "residences" does not exist')) {
+          errorMessage = "The residences table does not exist. Please contact the administrator.";
+        } else if (errorObj.message?.includes('permission denied')) {
+          errorMessage = "You don't have permission to add residences.";
+        } else {
+          errorMessage = `Error: ${errorObj.message}`;
+        }
+      }
+      
       toast({
         variant: "destructive",
         title: "Failed to add residence",
-        description: "There was an error adding the residence. It might already exist.",
+        description: errorMessage,
       });
     } finally {
       setIsSubmitting(false);

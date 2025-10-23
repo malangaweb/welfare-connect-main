@@ -158,12 +158,25 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchRecentMembers = async () => {
+      // Debug: Get total member count for comparison
+      const { count: totalMembersCount } = await supabase
+        .from('members')
+        .select('*', { count: 'exact', head: true });
+      console.log('Dashboard - Total members in database:', totalMembersCount);
+      
       const { data: membersData } = await supabase
         .from('members')
         .select('*')
         .order('registration_date', { ascending: false })
         .limit(3);
       console.log('Fetched recent members:', membersData);
+      console.log('Dashboard - Total recent members:', membersData?.length);
+      console.log('Dashboard - Recent member names:', membersData?.map(m => m.name));
+      
+      // Debug: Check for specific member "Ziro" in Dashboard
+      const ziroInDashboard = membersData?.find(m => m.name?.toLowerCase().includes('ziro'));
+      console.log('Dashboard - Ziro member found:', ziroInDashboard);
+      
       // Map to expected MemberCard props, ensure valid Date objects
       const mapped = (membersData || []).map(m => ({
         id: m.id,
