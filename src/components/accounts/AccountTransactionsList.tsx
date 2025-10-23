@@ -171,6 +171,7 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
         // Filter transactions that are not associated with any member
         const suspenseTransactions = (allTransactions || []).filter(tx => {
           const description = tx.description?.toLowerCase() || '';
+          const hasNumber = /\d/.test(description);
           
           // Check if the description contains any member name or member number
           const isAssociatedWithMember = memberIdentifiers.some(member => 
@@ -187,10 +188,13 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
           // 1. Description doesn't contain any member identifier, OR
           // 2. Has member_id but that member doesn't exist in our system, OR
           // 3. Description is empty or unclear
-          return !isAssociatedWithMember || 
+          // AND the description has no numbers (numbers indicate valid member references)
+          const qualifiesByAssociation = !isAssociatedWithMember || 
                  (hasMemberId && !memberExists) || 
                  !description || 
                  description.trim() === '';
+
+          return qualifiesByAssociation && !hasNumber;
         });
         
         // Transform suspense transactions

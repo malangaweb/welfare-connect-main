@@ -448,7 +448,8 @@ const MemberDetails = () => {
       
       const { data: dependantsData, error: dependantsError } = await supabase
         .from('dependants')
-        .select('*');
+        .select('*')
+        .eq('member_id', id);
 
       if (dependantsError) {
         console.error('Error fetching dependants:', dependantsError);
@@ -456,7 +457,7 @@ const MemberDetails = () => {
       }
       
       console.log('Member data:', memberData);
-      console.log('Dependants data:', dependantsData);
+      console.log('Dependants data for member', id, ':', dependantsData);
       
       const dbMember = memberData as DbMember;
       const dependants = dependantsData as DbDependant[] || [];
