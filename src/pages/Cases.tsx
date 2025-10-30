@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Download, AlertCircle } from 'lucide-react';
+import { Plus, Search, Filter, Download, AlertCircle, Trash2 } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +51,7 @@ const Cases = () => {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [mpesaCollectedByCase, setMpesaCollectedByCase] = useState<{ [caseNumber: string]: number }>({});
+  const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCases = async () => {
@@ -215,6 +216,51 @@ const Cases = () => {
     return 'Inactive';
   };
 
+  const handleDeleteCase = async (caseId: string, caseNumber: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete case ${caseNumber}?\n\nThis action cannot be undone and will remove:\n- The case record\n- All associated transactions\n- All related data`
+    );
+    
+    if (!confirmed) return;
+
+    try {
+      setDeletingCaseId(caseId);
+      
+      const { error } = await supabase
+        .from('cases')
+        .delete()
+        .eq('id', caseId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Remove the case from local state
+      setCases(prevCases => prevCases.filter(c => c.id !== caseId));
+      
+      // Remove from collected amounts
+      setMpesaCollectedByCase(prev => {
+        const updated = { ...prev };
+        delete updated[caseNumber];
+        return updated;
+      });
+
+      toast({
+        title: 'Case deleted',
+        description: `Case ${caseNumber} has been permanently deleted.`,
+      });
+    } catch (error) {
+      console.error('Error deleting case:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to delete case',
+        description: error instanceof Error ? error.message : 'Please try again.',
+      });
+    } finally {
+      setDeletingCaseId(null);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -320,13 +366,27 @@ const Cases = () => {
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between pt-2">
-                  <Badge 
-                    variant="outline" 
-                    className={getCaseStatusColor(caseItem.isActive, caseItem.isFinalized)}
-                  >
-                    {getCaseStatusText(caseItem.isActive, caseItem.isFinalized)}
-                  </Badge>
+                <CardFooter className="flex justify-between items-center pt-2">
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant="outline" 
+                      className={getCaseStatusColor(caseItem.isActive, caseItem.isFinalized)}
+                    >
+                      {getCaseStatusText(caseItem.isActive, caseItem.isFinalized)}
+                    </Badge>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCase(caseItem.id, caseItem.caseNumber);
+                      }}
+                      disabled={deletingCaseId === caseItem.id}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      {deletingCaseId === caseItem.id ? 'Deleting...' : 'Delete'}
+                    </Button>
+                  </div>
                   <div className="text-right">
                     <div className="text-xs text-muted-foreground">Progress</div>
                     <div className="font-medium">

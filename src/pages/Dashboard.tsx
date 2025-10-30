@@ -140,6 +140,7 @@ const Dashboard = () => {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [totalMembers, setTotalMembers] = useState<number>(0);
   const [activeCasesCount, setActiveCasesCount] = useState<number>(0);
+  const [defaultersCount, setDefaultersCount] = useState<number>(0);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -154,6 +155,79 @@ const Dashboard = () => {
       setTotalContributions(total);
     };
     fetchTransactions();
+  }, []);
+
+  useEffect(() => {
+    const fetchDefaultersCount = async () => {
+      try {
+        // Fetch all members with pagination
+        const pageSize = 1000;
+        let from = 0;
+        let allMembers: any[] = [];
+        
+        while (true) {
+          const { data: membersBatch, error: membersError } = await supabase
+            .from('members')
+            .select('*')
+            .range(from, from + pageSize - 1);
+            
+          if (membersError) {
+            console.error('Error fetching members for defaulters count:', membersError);
+            break;
+          }
+          
+          if (membersBatch && membersBatch.length > 0) {
+            allMembers = allMembers.concat(membersBatch);
+          }
+          
+          if (!membersBatch || membersBatch.length < pageSize) {
+            break; // No more pages
+          }
+          
+          from += pageSize;
+        }
+        
+        // Fetch all transactions with pagination
+        let txFrom = 0;
+        let allTransactions: any[] = [];
+        
+        while (true) {
+          const { data: txBatch, error: txError } = await supabase
+            .from('transactions')
+            .select('*')
+            .range(txFrom, txFrom + pageSize - 1);
+            
+          if (txError) {
+            console.error('Error fetching transactions for defaulters count:', txError);
+            break;
+          }
+          
+          if (txBatch && txBatch.length > 0) {
+            allTransactions = allTransactions.concat(txBatch);
+          }
+          
+          if (!txBatch || txBatch.length < pageSize) {
+            break; // No more pages
+          }
+          
+          txFrom += pageSize;
+        }
+        
+        // Calculate wallet balances for each member
+        const defaulters = allMembers.filter(member => {
+          const memberTransactions = allTransactions?.filter(tx => tx.member_id === member.id) || [];
+          const walletBalance = memberTransactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+          return walletBalance < 0;
+        });
+        
+        setDefaultersCount(defaulters.length);
+        console.log(`Dashboard - Found ${defaulters.length} defaulters out of ${allMembers.length} members`);
+      } catch (error) {
+        console.error('Error calculating defaulters count:', error);
+      }
+    };
+    
+    fetchDefaultersCount();
   }, []);
 
   useEffect(() => {
@@ -391,14 +465,7 @@ const Dashboard = () => {
             trend={{ value: 8.5, isPositive: true }}
             className="shadow-md rounded-xl"
           />
-          <StatsCard
-            title="Defaulting Members"
-            value="18"
-            icon={<AlertCircle className="h-5 w-5" />}
-            description="Members with negative balance"
-            trend={{ value: 5, isPositive: false }}
-            className="shadow-md rounded-xl"
-          />
+       
         </div>
 
         <Tabs defaultValue="overview" className="space-y-8" onValueChange={setActiveTab}>

@@ -92,6 +92,10 @@ const ResidenceForm = ({ onSuccess }: { onSuccess?: () => void }) => {
           errorMessage = "The residences table does not exist. Please contact the administrator.";
         } else if (errorObj.message?.includes('permission denied')) {
           errorMessage = "You don't have permission to add residences.";
+        } else if (errorObj.message?.includes('row-level security')) {
+          errorMessage = "Row-level security policy violation. Please contact the administrator to fix database permissions.";
+        } else if (errorObj.message?.includes('new row violates row-level security')) {
+          errorMessage = "Database security policy is blocking this operation. Please contact the administrator.";
         } else {
           errorMessage = `Error: ${errorObj.message}`;
         }
