@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@/components/ui/use-toast';
-import { ChevronLeft, Edit } from 'lucide-react';
+import { ChevronLeft, Edit, Trash2 } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -44,6 +44,8 @@ const MemberDetails = () => {
   });
   const [addingDependant, setAddingDependant] = useState(false);
   const [editInitialData, setEditInitialData] = useState<any>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleAddDependant = () => {
     setAddDependantOpen(true);
@@ -130,119 +132,80 @@ const MemberDetails = () => {
     }
   };
 
-  const checkUserPermissions = async () => {
-    console.log('=== CHECKING USER PERMISSIONS ===');
-    try {
-      // Check current session
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      console.log('Session data:', sessionData);
-      console.log('Session error:', sessionError);
-      
-      // Check current user
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      console.log('User data:', userData);
-      console.log('User error:', userError);
-      
-      // Test if we can access the members table
-      const { data: testData, error: testError } = await supabase
-        .from('members')
-        .select('count')
-        .limit(1);
-      
-      console.log('Table access test:', { testData, testError });
-      
-    } catch (error) {
-      console.error('Permission check failed:', error);
-    }
-    console.log('=== END PERMISSION CHECK ===');
-  };
 
-  const testUpdate = async () => {
-    alert('Test Update button clicked! Check console for details.');
-    console.log('Test Update button clicked!');
-    if (!id) {
-      console.log('No member ID available');
-      alert('No member ID available');
-      return;
-    }
+  const handleDeleteMember = async () => {
+    if (!id || !member) return;
     
-    console.log('=== TESTING SIMPLE UPDATE ===');
-    console.log('Member ID for testing:', id);
-    
-    // First check permissions
-    await checkUserPermissions();
-    
+    setIsDeleting(true);
     try {
-      // Test 1: Can we read the current data?
-      console.log('Attempting to read current member data...');
-      const { data: currentData, error: readError } = await supabase
-        .from('members')
-        .select('*')
-        .eq('id', id)
-        .single();
+      // Delete all related records in order (cascade delete)
+      // 1. Delete user credentials (via users table)
+      const { data: usersData } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('member_id', id);
       
-      console.log('Current data:', currentData);
-      console.log('Read error:', readError);
-      
-      if (readError) {
-        console.error('Cannot read member data:', readError);
-        alert('Cannot read member data: ' + readError.message);
-        return;
+      if (usersData && usersData.length > 0) {
+        const userIds = usersData.map(u => u.id);
+        // Delete credentials
+        await supabaseAdmin
+          .from('user_credentials')
+          .delete()
+          .in('user_id', userIds);
+        
+        // Delete users
+        await supabaseAdmin
+          .from('users')
+          .delete()
+          .in('id', userIds);
       }
       
-      // Test 2: Try a simple update with just the name
-      const testName = currentData.name + ' (TEST)';
-      console.log('Attempting to update name to:', testName);
+      // 2. Delete transactions
+      await supabaseAdmin
+        .from('transactions')
+        .delete()
+        .eq('member_id', id);
       
-      const { data: updateResult, error: updateError } = await supabase
+      // 3. Delete cases where member is affected
+      await supabaseAdmin
+        .from('cases')
+        .delete()
+        .eq('affected_member_id', id);
+      
+      // 4. Delete dependants
+      await supabaseAdmin
+        .from('dependants')
+        .delete()
+        .eq('member_id', id);
+      
+      // 5. Finally, delete the member
+      const { error: deleteError } = await supabaseAdmin
         .from('members')
-        .update({ name: testName })
-        .eq('id', id)
-        .select();
+        .delete()
+        .eq('id', id);
       
-      console.log('Update result:', updateResult);
-      console.log('Update error:', updateError);
-      
-      if (updateError) {
-        console.error('Update failed:', updateError);
-        alert('Update failed: ' + updateError.message);
-        
-        // Test 3: Check if it's a permissions issue
-        console.log('Testing with admin client...');
-        const { data: adminResult, error: adminError } = await supabaseAdmin
-          .from('members')
-          .update({ name: testName })
-          .eq('id', id)
-          .select();
-        
-        console.log('Admin update result:', adminResult);
-        console.log('Admin update error:', adminError);
-        
-        if (adminError) {
-          alert('Admin update also failed: ' + adminError.message);
-        } else {
-          alert('Admin update succeeded!');
-        }
-      } else {
-        console.log('Update successful!');
-        alert('Update successful!');
-        
-        // Test 4: Verify the update
-        const { data: verifyData, error: verifyError } = await supabase
-          .from('members')
-          .select('*')
-          .eq('id', id)
-          .single();
-        
-        console.log('Verification data:', verifyData);
-        console.log('Verification error:', verifyError);
+      if (deleteError) {
+        throw deleteError;
       }
       
+      toast({
+        title: "Member Deleted",
+        description: `${member.name} (${member.memberNumber}) and all related records have been deleted.`,
+      });
+      
+      // Navigate back to members list
+      navigate('/members');
     } catch (error) {
-      console.error('Test update failed:', error);
-      alert('Test update failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      console.error('Error deleting member:', error);
+      toast({
+        variant: "destructive",
+        title: "Delete Failed",
+        description: error instanceof Error ? error.message : "Failed to delete member and related records.",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmOpen(false);
     }
-    console.log('=== END TEST ===');
   };
 
   const handleEditMember = async (data: any) => {
@@ -254,9 +217,6 @@ const MemberDetails = () => {
       console.log('Edit member data received:', data);
       console.log('Member ID:', id);
       console.log('Current member data:', member);
-      
-      // Run the test first
-      await testUpdate();
       
       // Get the residence name for this ID
       let residenceName = data.residence;
@@ -520,8 +480,13 @@ const MemberDetails = () => {
             <p className="text-muted-foreground">View and manage member information</p>
           </div>
           <div className="flex space-x-2">
-            <Button variant="outline" onClick={testUpdate}>
-              Test Update
+            <Button 
+              variant="destructive" 
+              onClick={() => setDeleteConfirmOpen(true)}
+              disabled={isDeleting}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {isDeleting ? 'Deleting...' : 'Delete Member'}
             </Button>
             <Button onClick={handleEditClick}>
               <Edit className="h-4 w-4 mr-2" />
@@ -636,6 +601,49 @@ const MemberDetails = () => {
               isEditMode={true}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Member</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to delete <strong>{member?.name}</strong> (Member #{member?.memberNumber})?
+            </p>
+            <p className="text-sm text-destructive font-medium">
+              This action will permanently delete:
+            </p>
+            <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
+              <li>The member record</li>
+              <li>All dependants</li>
+              <li>All transactions</li>
+              <li>All cases where this member is affected</li>
+              <li>User account and credentials (if any)</li>
+            </ul>
+            <p className="text-sm font-semibold text-destructive mt-4">
+              This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteMember}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Member'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

@@ -41,22 +41,40 @@ const PersonalInfoSection = ({ control, isLoadingMemberId = false }: PersonalInf
       <FormField
         control={control}
         name="memberNumber"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Member Number*</FormLabel>
-            <FormControl>
-              {isLoadingMemberId ? (
-                <Skeleton className="h-10 w-full" />
-              ) : (
-                <Input {...field} placeholder="Enter member number" />
-              )}
-            </FormControl>
-            <p className="text-xs text-muted-foreground">
-              Auto-generated, but can be edited if needed
-            </p>
-            <FormMessage />
-          </FormItem>
-        )}
+        render={({ field }) => {
+          // Ensure we never display NaN or MNaN
+          const displayValue = field.value && (field.value.includes('NaN') || field.value.includes('MNaN')) 
+            ? '' 
+            : field.value || '';
+          
+          return (
+            <FormItem>
+              <FormLabel>Member Number*</FormLabel>
+              <FormControl>
+                {isLoadingMemberId ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <Input 
+                    {...field} 
+                    value={displayValue}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      // Prevent setting NaN or MNaN
+                      if (!newValue.includes('NaN') && !newValue.includes('MNaN')) {
+                        field.onChange(e);
+                      }
+                    }}
+                    placeholder="Auto-generating..." 
+                  />
+                )}
+              </FormControl>
+              <p className="text-xs text-muted-foreground">
+                Auto-generated, but can be edited if needed
+              </p>
+              <FormMessage />
+            </FormItem>
+          );
+        }}
       />
 
       <FormField

@@ -2,38 +2,46 @@ import { supabase } from "@/integrations/supabase/client";
 
 export async function generateMemberId(): Promise<string> {
   try {
-    // Get the starting number from settings
-    const { data: settingsData, error: settingsError } = await supabase
-      .from('settings')
-      .select('member_id_start')
-      .limit(1)
-      .maybeSingle();
-      
-    if (settingsError) throw settingsError;
-    
-    const startFrom = settingsData?.member_id_start || 1;
-    
-    // Get the current highest member number
-    const { data, error } = await supabase
+    // Get all member numbers from database
+    const { data: membersData, error } = await supabase
       .from('members')
-      .select('member_number')
-      .order('member_number', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .select('member_number');
       
     if (error) throw error;
     
-    let nextNumber = startFrom;
+    let nextNumber = 1;
     
-    if (data && data.member_number) {
-      const currentNumber = parseInt(data.member_number.replace('M', ''));
-      nextNumber = Math.max(currentNumber + 1, startFrom);
+    if (membersData && membersData.length > 0) {
+      // Filter member numbers that don't start with 'M' and parse them
+      const numbers = membersData
+        .map(m => {
+          if (!m.member_number) return null;
+          const memberNumber = String(m.member_number).trim();
+          
+          // Skip if it starts with 'M'
+          if (memberNumber.toUpperCase().startsWith('M')) {
+            return null;
+          }
+          
+          // Parse as integer
+          const num = parseInt(memberNumber, 10);
+          return isNaN(num) || num <= 0 ? null : num;
+        })
+        .filter((num): num is number => num !== null && !isNaN(num));
+      
+      if (numbers.length > 0) {
+        // Find the highest number and increment by 1
+        const maxNumber = Math.max(...numbers);
+        nextNumber = maxNumber + 1;
+      }
     }
     
-    return `M${String(nextNumber).padStart(3, '0')}`;
+    // Return just the number as string
+    return String(nextNumber);
   } catch (error) {
     console.error('Error generating member ID:', error);
-    return `M${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+    // Return a safe default
+    return '1';
   }
 }
 
@@ -79,3 +87,4 @@ export async function generateCaseId(): Promise<string> {
     return `C${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
   }
 }
+
