@@ -27,6 +27,7 @@ const formSchema = z.object({
   dateOfBirth: z.date({ required_error: 'Date of birth is required' }),
   nationalIdNumber: z.string().min(1, 'National ID is required'),
   phoneNumber: z.string().optional(),
+  // Email is always optional; empty string is allowed
   emailAddress: z.string().email('Invalid email address').optional().or(z.literal('')),
   residence: z.string().min(1, 'Residence is required'),
   nextOfKin: z.object({
@@ -34,7 +35,8 @@ const formSchema = z.object({
     relationship: z.string().min(1, 'Relationship is required'),
     phoneNumber: z.string().min(1, 'Phone number is required'),
   }),
-  registrationFee: z.number().min(0, 'Registration fee is required'),
+  // Make registration fee optional in the schema so it doesn't block Edit Member
+  registrationFee: z.number().min(0, 'Registration fee must be zero or positive').optional(),
   feeStatus: z.boolean().optional().default(false),
   credentials: z.object({
     username: z.string().optional(),
@@ -105,16 +107,25 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
     getNextMemberId();
   }, [form, initialData, isEditMode]);
 
-  const handleSubmit = (values) => {
+  const handleSubmit = (values: z.infer<typeof formSchema>) => {
     if (dependants.length > 0 && !validateDependants(dependants, setDependants)) {
       return;
     }
 
-    onSubmit({
-      ...values,
-      registrationFee: defaultFee,
-      dependants,
-    });
+    // For Edit Member, don't force or override registration fee;
+    // for New Member, always use the current default fee.
+    const submissionData = isEditMode
+      ? {
+          ...values,
+          dependants,
+        }
+      : {
+          ...values,
+          registrationFee: defaultFee,
+          dependants,
+        };
+
+    onSubmit(submissionData);
   };
 
   return (
@@ -127,7 +138,8 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
 
         <NextOfKinSection control={form.control} />
         <DependantsSection dependants={dependants} onDependantsChange={setDependants} />
-        <RegistrationFeeSection control={form.control} />
+        {/* Hide registration fee section in Edit Member; it's optional there */}
+        {!isEditMode && <RegistrationFeeSection control={form.control} />}
 
         <div className="border-t pt-6">
           <h3 className="text-lg font-medium mb-4">Login Credentials</h3>
