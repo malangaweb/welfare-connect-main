@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Download, UserPlus } from 'lucide-react';
+import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
-import MemberCard from '@/components/MemberCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -28,8 +27,77 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
 import * as XLSX from 'xlsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
+const getMemberNumberValue = (memberNumber?: string) => {
+  if (!memberNumber) return Number.MAX_SAFE_INTEGER;
+  const trimmed = memberNumber.trim();
+  if (!trimmed) return Number.MAX_SAFE_INTEGER;
+  const numericOnly = trimmed.replace(/[^\d]/g, '');
+  if (numericOnly) {
+    const parsed = parseInt(numericOnly, 10);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  const fallback = Number(trimmed);
+  return !isNaN(fallback) ? fallback : Number.MAX_SAFE_INTEGER;
+};
+
+type SortKey = 'memberNumber' | 'name' | 'gender' | 'residence' | 'walletBalance' | 'registrationDate';
+
+interface SortConfig {
+  key: SortKey;
+  direction: 'asc' | 'desc';
+}
+
+const sortMembers = (list: Member[], sortConfig: SortConfig): Member[] => {
+  const sorted = [...list].sort((a, b) => {
+    let diff = 0;
+
+    switch (sortConfig.key) {
+      case 'memberNumber':
+        diff = getMemberNumberValue(a.memberNumber) - getMemberNumberValue(b.memberNumber);
+        if (diff === 0) {
+          return a.memberNumber.localeCompare(b.memberNumber);
+        }
+        break;
+      case 'name':
+        return a.name.localeCompare(b.name);
+      case 'gender':
+        return String(a.gender).localeCompare(String(b.gender));
+      case 'residence':
+        return a.residence.localeCompare(b.residence);
+      case 'walletBalance':
+        diff = a.walletBalance - b.walletBalance;
+        break;
+      case 'registrationDate':
+        diff =
+          (a.registrationDate ? a.registrationDate.getTime() : 0) -
+          (b.registrationDate ? b.registrationDate.getTime() : 0);
+        break;
+    }
+
+    if (diff < 0) return -1;
+    if (diff > 0) return 1;
+    return 0;
+  });
+
+  if (sortConfig.direction === 'desc') {
+    sorted.reverse();
+  }
+
+  return sorted;
+};
 
 const Members = () => {
   const navigate = useNavigate();
@@ -45,6 +113,10 @@ const Members = () => {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editInitialData, setEditInitialData] = useState<any>(null);
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    key: 'memberNumber',
+    direction: 'asc',
+  });
   
   const handleLogout = async () => {
     try {
@@ -261,8 +333,8 @@ const Members = () => {
           console.log('Ziro mapped member details:', JSON.stringify(ziroMapped, null, 2));
         }
         
-        // Sort members alphabetically by name
-        const sortedMembers = mappedMembers.sort((a, b) => a.name.localeCompare(b.name));
+        // Initial sort by member number (numeric order)
+        const sortedMembers = sortMembers(mappedMembers, { key: 'memberNumber', direction: 'asc' });
         setMembers(sortedMembers);
       } catch (error) {
         console.error('Error in fetchMembers:', error);
@@ -308,6 +380,8 @@ const Members = () => {
     
     return matchesSearch && matchesStatus && matchesLocation && matchesDefaulters && matchesPositiveBalance;
   });
+
+  const sortedFilteredMembers = sortMembers(filteredMembers, sortConfig);
 
   // Import handler
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -527,8 +601,9 @@ const Members = () => {
     try {
       console.log(`Exporting ${members.length} members`);
       
+      const sortedMembers = sortMembers(members, sortConfig);
       // Prepare data for export - member number, name and phone number
-      const exportData = members.map(member => ({
+      const exportData = sortedMembers.map(member => ({
         'Member Number': member.memberNumber,
         'Name': member.name,
         'Phone Number': member.phoneNumber || 'N/A'
@@ -565,7 +640,7 @@ const Members = () => {
   const handleExportDefaulters = () => {
     try {
       // Get only members with negative wallet balance
-      const defaulters = members.filter(member => member.walletBalance < 0);
+      const defaulters = sortMembers(members, sortConfig).filter(member => member.walletBalance < 0);
       
       console.log(`Exporting ${defaulters.length} defaulters`);
       
@@ -617,7 +692,7 @@ const Members = () => {
   const handleExportPositiveBalance = () => {
     try {
       // Get only members with positive or zero wallet balance
-      const positiveBalanceMembers = members.filter(member => member.walletBalance >= 0);
+      const positiveBalanceMembers = sortMembers(members, sortConfig).filter(member => member.walletBalance >= 0);
       
       console.log(`Exporting ${positiveBalanceMembers.length} positive balance members`);
       
@@ -846,30 +921,248 @@ const Members = () => {
             </div>
         ) : filteredMembers.length > 0 ? (
           <div>
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Showing{' '}
+                  <span className="font-semibold text-foreground">
+                    {filteredMembers.length}
+                  </span>{' '}
+                  member{filteredMembers.length !== 1 ? 's' : ''}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Click a column header to sort. Click a row to view full member details.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {defaultersFilter && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-800 rounded-full">
-                    Defaulters
-                  </span>
+                  <Badge variant="destructive" className="text-xs">
+                    Defaulters only
+                  </Badge>
                 )}
                 {positiveBalanceFilter && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                    Positive Balance
-                  </span>
+                  <Badge variant="outline" className="text-xs border-green-300 text-green-700 bg-green-50">
+                    Positive balance
+                  </Badge>
                 )}
-              </p>
+                {statusFilter !== 'all' && (
+                  <Badge variant="outline" className="text-xs">
+                    Status: {statusFilter}
+                  </Badge>
+                )}
+                {locationFilter !== 'all' && (
+                  <Badge variant="outline" className="text-xs">
+                    Location: {locationFilter}
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMembers.map((member) => (
-              <MemberCard
-                key={member.id}
-                member={member}
-                onClick={() => navigate(`/members/${member.id}`)}
-                onEdit={() => handleEditClick(member)}
-              />
-            ))}
+            <div className="border rounded-xl overflow-hidden shadow-sm bg-card/70 backdrop-blur-sm">
+              <Table className="w-full text-sm">
+                <TableHeader className="sticky top-0 z-10 bg-card/90 backdrop-blur-sm">
+                  <TableRow className="bg-muted/40">
+                    <TableHead>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide"
+                        onClick={() =>
+                          setSortConfig((prev) => ({
+                            key: 'memberNumber',
+                            direction:
+                              prev.key === 'memberNumber' && prev.direction === 'asc'
+                                ? 'desc'
+                                : 'asc',
+                          }))
+                        }
+                      >
+                        Member #
+                        <ArrowUpDown
+                          className={`h-3 w-3 ${
+                            sortConfig.key === 'memberNumber'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide"
+                        onClick={() =>
+                          setSortConfig((prev) => ({
+                            key: 'name',
+                            direction:
+                              prev.key === 'name' && prev.direction === 'asc' ? 'desc' : 'asc',
+                          }))
+                        }
+                      >
+                        Name
+                        <ArrowUpDown
+                          className={`h-3 w-3 ${
+                            sortConfig.key === 'name' ? 'text-primary' : 'text-muted-foreground'
+                          }`}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide"
+                        onClick={() =>
+                          setSortConfig((prev) => ({
+                            key: 'gender',
+                            direction:
+                              prev.key === 'gender' && prev.direction === 'asc' ? 'desc' : 'asc',
+                          }))
+                        }
+                      >
+                        Gender
+                        <ArrowUpDown
+                          className={`h-3 w-3 ${
+                            sortConfig.key === 'gender'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide"
+                        onClick={() =>
+                          setSortConfig((prev) => ({
+                            key: 'residence',
+                            direction:
+                              prev.key === 'residence' && prev.direction === 'asc'
+                                ? 'desc'
+                                : 'asc',
+                          }))
+                        }
+                      >
+                        Residence
+                        <ArrowUpDown
+                          className={`h-3 w-3 ${
+                            sortConfig.key === 'residence'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <button
+                        type="button"
+                        className="flex items-center justify-end gap-1 w-full text-xs font-semibold uppercase tracking-wide"
+                        onClick={() =>
+                          setSortConfig((prev) => ({
+                            key: 'walletBalance',
+                            direction:
+                              prev.key === 'walletBalance' && prev.direction === 'asc'
+                                ? 'desc'
+                                : 'asc',
+                          }))
+                        }
+                      >
+                        Wallet Balance
+                        <ArrowUpDown
+                          className={`h-3 w-3 ${
+                            sortConfig.key === 'walletBalance'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide"
+                        onClick={() =>
+                          setSortConfig((prev) => ({
+                            key: 'registrationDate',
+                            direction:
+                              prev.key === 'registrationDate' && prev.direction === 'asc'
+                                ? 'desc'
+                                : 'asc',
+                          }))
+                        }
+                      >
+                        Registration Date
+                        <ArrowUpDown
+                          className={`h-3 w-3 ${
+                            sortConfig.key === 'registrationDate'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedFilteredMembers.map((member, index) => (
+                    <TableRow
+                      key={member.id}
+                      className={`cursor-pointer hover:bg-muted/60 transition-colors ${
+                        index % 2 === 0 ? 'bg-background' : 'bg-muted/30'
+                      }`}
+                      onClick={() => navigate(`/members/${member.id}`)}
+                    >
+                      <TableCell>{member.memberNumber}</TableCell>
+                      <TableCell>{member.name}</TableCell>
+                      <TableCell>{member.gender}</TableCell>
+                      <TableCell>
+                        {member.phoneNumber ? (
+                          <a
+                            href={`tel:${member.phoneNumber}`}
+                            className="text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {member.phoneNumber}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{member.residence}</TableCell>
+                      <TableCell className="text-right">
+                        <span
+                          className={`inline-flex items-center justify-end rounded-full px-2 py-0.5 text-xs font-medium ${
+                            member.walletBalance < 0
+                              ? 'bg-red-50 text-red-700'
+                              : member.walletBalance > 0
+                              ? 'bg-green-50 text-green-700'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {member.walletBalance.toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {member.registrationDate
+                          ? new Date(member.registrationDate).toLocaleDateString()
+                          : ''}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditClick(member);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </div>
         ) : (
