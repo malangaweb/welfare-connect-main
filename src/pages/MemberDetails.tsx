@@ -99,6 +99,11 @@ const MemberDetails = () => {
     navigate(`/transactions?memberId=${id}`);
   };
 
+  const handleTransferSuccess = async () => {
+    // Refresh member data after transfer (same as funding for now)
+    await handleFundingSuccess();
+  };
+
   const handleFundingSuccess = async () => {
     // Refresh member data after funding
     try {
@@ -499,12 +504,13 @@ const MemberDetails = () => {
           <div className="md:w-1/3">
             <MemberProfileCard member={member} />
             <WalletCard 
-              balance={member.walletBalance} 
+              balance={member.walletBalance}
               onViewTransactions={handleViewTransactions}
               memberId={member.id}
               memberName={member.name}
               onFundingSuccess={handleFundingSuccess}
-              showFundingOption={true}
+              onTransferSuccess={handleTransferSuccess}
+              showFundingOption
             />
           </div>
           

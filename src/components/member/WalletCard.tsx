@@ -2,6 +2,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Wallet } from 'lucide-react';
 import WalletFundingDialog from './WalletFundingDialog';
+import TransferFundsDialog from './TransferFundsDialog';
 
 interface WalletCardProps {
   balance: number;
@@ -10,6 +11,7 @@ interface WalletCardProps {
   memberName?: string;
   onFundingSuccess?: () => void;
   showFundingOption?: boolean;
+  onTransferSuccess?: () => void;
 }
 
 const WalletCard = ({ 
@@ -18,7 +20,8 @@ const WalletCard = ({
   memberId, 
   memberName,
   onFundingSuccess,
-  showFundingOption = false
+  showFundingOption = false,
+  onTransferSuccess,
 }: WalletCardProps) => {
   return (
     <Card className="mt-6">
@@ -35,13 +38,24 @@ const WalletCard = ({
             View Transaction History
           </Button>
           
-          {showFundingOption && memberId && memberName && onFundingSuccess && (
-            <WalletFundingDialog 
-              memberId={memberId}
-              memberName={memberName}
-              onFundingSuccess={onFundingSuccess}
-            />
-          )}
+          <div className="space-y-2">
+            {showFundingOption && memberId && memberName && onFundingSuccess && (
+              <WalletFundingDialog 
+                memberId={memberId}
+                memberName={memberName}
+                onFundingSuccess={onFundingSuccess}
+              />
+            )}
+            
+            {memberId && memberName && onTransferSuccess && (
+              <TransferFundsDialog
+                memberId={memberId}
+                memberName={memberName}
+                currentBalance={balance}
+                onTransferSuccess={onTransferSuccess}
+              />
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
