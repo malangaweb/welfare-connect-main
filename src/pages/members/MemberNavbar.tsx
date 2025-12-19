@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LogOut, User, FileText, List, BarChart3, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { memberLogout } from "./memberLinks";
 
 const memberNav = [
   { icon: <Home className="w-5 h-5" />, label: "Dashboard", href: "/member/dashboard" },
@@ -17,9 +18,7 @@ const MemberSidebar = () => {
   const [open, setOpen] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem("member_user_id");
-    localStorage.removeItem("member_member_id");
-    navigate("/member/login");
+    memberLogout(navigate);
   };
 
   return (

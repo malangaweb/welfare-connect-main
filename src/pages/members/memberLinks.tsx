@@ -11,5 +11,5 @@ export const memberLinks = [
 export const memberLogout = (navigate) => {
   localStorage.removeItem("member_user_id");
   localStorage.removeItem("member_member_id");
-  navigate("/member/login");
+  navigate("/");
 };

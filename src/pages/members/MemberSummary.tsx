@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { memberLinks, memberLogout } from "./memberLinks";
 import { Badge } from "@/components/ui/badge";
-import { User, Mail, Phone, Home, FileText, CreditCard, Loader2 } from "lucide-react";
+import { User, Mail, Phone, Home, FileText, CreditCard } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -21,9 +21,6 @@ const MemberSummary = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
   useEffect(() => {
     const member_id = localStorage.getItem("member_member_id");
@@ -52,16 +49,6 @@ const MemberSummary = () => {
       });
   }, [navigate]);
 
-  // Fetch user_id for this member
-  const fetchUserId = async (memberId: string) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id')
-      .eq('member_id', memberId)
-      .single();
-    if (error) return null;
-    return data?.id;
-  };
 
   const handleEdit = () => {
     setEditData({
@@ -69,6 +56,7 @@ const MemberSummary = () => {
       email_address: member.email_address,
       phone_number: member.phone_number,
       residence: member.residence,
+      national_id_number: member.national_id_number || ''
     });
     setEditOpen(true);
   };
@@ -83,6 +71,7 @@ const MemberSummary = () => {
           email_address: editData.email_address,
           phone_number: editData.phone_number,
           residence: editData.residence,
+          national_id_number: editData.national_id_number
         })
         .eq('id', member.id);
       if (error) throw error;
@@ -101,25 +90,6 @@ const MemberSummary = () => {
     }
   };
 
-  const handlePasswordSave = async () => {
-    setIsPasswordSaving(true);
-    try {
-      const userId = await fetchUserId(member.id);
-      if (!userId) throw new Error('User not found');
-      const { error } = await supabase
-        .from('user_credentials')
-        .update({ password: newPassword })
-        .eq('user_id', userId);
-      if (error) throw error;
-      toast({ title: 'Password updated', description: 'Your password has been changed.' });
-      setPasswordOpen(false);
-      setNewPassword('');
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Password update failed', description: err.message });
-    } finally {
-      setIsPasswordSaving(false);
-    }
-  };
 
   if (loading) return (
     <DashboardLayout
@@ -239,7 +209,6 @@ const MemberSummary = () => {
               </div>
               <div className="flex gap-2 mt-4">
                 <Button size="sm" variant="outline" onClick={handleEdit}>Edit Details</Button>
-                <Button size="sm" variant="outline" onClick={() => setPasswordOpen(true)}>Change Password</Button>
               </div>
             </CardContent>
           </Card>
@@ -300,28 +269,18 @@ const MemberSummary = () => {
               <label className="block text-sm font-medium mb-1">Residence</label>
               <Input value={editData?.residence || ''} onChange={e => setEditData({ ...editData, residence: e.target.value })} />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">National ID Number</label>
+              <Input 
+                value={editData?.national_id_number || ''} 
+                onChange={e => setEditData({ ...editData, national_id_number: e.target.value })} 
+                placeholder="Enter ID number"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleEditSave} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Change Password Dialog */}
-      <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Password</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">New Password</label>
-              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPasswordOpen(false)}>Cancel</Button>
-            <Button onClick={handlePasswordSave} disabled={isPasswordSaving || !newPassword}>{isPasswordSaving ? 'Saving...' : 'Save'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

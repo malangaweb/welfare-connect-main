@@ -105,7 +105,7 @@ const MemberLogin = () => {
                 <Input
                   id="memberNumber"
                   type="text"
-                  placeholder="e.g. M001"
+                  placeholder="e.g. 1"
                   className="pl-10"
                   value={memberNumber}
                   onChange={e => setMemberNumber(e.target.value)}
