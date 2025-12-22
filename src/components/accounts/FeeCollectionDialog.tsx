@@ -142,13 +142,14 @@ const FeeCollectionDialog = ({
       
       // Convert amount to a number
       const amount = parseFloat(values.amount);
+      const transactionAmount = feeType === "renewal" ? -Math.abs(amount) : amount;
       
       // Create a transaction record
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")
         .insert({
           member_id: values.memberId,
-          amount: amount,
+          amount: transactionAmount,
           transaction_type: feeType,
           mpesa_reference: values.reference || null,
           description: values.description,
@@ -171,7 +172,7 @@ const FeeCollectionDialog = ({
       
       toast({
         title: "Fee collected successfully",
-        description: `${titleMap[feeType]} of KES ${amount.toLocaleString()} has been collected.`,
+        description: `${titleMap[feeType]} of KES ${Math.abs(amount).toLocaleString()} has been collected.`,
       });
       
       // Reset form and close dialog

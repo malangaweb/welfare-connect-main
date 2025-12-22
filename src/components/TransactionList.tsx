@@ -120,12 +120,12 @@ const TransactionList = ({ transactions, loading = false, renderAction }: Transa
             </div>
             <div className="flex flex-col items-end min-w-[140px] h-full">
               <p className={`text-lg font-bold tracking-tight ${
-                ['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
+                ['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
                   ? 'text-green-600' 
                   : 'text-red-600'
               }`}>
-                {['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
-                KES {transaction.amount.toLocaleString()}
+                {['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
+                KES {Math.abs(transaction.amount).toLocaleString()}
               </p>
               <div className="flex flex-col items-end mt-2 space-y-0.5">
                 <span className="text-xs text-muted-foreground">

@@ -3,6 +3,7 @@ import { Transaction } from '@/lib/types';
 import AccountSummaryCard from './AccountSummaryCard';
 import AccountTransactionsList from './AccountTransactionsList';
 import FeeCollectionDialog from './FeeCollectionDialog';
+import BulkRenewalFeeDialog from './BulkRenewalFeeDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 
@@ -51,7 +52,7 @@ const RenewalAccount = () => {
       setTransactions(formattedData);
       
       // Calculate totals
-      const credits = formattedData.reduce((acc, tx) => acc + tx.amount, 0);
+      const credits = formattedData.reduce((acc, tx) => acc + Math.abs(tx.amount), 0);
       setTotalCredits(credits);
       setTotalBalance(credits); // For renewal account, balance is just the sum of credits
       setTotalDebits(0); // No debits in renewal account typically
@@ -87,12 +88,18 @@ const RenewalAccount = () => {
           isLoading={isLoading}
         />
         <div className="pl-4">
-          <FeeCollectionDialog 
-            feeType="renewal"
-            buttonLabel="Collect Renewal Fee"
-            defaultAmount={defaultFee}
-            onSuccess={handleFeeCollectionSuccess}
-          />
+          <div className="flex flex-col gap-2">
+            <FeeCollectionDialog 
+              feeType="renewal"
+              buttonLabel="Collect Renewal Fee"
+              defaultAmount={defaultFee}
+              onSuccess={handleFeeCollectionSuccess}
+            />
+            <BulkRenewalFeeDialog
+              defaultAmount={defaultFee}
+              onSuccess={handleFeeCollectionSuccess}
+            />
+          </div>
         </div>
       </div>
       

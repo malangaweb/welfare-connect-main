@@ -212,6 +212,18 @@ const Login = () => {
                 'Login'
               )}
             </Button>
+            
+            <div className="text-center mt-4 text-sm">
+              <p className="text-muted-foreground">
+                Are you a member?{' '}
+                <a 
+                  href="/member/login" 
+                  className="text-primary hover:underline font-medium"
+                >
+                  Member Login
+                </a>
+              </p>
+            </div>
           </form>
         </Form>
         

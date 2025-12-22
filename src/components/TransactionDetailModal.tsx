@@ -165,12 +165,12 @@ const TransactionDetailModal = ({ transaction, isOpen, onClose }: TransactionDet
             <div className="space-y-1">
               <p className="text-sm font-medium text-muted-foreground">Amount</p>
               <p className={`font-semibold ${
-                ['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
+                ['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
                   ? 'text-green-600' 
                   : 'text-red-600'
               }`}>
-                {['contribution', 'registration', 'renewal', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
-                KES {transaction.amount.toLocaleString()}
+                {['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
+                KES {Math.abs(transaction.amount).toLocaleString()}
               </p>
             </div>
             

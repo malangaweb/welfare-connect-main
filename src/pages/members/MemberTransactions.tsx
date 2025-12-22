@@ -52,7 +52,7 @@ const MemberTransactions = () => {
           if (t.transaction_type === "contribution" || t.transaction_type === "deposit") {
             credits += (t.amount || 0);
           } else {
-            debits += (t.amount || 0);
+            debits += Math.abs(t.amount || 0);
           }
         });
         setTotalCredit(credits);
@@ -258,10 +258,10 @@ const MemberTransactions = () => {
                             </div>
                             <div className="text-right">
                               <div className={t.transaction_type === "contribution" || t.transaction_type === "deposit" 
-                                ? "text-green-600 font-semibold" 
-                                : "text-red-600 font-semibold"}>
-                                {t.transaction_type === "contribution" || t.transaction_type === "deposit" ? "+" : "-"}
-                                KES {t.amount?.toLocaleString()}
+                              ? "text-green-600 font-semibold" 
+                              : "text-red-600 font-semibold"}>
+                              {t.transaction_type === "contribution" || t.transaction_type === "deposit" ? "+" : "-"}
+                              KES {Math.abs(t.amount || 0).toLocaleString()}
                               </div>
                               <Badge variant="outline" className={getTransactionTypeColor(t.transaction_type)}>
                                 {t.transaction_type}
@@ -308,7 +308,7 @@ const MemberTransactions = () => {
                                     ? "text-green-600 font-semibold" 
                                     : "text-red-600 font-semibold"}>
                                     {t.transaction_type === "contribution" || t.transaction_type === "deposit" ? "+" : "-"}
-                                    KES {t.amount?.toLocaleString()}
+                                    KES {Math.abs(t.amount || 0).toLocaleString()}
                                   </div>
                                 </div>
                               </CardContent>

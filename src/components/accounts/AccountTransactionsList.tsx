@@ -31,6 +31,7 @@ import { toast } from '@/components/ui/use-toast';
 
 interface AccountTransactionsListProps {
   title: string;
+  transactions?: Transaction[];
 }
 
 interface Member {
@@ -39,12 +40,13 @@ interface Member {
   member_number: string;
 }
 
-const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
+const AccountTransactionsList = ({ title, transactions: providedTransactions }: AccountTransactionsListProps) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [yearFilter, setYearFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
+  const isRenewalAccount = title.toLowerCase().includes('renewal');
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -126,6 +128,12 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
 
   useEffect(() => {
     const fetchTransactions = async () => {
+      if (providedTransactions) {
+        setTransactions(providedTransactions);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       let query = supabase.from('transactions').select('*');
       
@@ -233,7 +241,7 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
       setLoading(false);
     };
     fetchTransactions();
-  }, [title]);
+  }, [title, providedTransactions]);
 
   const years = Array.from(new Set(
     transactions.map(tx => new Date(tx.createdAt).getFullYear())
@@ -352,7 +360,7 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
                   <TableCell>Member #{transaction.memberId.substring(0, 8)}</TableCell>
                   <TableCell>{transaction.mpesaReference || "-"}</TableCell>
                   <TableCell className="text-right">
-                    KES {transaction.amount.toLocaleString()}
+                    KES {(isRenewalAccount ? Math.abs(transaction.amount) : transaction.amount).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -407,7 +415,7 @@ const AccountTransactionsList = ({ title }: AccountTransactionsListProps) => {
               <div className="p-4 bg-gray-50 rounded-lg">
                 <h4 className="font-medium mb-2">Transaction Details</h4>
                 <div className="text-sm space-y-1">
-                  <div><span className="font-medium">Amount:</span> KES {selectedTransaction.amount.toLocaleString()}</div>
+                  <div><span className="font-medium">Amount:</span> KES {(isRenewalAccount ? Math.abs(selectedTransaction.amount) : selectedTransaction.amount).toLocaleString()}</div>
                   <div><span className="font-medium">Description:</span> {selectedTransaction.description}</div>
                   <div><span className="font-medium">Reference:</span> {selectedTransaction.mpesaReference || 'N/A'}</div>
                   <div><span className="font-medium">Date:</span> {new Date(selectedTransaction.createdAt).toLocaleDateString()}</div>

@@ -52,6 +52,7 @@ const Settings = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [settingsId, setSettingsId] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof settingsFormSchema>>({
     resolver: zodResolver(settingsFormSchema),
@@ -97,8 +98,9 @@ const Settings = () => {
         const { data, error } = await supabase
           .from('settings')
           .select('*')
+          .order('id', { ascending: true })
           .limit(1)
-          .single();
+          .maybeSingle();
           
         if (error) {
           console.error('Error fetching settings:', error);
@@ -106,6 +108,7 @@ const Settings = () => {
         }
         
         if (data) {
+          setSettingsId(data.id);
           form.reset({
             registration_fee: data.registration_fee,
             renewal_fee: data.renewal_fee,
@@ -138,23 +141,44 @@ const Settings = () => {
   const onSubmitSettings = async (values: z.infer<typeof settingsFormSchema>) => {
     setSavingSettings(true);
     try {
-      const { error } = await supabase
-        .from('settings')
-        .update({
-          registration_fee: values.registration_fee,
-          renewal_fee: values.renewal_fee,
-          penalty_amount: values.penalty_amount,
-          paybill_number: values.paybill_number || null,
-          organization_name: values.organization_name,
-          organization_email: values.organization_email || null,
-          organization_phone: values.organization_phone || null,
-          member_id_start: values.member_id_start || 1,
-          case_id_start: values.case_id_start || 1,
-        })
-        .limit(1);
+      if (settingsId) {
+        const { error } = await supabase
+          .from('settings')
+          .update({
+            registration_fee: values.registration_fee,
+            renewal_fee: values.renewal_fee,
+            penalty_amount: values.penalty_amount,
+            paybill_number: values.paybill_number || null,
+            organization_name: values.organization_name,
+            organization_email: values.organization_email || null,
+            organization_phone: values.organization_phone || null,
+            member_id_start: values.member_id_start || 1,
+            case_id_start: values.case_id_start || 1,
+          })
+          .eq('id', settingsId);
+
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from('settings')
+          .insert({
+            registration_fee: values.registration_fee,
+            renewal_fee: values.renewal_fee,
+            penalty_amount: values.penalty_amount,
+            paybill_number: values.paybill_number || null,
+            organization_name: values.organization_name,
+            organization_email: values.organization_email || null,
+            organization_phone: values.organization_phone || null,
+            member_id_start: values.member_id_start || 1,
+            case_id_start: values.case_id_start || 1,
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        if (data?.id) setSettingsId(data.id);
+      }
         
-      if (error) throw error;
-      
       toast({
         title: "Settings updated",
         description: "Your changes have been saved successfully.",
