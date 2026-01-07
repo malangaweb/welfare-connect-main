@@ -305,7 +305,7 @@ const Members = () => {
           const balance = memberTransactions.reduce((sum, tx: any) => {
             const amount = Number(tx.amount) || 0;
             const type = String(tx.transaction_type || '').toLowerCase();
-            const normalizedAmount = ['registration', 'contribution'].includes(type)
+            const normalizedAmount = ['registration', 'contribution', 'arrears'].includes(type)
               ? -Math.abs(amount)
               : amount;
             return sum + normalizedAmount;

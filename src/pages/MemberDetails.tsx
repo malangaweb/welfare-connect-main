@@ -46,6 +46,10 @@ const MemberDetails = () => {
   const [editInitialData, setEditInitialData] = useState<any>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [arrearsDialogOpen, setArrearsDialogOpen] = useState(false);
+  const [arrearsAmount, setArrearsAmount] = useState('');
+  const [arrearsReason, setArrearsReason] = useState('');
+  const [isDeductingArrears, setIsDeductingArrears] = useState(false);
 
   const handleAddDependant = () => {
     setAddDependantOpen(true);
@@ -102,6 +106,57 @@ const MemberDetails = () => {
   const handleTransferSuccess = async () => {
     // Refresh member data after transfer (same as funding for now)
     await handleFundingSuccess();
+  };
+
+  const handleDeductToArrears = async () => {
+    if (!id || !member) return;
+
+    const amountNum = Number(arrearsAmount);
+    if (!amountNum || amountNum <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'Please enter a valid arrears amount.',
+      });
+      return;
+    }
+
+    setIsDeductingArrears(true);
+    try {
+      const description = arrearsReason?.trim()
+        ? `Arrears deduction - ${arrearsReason.trim()}`
+        : 'Arrears deduction';
+
+      const { error } = await supabase
+        .from('transactions')
+        .insert({
+          member_id: id,
+          amount: -Math.abs(amountNum),
+          transaction_type: 'arrears',
+          description,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Amount deducted to arrears account.',
+      });
+
+      setArrearsDialogOpen(false);
+      setArrearsAmount('');
+      setArrearsReason('');
+      await handleFundingSuccess();
+    } catch (error) {
+      console.error('Error deducting to arrears:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to deduct to arrears account.',
+      });
+    } finally {
+      setIsDeductingArrears(false);
+    }
   };
 
   const handleFundingSuccess = async () => {
@@ -440,7 +495,7 @@ const MemberDetails = () => {
       const walletBalance = (transactions || []).reduce((sum, tx: any) => {
         const amount = Number(tx.amount) || 0;
         const type = String(tx.transaction_type || '').toLowerCase();
-        const normalizedAmount = ['registration', 'renewal', 'penalty', 'contribution'].includes(type)
+        const normalizedAmount = ['registration', 'renewal', 'penalty', 'contribution', 'arrears'].includes(type)
           ? -Math.abs(amount)
           : amount;
         return sum + normalizedAmount;
@@ -519,6 +574,15 @@ const MemberDetails = () => {
               onTransferSuccess={handleTransferSuccess}
               showFundingOption
             />
+            <div className="mt-3">
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => setArrearsDialogOpen(true)}
+              >
+                Deduct to Arrears
+              </Button>
+            </div>
           </div>
           
           <div className="md:w-2/3">
@@ -655,6 +719,51 @@ const MemberDetails = () => {
               disabled={isDeleting}
             >
               {isDeleting ? 'Deleting...' : 'Delete Member'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deduct to Arrears Dialog */}
+      <Dialog open={arrearsDialogOpen} onOpenChange={setArrearsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deduct to Arrears</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label>Amount*</label>
+              <Input
+                type="number"
+                value={arrearsAmount}
+                onChange={(e) => setArrearsAmount(e.target.value)}
+                placeholder="Enter amount"
+                min={0}
+              />
+            </div>
+            <div>
+              <label>Reason (optional)</label>
+              <Input
+                value={arrearsReason}
+                onChange={(e) => setArrearsReason(e.target.value)}
+                placeholder="E.g. Late payment / outstanding" 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setArrearsDialogOpen(false)}
+              disabled={isDeductingArrears}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeductToArrears}
+              disabled={isDeductingArrears}
+            >
+              {isDeductingArrears ? 'Saving...' : 'Deduct'}
             </Button>
           </DialogFooter>
         </DialogContent>

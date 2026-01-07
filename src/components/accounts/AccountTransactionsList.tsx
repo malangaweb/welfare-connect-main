@@ -144,6 +144,8 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
         query = query.eq('transaction_type', 'renewal');
       } else if (title.toLowerCase().includes('penalty')) {
         query = query.eq('transaction_type', 'penalty');
+      } else if (title.toLowerCase().includes('arrears')) {
+        query = query.eq('transaction_type', 'arrears');
       } else if (title.toLowerCase().includes('suspense')) {
         // For suspense account, we need to find transactions not associated with any member
         // First get all members

@@ -83,7 +83,7 @@ export interface Transaction {
   memberId: string;
   caseId?: string;
   amount: number;
-  transactionType: "contribution" | "registration" | "renewal" | "penalty" | "wallet_funding" | "disbursement" | "suspense";
+  transactionType: "contribution" | "registration" | "renewal" | "penalty" | "arrears" | "wallet_funding" | "disbursement" | "suspense";
   mpesaReference?: string;
   createdAt: Date;
   description: string;

@@ -54,10 +54,10 @@ const Transactions = () => {
           id: t.id,
           memberId: t.member_id,
           caseId: t.case_id || undefined,
-          amount: ['registration', 'renewal', 'penalty', 'contribution'].includes(String(t.transaction_type || '').toLowerCase())
+          amount: ['registration', 'renewal', 'penalty', 'contribution', 'arrears'].includes(String(t.transaction_type || '').toLowerCase())
             ? -Math.abs(Number(t.amount) || 0)
             : Number(t.amount),
-          transactionType: t.transaction_type as "contribution" | "registration" | "renewal" | "penalty" | "wallet_funding" | "disbursement",
+          transactionType: t.transaction_type as "contribution" | "registration" | "renewal" | "penalty" | "arrears" | "wallet_funding" | "disbursement",
           mpesaReference: t.mpesa_reference || undefined,
           createdAt: new Date(t.created_at),
           description: t.description || '',

@@ -7,6 +7,7 @@ import RegistrationAccount from '@/components/accounts/RegistrationAccount';
 import RenewalAccount from '@/components/accounts/RenewalAccount';
 import PenaltyAccount from '@/components/accounts/PenaltyAccount';
 import SuspenseAccount from '@/components/accounts/SuspenseAccount';
+import ArrearsAccount from '@/components/accounts/ArrearsAccount';
 
 const Accounts = () => {
   const [activeTab, setActiveTab] = useState('registration');
@@ -20,10 +21,11 @@ const Accounts = () => {
         </div>
 
         <Tabs defaultValue="registration" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid grid-cols-4 gap-4 w-full">
+          <TabsList className="grid grid-cols-5 gap-4 w-full">
             <TabsTrigger value="registration">Registration Fees</TabsTrigger>
             <TabsTrigger value="renewal">Renewal Fees</TabsTrigger>
             <TabsTrigger value="penalty">Penalty Fees</TabsTrigger>
+            <TabsTrigger value="arrears">Arrears Account</TabsTrigger>
             <TabsTrigger value="suspense">Suspense Account</TabsTrigger>
           </TabsList>
 
@@ -37,6 +39,10 @@ const Accounts = () => {
 
           <TabsContent value="penalty" className="space-y-6">
             <PenaltyAccount />
+          </TabsContent>
+
+          <TabsContent value="arrears" className="space-y-6">
+            <ArrearsAccount />
           </TabsContent>
 
           <TabsContent value="suspense" className="space-y-6">
