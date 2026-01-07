@@ -78,10 +78,12 @@ const TransactionDetailModal = ({ transaction, isOpen, onClose }: TransactionDet
 
   if (!transaction) return null;
 
-  const getTransactionIcon = (type: string) => {
+  const getTransactionIcon = (type: string, amount: number) => {
     switch (type) {
       case 'contribution':
-        return <ArrowUpRight className="h-6 w-6 text-green-500" />;
+        return amount < 0
+          ? <ArrowDownLeft className="h-6 w-6 text-red-500" />
+          : <ArrowUpRight className="h-6 w-6 text-green-500" />;
       case 'disbursement':
         return <ArrowDownLeft className="h-6 w-6 text-red-500" />;
       case 'registration':
@@ -148,7 +150,7 @@ const TransactionDetailModal = ({ transaction, isOpen, onClose }: TransactionDet
         <div className="space-y-6 py-4">
           <div className="flex items-center justify-center mb-4">
             <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-              {getTransactionIcon(transaction.transactionType)}
+              {getTransactionIcon(transaction.transactionType, transaction.amount)}
             </div>
           </div>
           
@@ -164,12 +166,8 @@ const TransactionDetailModal = ({ transaction, isOpen, onClose }: TransactionDet
             
             <div className="space-y-1">
               <p className="text-sm font-medium text-muted-foreground">Amount</p>
-              <p className={`font-semibold ${
-                ['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
-                  ? 'text-green-600' 
-                  : 'text-red-600'
-              }`}>
-                {['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
+              <p className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {transaction.amount < 0 ? '-' : '+'}
                 KES {Math.abs(transaction.amount).toLocaleString()}
               </p>
             </div>

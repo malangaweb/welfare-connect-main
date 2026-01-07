@@ -431,13 +431,20 @@ const MemberDetails = () => {
       // Fetch all transactions for this member and sum the amount
       const { data: transactions, error: txError } = await supabase
         .from('transactions')
-        .select('amount')
+        .select('amount, transaction_type')
         .eq('member_id', id);
       if (txError) {
         console.error('Error fetching transactions:', txError);
         throw txError;
       }
-      const walletBalance = (transactions || []).reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+      const walletBalance = (transactions || []).reduce((sum, tx: any) => {
+        const amount = Number(tx.amount) || 0;
+        const type = String(tx.transaction_type || '').toLowerCase();
+        const normalizedAmount = ['registration', 'renewal', 'penalty', 'contribution'].includes(type)
+          ? -Math.abs(amount)
+          : amount;
+        return sum + normalizedAmount;
+      }, 0);
       setMember({ ...memberWithDependants, walletBalance });
     } catch (error) {
       console.error('Error in fetchMember:', error);

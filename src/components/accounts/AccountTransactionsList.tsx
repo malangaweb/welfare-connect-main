@@ -363,20 +363,8 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
                     KES {(isRenewalAccount ? Math.abs(transaction.amount) : transaction.amount).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      transaction.transactionType === 'contribution' || 
-                      transaction.transactionType === 'registration' || 
-                      transaction.transactionType === 'renewal' || 
-                      transaction.transactionType === 'penalty' || 
-                      transaction.transactionType === 'wallet_funding'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {transaction.transactionType === 'contribution' 
-                        ? 'Credit' 
-                        : transaction.transactionType === 'disbursement'
-                          ? 'Debit'
-                          : transaction.transactionType.replace('_', ' ')}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${transaction.amount < 0 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                      {transaction.amount < 0 ? 'Debit' : 'Credit'}
                     </span>
                   </TableCell>
                   {title.toLowerCase().includes('suspense') && (

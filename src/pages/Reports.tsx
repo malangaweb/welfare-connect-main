@@ -385,10 +385,10 @@ const Reports = () => {
   const totalActiveCases = cases.filter(c => c.isActive).length;
   const totalContributions = transactions
     .filter(tx => tx.description && tx.description.toLowerCase().startsWith('contribution'))
-    .reduce((acc, tx) => acc + Number(tx.amount), 0);
+    .reduce((acc, tx) => acc + Math.abs(Number(tx.amount) || 0), 0);
   const totalRegistrationFees = transactions
     .filter(tx => tx.description && tx.description.toLowerCase().startsWith('registration'))
-    .reduce((acc, tx) => acc + Number(tx.amount), 0);
+    .reduce((acc, tx) => acc + Math.abs(Number(tx.amount) || 0), 0);
 
   // TOTAL COLLECTED: by rule, count of members walletBalance >= 0 * per-member-contribution
   let defaultContribution = 0;
@@ -413,7 +413,7 @@ const Reports = () => {
       if (tx.description && tx.description.toLowerCase().startsWith('contribution')) {
         const date = new Date(tx.created_at);
         const key = `${date.getFullYear()}-${date.getMonth() + 1}`;
-        map.set(key, (map.get(key) || 0) + Number(tx.amount));
+        map.set(key, (map.get(key) || 0) + Math.abs(Number(tx.amount) || 0));
       }
     });
     return Array.from(map.entries()).map(([month, amount]) => ({ month, amount }));
@@ -624,7 +624,7 @@ const Reports = () => {
                   })
                 : [];
               
-              const totalCollected = caseTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
+              const totalCollected = caseTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount) || 0), 0);
               const expectedAmount = selectedCase?.expectedAmount || 0;
               const collectionPercentage = expectedAmount > 0 ? (totalCollected / expectedAmount) * 100 : 0;
               

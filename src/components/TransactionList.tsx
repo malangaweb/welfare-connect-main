@@ -32,10 +32,12 @@ const TransactionList = ({ transactions, loading = false, renderAction }: Transa
     setIsModalOpen(false);
   };
 
-  const getTransactionIcon = (type: string) => {
+  const getTransactionIcon = (type: string, amount: number) => {
     switch (type) {
       case 'contribution':
-        return <ArrowUpRight className="h-4 w-4 text-green-500" />;
+        return amount < 0
+          ? <ArrowDownLeft className="h-4 w-4 text-red-500" />
+          : <ArrowUpRight className="h-4 w-4 text-green-500" />;
       case 'disbursement':
         return <ArrowDownLeft className="h-4 w-4 text-red-500" />;
       case 'registration':
@@ -108,7 +110,7 @@ const TransactionList = ({ transactions, loading = false, renderAction }: Transa
           >
             <div className="flex items-center space-x-5 flex-1 cursor-pointer" onClick={() => handleTransactionClick(transaction)}>
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm">
-                {getTransactionIcon(transaction.transactionType)}
+                {getTransactionIcon(transaction.transactionType, transaction.amount)}
               </div>
               <div>
                 <p className="font-semibold text-base text-foreground">{getTransactionTitle(transaction.transactionType)}</p>
@@ -119,12 +121,8 @@ const TransactionList = ({ transactions, loading = false, renderAction }: Transa
               </div>
             </div>
             <div className="flex flex-col items-end min-w-[140px] h-full">
-              <p className={`text-lg font-bold tracking-tight ${
-                ['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) 
-                  ? 'text-green-600' 
-                  : 'text-red-600'
-              }`}>
-                {['contribution', 'registration', 'penalty', 'wallet_funding'].includes(transaction.transactionType) ? '+' : '-'}
+              <p className={`text-lg font-bold tracking-tight ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {transaction.amount < 0 ? '-' : '+'}
                 KES {Math.abs(transaction.amount).toLocaleString()}
               </p>
               <div className="flex flex-col items-end mt-2 space-y-0.5">

@@ -60,7 +60,7 @@ const groupByMonth = (transactions) => {
     }
     
     if (transaction.transaction_type === "contribution") {
-      grouped[month].contributions += transaction.amount || 0;
+      grouped[month].contributions += Math.abs(transaction.amount || 0);
     } else if (transaction.transaction_type === "disbursement") {
       grouped[month].disbursements += transaction.amount || 0;
     }
@@ -112,7 +112,7 @@ const groupContributionsByCaseType = (transactions, cases) => {
       };
     }
     
-    grouped[type].value += transaction.amount || 0;
+    grouped[type].value += Math.abs(transaction.amount || 0);
   });
   
   return Object.values(grouped);
@@ -166,7 +166,7 @@ const MemberReport = () => {
   const monthlyCaseContribData = groupByMonth(caseContributionTransactions);
 
   // Calculate total contributions for case
-  const totalCaseContributions = caseContributionTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const totalCaseContributions = caseContributionTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
   const caseContributionCount = caseContributionTransactions.length;
 
   useEffect(() => {
@@ -219,7 +219,7 @@ const MemberReport = () => {
         setContributionsByType(contribByType);
         
         // Calculate statistics
-        const totalContrib = filteredContribs.reduce((sum, t) => sum + (t.amount || 0), 0);
+        const totalContrib = filteredContribs.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
         const contribCount = filteredContribs.length;
         const totalDisb = (transactionsData || [])
           .filter(t => t.transaction_type === "disbursement")

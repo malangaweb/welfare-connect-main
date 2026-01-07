@@ -142,7 +142,9 @@ const FeeCollectionDialog = ({
       
       // Convert amount to a number
       const amount = parseFloat(values.amount);
-      const transactionAmount = feeType === "renewal" ? -Math.abs(amount) : amount;
+      const transactionAmount = (feeType === "registration" || feeType === "renewal" || feeType === "penalty")
+        ? -Math.abs(amount)
+        : amount;
       
       // Create a transaction record
       const { data: transaction, error: transactionError } = await supabase

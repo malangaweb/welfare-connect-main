@@ -54,7 +54,7 @@ const MemberCases = () => {
           if (transactionsData && c.case_number) {
             collected = transactionsData
               .filter(tx => tx.description && tx.description.toLowerCase().includes(c.case_number.toLowerCase()))
-              .reduce((sum, tx) => sum + Number(tx.amount), 0);
+              .reduce((sum, tx) => sum + Math.abs(Number(tx.amount) || 0), 0);
           }
           return {
             ...c,
@@ -359,8 +359,8 @@ const MemberCases = () => {
                                 </div>
                               )}
                               
-                              <div className="text-green-600 font-semibold whitespace-nowrap">
-                                KES {t.amount?.toLocaleString()}
+                              <div className={`${(Number(t.amount) || 0) < 0 ? 'text-red-600' : 'text-green-600'} font-semibold whitespace-nowrap`}>
+                                {(Number(t.amount) || 0) < 0 ? '-' : '+'} KES {Math.abs(Number(t.amount) || 0).toLocaleString()}
                               </div>
                             </div>
                           </div>

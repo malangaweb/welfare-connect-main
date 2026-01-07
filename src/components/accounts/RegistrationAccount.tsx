@@ -30,7 +30,7 @@ const RegistrationAccount = () => {
         .select('amount')
         .ilike('description', 'Registration%');
       if (!error && data) {
-        const sum = data.reduce((acc, tx) => acc + Number(tx.amount), 0);
+        const sum = data.reduce((acc, tx) => acc + Math.abs(Number(tx.amount) || 0), 0);
         setTotal(sum);
       }
     };

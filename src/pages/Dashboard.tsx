@@ -150,8 +150,8 @@ const Dashboard = () => {
       setTransactions(transactionsData || []);
       // Calculate total contributions
       const total = (transactionsData || [])
-        .filter(t => t.description && t.description.startsWith('Contribution for case'))
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        .filter(t => t.description && t.description.toLowerCase().includes('contribution for case'))
+        .reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
       setTotalContributions(total);
     };
     fetchTransactions();
@@ -252,6 +252,24 @@ const Dashboard = () => {
       console.log('Dashboard - Ziro member found:', ziroInDashboard);
       
       // Map to expected MemberCard props, ensure valid Date objects
+      const recentMemberIds = (membersData || []).map(m => m.id);
+      const walletMap: Record<string, number> = {};
+      if (recentMemberIds.length > 0) {
+        const { data: txData, error: txError } = await supabase
+          .from('transactions')
+          .select('member_id, amount')
+          .in('member_id', recentMemberIds);
+
+        if (txError) {
+          console.error('Dashboard - Error fetching transactions for recent members:', txError);
+        }
+
+        (txData || []).forEach((tx: any) => {
+          const memberId = tx.member_id;
+          walletMap[memberId] = (walletMap[memberId] || 0) + (Number(tx.amount) || 0);
+        });
+      }
+
       const mapped = (membersData || []).map(m => ({
         id: m.id,
         memberNumber: m.member_number,
@@ -265,7 +283,7 @@ const Dashboard = () => {
         nextOfKin: m.next_of_kin,
         dependants: Array.isArray(m.dependants) ? m.dependants : [],
         registrationDate: m.registration_date ? new Date(m.registration_date) : new Date(),
-        walletBalance: m.wallet_balance || 0,
+        walletBalance: walletMap[m.id] ?? 0,
         isActive: m.is_active,
       }));
       setRecentMembers(mapped);
@@ -318,7 +336,7 @@ const Dashboard = () => {
         if (transactionsData && c.case_number) {
           collected = transactionsData
             .filter(tx => tx.description && tx.description.toLowerCase().includes(c.case_number.toLowerCase()))
-            .reduce((sum, tx) => sum + Number(tx.amount), 0);
+            .reduce((sum, tx) => sum + Math.abs(Number(tx.amount) || 0), 0);
         }
         return {
         id: c.id,

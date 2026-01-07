@@ -258,7 +258,7 @@ const Members = () => {
         while (true) {
           const { data: transactionsBatch, error: txError } = await supabase
             .from('transactions')
-            .select('member_id, amount')
+            .select('member_id, amount, transaction_type')
             .range(txFrom, txFrom + txPageSize - 1);
 
           if (txError) {
@@ -302,7 +302,14 @@ const Members = () => {
         // Calculate wallet balance for each member individually (same as member details)
         for (const member of allMembersData) {
           const memberTransactions = allTransactions?.filter(tx => tx.member_id === member.id) || [];
-          const balance = memberTransactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+          const balance = memberTransactions.reduce((sum, tx: any) => {
+            const amount = Number(tx.amount) || 0;
+            const type = String(tx.transaction_type || '').toLowerCase();
+            const normalizedAmount = ['registration', 'contribution'].includes(type)
+              ? -Math.abs(amount)
+              : amount;
+            return sum + normalizedAmount;
+          }, 0);
           walletMap[member.id] = balance;
         }
 
