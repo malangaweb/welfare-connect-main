@@ -47,6 +47,7 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
   const [yearFilter, setYearFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
   const isRenewalAccount = title.toLowerCase().includes('renewal');
+  const toEAT = (date: Date) => new Date(date.getTime() - 3 * 60 * 60 * 1000);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -356,7 +357,7 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
               filteredTransactions.map((transaction) => (
                 <TableRow key={transaction.id}>
                   <TableCell>
-                    {new Date(transaction.createdAt).toLocaleDateString()}
+                    {toEAT(new Date(transaction.createdAt)).toLocaleDateString()}
                   </TableCell>
                   <TableCell>{transaction.description}</TableCell>
                   <TableCell>Member #{transaction.memberId.substring(0, 8)}</TableCell>
@@ -408,7 +409,7 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
                   <div><span className="font-medium">Amount:</span> KES {(isRenewalAccount ? Math.abs(selectedTransaction.amount) : selectedTransaction.amount).toLocaleString()}</div>
                   <div><span className="font-medium">Description:</span> {selectedTransaction.description}</div>
                   <div><span className="font-medium">Reference:</span> {selectedTransaction.mpesaReference || 'N/A'}</div>
-                  <div><span className="font-medium">Date:</span> {new Date(selectedTransaction.createdAt).toLocaleDateString()}</div>
+                  <div><span className="font-medium">Date:</span> {toEAT(new Date(selectedTransaction.createdAt)).toLocaleDateString()}</div>
                 </div>
               </div>
               

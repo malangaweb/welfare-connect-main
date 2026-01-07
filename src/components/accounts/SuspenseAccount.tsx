@@ -16,6 +16,7 @@ const SuspenseAccount = () => {
   const [totalDebits, setTotalDebits] = useState(0);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const toEAT = (date: Date) => new Date(date.getTime() - 3 * 60 * 60 * 1000);
 
   const fetchSuspenseTransactions = async () => {
     setIsLoading(true);
@@ -128,7 +129,7 @@ const SuspenseAccount = () => {
                 {transactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(tx.createdAt).toLocaleString()}
+                      {toEAT(new Date(tx.createdAt)).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {tx.mpesaReference || 'N/A'}
