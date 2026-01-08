@@ -46,8 +46,57 @@ const Users = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-1">User Management</h1>
-          <p className="text-muted-foreground">Manage system administrators and user accounts</p>
+          <p className="text-muted-foreground">Manage system administrators and their roles</p>
         </div>
+
+        {/* Admin Management Section */}
+        {isSuperAdmin && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Add New Administrator
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Create new administrator accounts with different roles. Each admin must be linked to an existing member record.
+                </p>
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Add New Admin
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent className="flex flex-col overflow-hidden">
+                    <SheetHeader className="flex-shrink-0">
+                      <SheetTitle>Create New Administrator</SheetTitle>
+                    </SheetHeader>
+                    <div className="flex-1 overflow-y-auto py-6">
+                      <UserSetupForm onSuccess={handleUserAdded} />
+                    </div>
+                  </SheetContent>
+                </Sheet>
+                <div className="mt-4 p-4 bg-background rounded-lg border">
+                  <h4 className="font-semibold mb-2 text-sm">Available Roles:</h4>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li>
+                      <span className="font-medium text-foreground">Super Administrator:</span> Full system access including user management, role assignment, and all administrative functions.
+                    </li>
+                    <li>
+                      <span className="font-medium text-foreground">Administrator:</span> Administrative access to manage system operations, members, cases, and transactions.
+                    </li>
+                    <li>
+                      <span className="font-medium text-foreground">Member:</span> Limited access for regular members to view their own information and cases.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">System Users</h2>
@@ -56,31 +105,12 @@ const Users = () => {
               <RefreshCw className={`h-4 w-4 mr-2`} />
               Refresh
             </Button>
-            
-            {isSuperAdmin && (
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add New Admin
-                  </Button>
-                </SheetTrigger>
-                <SheetContent>
-                  <SheetHeader>
-                    <SheetTitle>Create New Administrator</SheetTitle>
-                  </SheetHeader>
-                  <div className="py-6">
-                    <UserSetupForm onSuccess={handleUserAdded} />
-                  </div>
-                </SheetContent>
-              </Sheet>
-            )}
           </div>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>System Administrators</CardTitle>
+            <CardTitle>All System Users</CardTitle>
           </CardHeader>
           <CardContent>
             <UsersList key={refreshTrigger} />

@@ -15,6 +15,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await supabase.auth.signOut();
       localStorage.removeItem('token');
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('member_member_id');
+      localStorage.removeItem('member_name');
       navigate('/login');
     } catch (error) {
       console.error('Error signing out:', error);

@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/use-toast';
+import EditUserRoleDialog from './EditUserRoleDialog';
 
 const UsersList = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -31,6 +32,7 @@ const UsersList = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [showRoleDialog, setShowRoleDialog] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
 
   useEffect(() => {
@@ -152,9 +154,9 @@ const UsersList = () => {
       const tempPassword = Math.random().toString(36).slice(-8);
       
       const { error } = await supabase
-        .from('user_credentials')
+        .from('users')
         .update({ password: tempPassword })
-        .eq('user_id', selectedUser.id);
+        .eq('id', selectedUser.id);
         
       if (error) throw error;
       
@@ -184,6 +186,10 @@ const UsersList = () => {
     if (user.role === UserRole.SUPER_ADMIN && user.id !== currentUser.id) return false;
     
     return true;
+  };
+
+  const handleRoleUpdate = () => {
+    fetchUsers();
   };
 
   if (loading) {
@@ -251,6 +257,14 @@ const UsersList = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Role edit dialog */}
+      <EditUserRoleDialog
+        user={selectedUser}
+        open={showRoleDialog}
+        onOpenChange={setShowRoleDialog}
+        onSuccess={handleRoleUpdate}
+      />
+
       {users.map((user) => (
         <div 
           key={user.id} 
@@ -284,6 +298,14 @@ const UsersList = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedUser(user);
+                      setShowRoleDialog(true);
+                    }}
+                  >
+                    Edit Role
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
                       setSelectedUser(user);

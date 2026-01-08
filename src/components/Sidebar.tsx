@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { UserRole } from '@/lib/types';
 import { 
   Users, 
   FileText, 
@@ -37,9 +38,23 @@ const defaultLinks = [
 const Sidebar = ({ sidebarItems }) => {
   const { logout } = useAuth();
   const location = useLocation();
+
+  const currentUserRole = (() => {
+    const userStr = localStorage.getItem('currentUser');
+    if (!userStr) return null;
+    try {
+      const user = JSON.parse(userStr);
+      return (user?.role as UserRole | undefined) || null;
+    } catch {
+      return null;
+    }
+  })();
   
   // Use the passed sidebarItems if provided, otherwise use the default ones
-  const items = sidebarItems || defaultLinks;
+  const items = (sidebarItems || defaultLinks).filter((item) => {
+    if (item.href !== '/users') return true;
+    return currentUserRole === UserRole.SUPER_ADMIN;
+  });
   
   // Debug logging to see what's happening
   useEffect(() => {

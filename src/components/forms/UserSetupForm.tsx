@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -12,6 +11,7 @@ import { toast } from '@/components/ui/use-toast';
 import { UserRole } from '@/lib/types';
 
 const formSchema = z.object({
+  memberNumber: z.string().min(1, 'Member number is required'),
   username: z.string().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   name: z.string().min(2, 'Name is required'),
@@ -29,6 +29,7 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      memberNumber: '',
       username: '',
       password: '',
       name: '',
@@ -40,6 +41,20 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
     try {
+      const { data: memberRow, error: memberError } = await supabase
+        .from('members')
+        .select('id, member_number, name, is_active')
+        .eq('member_number', values.memberNumber)
+        .maybeSingle();
+
+      if (memberError) throw memberError;
+      if (!memberRow) {
+        throw new Error('No member found with that member number');
+      }
+      if (!memberRow.is_active) {
+        throw new Error('That member record is inactive');
+      }
+
       // Check if user already exists
       const { data: existingUsers, error: checkError } = await supabase
         .from('users')
@@ -52,31 +67,22 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
         throw new Error('Username already exists');
       }
       
-      // Create new user
+      // Create new user with password
       const { data, error } = await supabase
         .from('users')
         .insert({
           username: values.username,
           name: values.name,
           email: values.email, // Store the email address
+          password: values.password, // In a real app, this would be hashed
           role: values.role,
           is_active: true,
+          member_id: memberRow.id,
         })
         .select()
         .single();
         
       if (error) throw error;
-      
-      // Store credentials (in a real app, you'd use proper authentication, 
-      // but for demo we'll store hashed passwords directly)
-      const { error: credError } = await supabase
-        .from('user_credentials')
-        .insert({
-          user_id: data.id,
-          password: values.password, // In a real app, this would be hashed
-        });
-        
-      if (credError) throw credError;
       
       form.reset();
       onSuccess();
@@ -94,7 +100,21 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 pb-4">
+        <FormField
+          control={form.control}
+          name="memberNumber"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Member Number (link admin to member)</FormLabel>
+              <FormControl>
+                <Input placeholder="e.g. 1" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="name"
@@ -176,9 +196,14 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
           )}
         />
 
-        <div className="flex justify-end">
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating...' : 'Create User'}
+        <div className="flex justify-end gap-2 pt-6 mt-6 border-t pt-4">
+          <Button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="min-w-[120px]"
+            size="lg"
+          >
+            {isSubmitting ? 'Creating...' : 'Create Admin'}
           </Button>
         </div>
       </form>

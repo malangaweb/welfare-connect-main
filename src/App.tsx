@@ -19,6 +19,7 @@ import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { UserRole } from "@/lib/types";
 import MemberLogin from "./pages/MemberLogin";
 import MemberDashboard from "./pages/members/MemberDashboard";
 import MemberProtectedRoute from "@/components/MemberProtectedRoute";
@@ -121,7 +122,7 @@ const App = () => (
           <Route
             path="/users"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={[UserRole.SUPER_ADMIN]}>
                 <Users />
               </ProtectedRoute>
             }

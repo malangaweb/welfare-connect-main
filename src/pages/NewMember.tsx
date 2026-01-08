@@ -134,12 +134,13 @@ const NewMember = () => {
             throw new Error('Username already exists. Please choose a different username.');
           }
           
-          // Create user record in users table using service role client
+          // Create user record in users table with password using service role client
           const { data: userData, error: userError } = await supabaseAdmin
             .from('users')
             .insert({
               username: data.credentials.username,
               name: data.name,
+              password: data.credentials.password, // In a real app, this would be hashed
               role: 'member',
               is_active: true,
               member_id: memberData.id
@@ -152,16 +153,6 @@ const NewMember = () => {
           if (!userData) {
             throw new Error('Failed to create user account');
           }
-          
-          // Create credentials
-          const { error: credError } = await supabaseAdmin
-            .from('user_credentials')
-            .insert({
-              user_id: userData.id,
-              password: data.credentials.password
-            });
-            
-          if (credError) throw credError;
         } catch (error) {
           console.error('Error creating user account:', error);
           // Don't throw, just log the error

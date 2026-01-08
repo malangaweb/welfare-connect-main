@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { supabase } from '@/integrations/supabase/client';
+import { UserRole } from '@/lib/types';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -31,25 +32,27 @@ const Login = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check if user is already logged in
+  // Check if user is already logged in (only on mount)
   useEffect(() => {
     const checkSession = async () => {
       // Check Supabase session first
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
         return;
       }
       
       // Fallback to token check
       const token = localStorage.getItem('token');
-      if (token) {
-        navigate('/dashboard');
+      const currentUser = localStorage.getItem('currentUser');
+      if (token && currentUser) {
+        navigate('/dashboard', { replace: true });
       }
     };
     
     checkSession();
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Initialize form with react-hook-form
   const form = useForm<LoginFormValues>({
@@ -67,82 +70,62 @@ const Login = () => {
     try {
       console.log('Login attempt:', values.username);
       
-      // For demo credentials: maintain a list of demo users
-      const demoUsers: Array<{ username: string; password: string; email: string }> = [
-        { username: 'admin', password: 'password', email: 'admin@example.com' },
-        { username: 'nguma', password: 'Ngum@2030', email: 'ngumanyiro@gmail.com' },
-        { username: 'kitti', password: 'Kitti@2025', email: 'kitti@gmail.com' },
-        // Add more demo users here as needed
-      ];
+      // Database-backed admin login (admins are members linked via users.member_id)
+      const { data: userRow, error: userError } = await supabase
+        .from('users')
+        .select('id, username, name, email, password, role, member_id, is_active')
+        .eq('username', values.username)
+        .maybeSingle();
 
-      const matchedDemo = demoUsers.find(
-        (u) => u.username === values.username && u.password === values.password
-      );
-
-      if (matchedDemo) {
-        // Special handling for demo users
-        // First try to sign in with Supabase (if configured)
-        try {
-          const { error } = await supabase.auth.signInWithPassword({
-            email: matchedDemo.email,
-            password: values.password,
-          });
-
-          if (!error) {
-            // Set token for our app
-            localStorage.setItem('token', `demo-${matchedDemo.username}-token`);
-
-            // Add small delay to allow state to update
-            setTimeout(() => {
-              navigate("/dashboard");
-            }, 100);
-
-            return;
-          }
-        } catch (authError) {
-          console.warn('Supabase auth failed, using fallback:', authError);
-        }
-
-        // Fallback for demo if Supabase auth fails
-        localStorage.setItem('token', `demo-${matchedDemo.username}-token`);
-
-        // Toast notification for successful login
-        toast({
-          title: "Login successful",
-          description: `Welcome, ${matchedDemo.username}!`,
-        });
-
-        // Add small delay to allow state to update
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 100);
-
-        return;
+      if (userError) throw userError;
+      if (!userRow) {
+        throw new Error('Invalid credentials. Please try again.');
       }
-      
-      // Regular Supabase login for non-demo users
-      const { error } = await supabase.auth.signInWithPassword({ 
-        email: values.username, 
-        password: values.password 
-      });
-      
-      if (error) {
-        throw error;
+
+      if (!userRow.is_active) {
+        throw new Error('Account is inactive. Please contact support.');
       }
-      
+
+      // Verify password
+      if (!userRow.password || userRow.password !== values.password) {
+        throw new Error('Invalid credentials. Please try again.');
+      }
+
+      // Enforce that admins must be linked to a member
+      const role = (userRow.role || '').toLowerCase();
+      const isAdminRole = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
+      if (!isAdminRole) {
+        throw new Error('This account does not have admin access.');
+      }
+      if (!userRow.member_id) {
+        throw new Error('Admin account is not linked to a member record.');
+      }
+
       // Set token for our app
       localStorage.setItem('token', 'authenticated');
+
+      localStorage.setItem(
+        'currentUser',
+        JSON.stringify({
+          id: userRow.id,
+          username: userRow.username,
+          name: userRow.name,
+          email: userRow.email || undefined,
+          role: userRow.role,
+          memberId: userRow.member_id,
+          isActive: userRow.is_active,
+        })
+      );
       
       // Toast notification for successful login
       toast({
         title: "Login successful",
-        description: "Welcome to the admin dashboard!",
+        description: `Welcome, ${userRow.name}!`,
       });
       
-      // Add small delay to allow state to update
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 100);
+      // Navigate immediately
+      setIsLoading(false);
+      navigate("/dashboard", { replace: true });
       
     } catch (error: any) {
       console.error('Login error:', error);
