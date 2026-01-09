@@ -16,7 +16,7 @@ const formSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   name: z.string().min(2, 'Name is required'),
   email: z.string().email('Please enter a valid email address'),
-  role: z.enum([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
+  role: z.enum([UserRole.SUPER_ADMIN, UserRole.CHAIRPERSON, UserRole.TREASURER, UserRole.SECRETARY]),
 });
 
 interface UserSetupFormProps {
@@ -34,7 +34,7 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
       password: '',
       name: '',
       email: '',
-      role: UserRole.ADMIN,
+      role: UserRole.CHAIRPERSON,
     },
   });
 
@@ -187,8 +187,10 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value={UserRole.ADMIN}>Administrator</SelectItem>
                   <SelectItem value={UserRole.SUPER_ADMIN}>Super Administrator</SelectItem>
+                  <SelectItem value={UserRole.CHAIRPERSON}>Chairperson</SelectItem>
+                  <SelectItem value={UserRole.TREASURER}>Treasurer</SelectItem>
+                  <SelectItem value={UserRole.SECRETARY}>Secretary</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

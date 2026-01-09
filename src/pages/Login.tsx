@@ -93,7 +93,10 @@ const Login = () => {
 
       // Enforce that admins must be linked to a member
       const role = (userRow.role || '').toLowerCase();
-      const isAdminRole = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
+      const isAdminRole = role === UserRole.SUPER_ADMIN || 
+                         role === UserRole.CHAIRPERSON || 
+                         role === UserRole.TREASURER || 
+                         role === UserRole.SECRETARY;
       if (!isAdminRole) {
         throw new Error('This account does not have admin access.');
       }

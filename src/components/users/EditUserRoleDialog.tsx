@@ -28,7 +28,7 @@ interface EditUserRoleDialogProps {
 }
 
 const EditUserRoleDialog = ({ user, open, onOpenChange, onSuccess }: EditUserRoleDialogProps) => {
-  const [selectedRole, setSelectedRole] = useState<UserRole>(user?.role || UserRole.ADMIN);
+  const [selectedRole, setSelectedRole] = useState<UserRole>(user?.role || UserRole.CHAIRPERSON);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Update selected role when user changes
@@ -73,8 +73,12 @@ const EditUserRoleDialog = ({ user, open, onOpenChange, onSuccess }: EditUserRol
     switch (role) {
       case UserRole.SUPER_ADMIN:
         return 'Super Administrator';
-      case UserRole.ADMIN:
-        return 'Administrator';
+      case UserRole.CHAIRPERSON:
+        return 'Chairperson';
+      case UserRole.TREASURER:
+        return 'Treasurer';
+      case UserRole.SECRETARY:
+        return 'Secretary';
       case UserRole.MEMBER:
         return 'Member';
       default:
@@ -105,14 +109,16 @@ const EditUserRoleDialog = ({ user, open, onOpenChange, onSuccess }: EditUserRol
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={UserRole.SUPER_ADMIN}>Super Administrator</SelectItem>
-                <SelectItem value={UserRole.ADMIN}>Administrator</SelectItem>
-                <SelectItem value={UserRole.MEMBER}>Member</SelectItem>
+                <SelectItem value={UserRole.CHAIRPERSON}>Chairperson</SelectItem>
+                <SelectItem value={UserRole.TREASURER}>Treasurer</SelectItem>
+                <SelectItem value={UserRole.SECRETARY}>Secretary</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-2">
               {selectedRole === UserRole.SUPER_ADMIN && "Full system access including user management"}
-              {selectedRole === UserRole.ADMIN && "Administrative access to manage system operations"}
-              {selectedRole === UserRole.MEMBER && "Limited access for regular members"}
+              {selectedRole === UserRole.CHAIRPERSON && "Leadership role with full administrative access"}
+              {selectedRole === UserRole.TREASURER && "Financial management and transaction oversight"}
+              {selectedRole === UserRole.SECRETARY && "Administrative access to manage records and operations"}
             </p>
           </div>
         </div>

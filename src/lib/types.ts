@@ -19,7 +19,9 @@ export enum DisbursementMethod {
 
 export enum UserRole {
   SUPER_ADMIN = "super_admin",
-  ADMIN = "admin",
+  CHAIRPERSON = "chairperson",
+  TREASURER = "treasurer",
+  SECRETARY = "secretary",
   MEMBER = "member"
 }
 

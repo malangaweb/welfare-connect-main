@@ -5,7 +5,7 @@ import { UserRole } from "@/lib/types";
 
 export default function ProtectedRoute({
   children,
-  allowedRoles = [UserRole.ADMIN, UserRole.SUPER_ADMIN],
+  allowedRoles = [UserRole.SUPER_ADMIN, UserRole.CHAIRPERSON, UserRole.TREASURER, UserRole.SECRETARY],
 }: {
   children: React.ReactNode;
   allowedRoles?: UserRole[];

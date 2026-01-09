@@ -80,16 +80,19 @@ const Users = () => {
                   </SheetContent>
                 </Sheet>
                 <div className="mt-4 p-4 bg-background rounded-lg border">
-                  <h4 className="font-semibold mb-2 text-sm">Available Roles:</h4>
+                  <h4 className="font-semibold mb-2 text-sm">Available Admin Roles:</h4>
                   <ul className="space-y-2 text-sm text-muted-foreground">
                     <li>
                       <span className="font-medium text-foreground">Super Administrator:</span> Full system access including user management, role assignment, and all administrative functions.
                     </li>
                     <li>
-                      <span className="font-medium text-foreground">Administrator:</span> Administrative access to manage system operations, members, cases, and transactions.
+                      <span className="font-medium text-foreground">Chairperson:</span> Leadership role with full administrative access to manage system operations, members, cases, and transactions.
                     </li>
                     <li>
-                      <span className="font-medium text-foreground">Member:</span> Limited access for regular members to view their own information and cases.
+                      <span className="font-medium text-foreground">Treasurer:</span> Financial management role with access to manage transactions, accounts, and financial operations.
+                    </li>
+                    <li>
+                      <span className="font-medium text-foreground">Secretary:</span> Administrative access to manage records, members, cases, and system operations.
                     </li>
                   </ul>
                 </div>

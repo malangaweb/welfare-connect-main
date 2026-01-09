@@ -86,7 +86,11 @@ const UsersList = () => {
     switch (role) {
       case UserRole.SUPER_ADMIN:
         return 'bg-red-100 text-red-800 hover:bg-red-200';
-      case UserRole.ADMIN:
+      case UserRole.CHAIRPERSON:
+        return 'bg-purple-100 text-purple-800 hover:bg-purple-200';
+      case UserRole.TREASURER:
+        return 'bg-green-100 text-green-800 hover:bg-green-200';
+      case UserRole.SECRETARY:
         return 'bg-blue-100 text-blue-800 hover:bg-blue-200';
       default:
         return 'bg-gray-100 text-gray-800 hover:bg-gray-200';
@@ -97,8 +101,12 @@ const UsersList = () => {
     switch (role) {
       case UserRole.SUPER_ADMIN:
         return 'Super Admin';
-      case UserRole.ADMIN:
-        return 'Administrator';
+      case UserRole.CHAIRPERSON:
+        return 'Chairperson';
+      case UserRole.TREASURER:
+        return 'Treasurer';
+      case UserRole.SECRETARY:
+        return 'Secretary';
       case UserRole.MEMBER:
         return 'Member';
       default:

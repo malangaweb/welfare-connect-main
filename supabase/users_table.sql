@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255),
   password VARCHAR(255) NOT NULL,
-  role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('super_admin', 'admin', 'member')),
+  role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('super_admin', 'chairperson', 'treasurer', 'secretary', 'member')),
   member_id UUID REFERENCES members(id) ON DELETE SET NULL,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
