@@ -125,7 +125,7 @@ export class MpesaClient {
       PhoneNumber: phone,
       AccountReference: request.accountReference,
       TransactionDesc: request.transactionDesc,
-      CallBackURL: `${process.env.VITE_APP_URL || 'http://localhost:5173'}/api/mpesa/callback`,
+      CallBackURL: `${import.meta.env.VITE_APP_URL || 'http://localhost:5173'}/api/mpesa/callback`,
     };
 
     const response = await fetch(
@@ -200,8 +200,8 @@ export class MpesaClient {
       PartyA: this.config.shortCode,
       PartyB: phone,
       Remarks: reason,
-      QueueTimeOutURL: `${process.env.VITE_APP_URL || 'http://localhost:5173'}/api/mpesa/timeout`,
-      ResultURL: `${process.env.VITE_APP_URL || 'http://localhost:5173'}/api/mpesa/b2c-callback`,
+      QueueTimeOutURL: `${import.meta.env.VITE_APP_URL || 'http://localhost:5173'}/api/mpesa/timeout`,
+      ResultURL: `${import.meta.env.VITE_APP_URL || 'http://localhost:5173'}/api/mpesa/b2c-callback`,
     };
 
     const response = await fetch(

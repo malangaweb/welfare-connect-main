@@ -3,6 +3,25 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+// Server-only secrets that must not be embedded in the client bundle.
+// These are set with VITE_ prefix in the Netlify environment but are only
+// used by server-side code (Supabase Edge Functions / Netlify Functions).
+// Deleting them from process.env before Vite collects them prevents
+// their values from leaking into the built JavaScript.
+const serverOnlyEnvVars = [
+  'VITE_SENDGRID_API_KEY',
+  'VITE_SMS_API_KEY',
+  'VITE_MPESA_CONSUMER_KEY',
+  'VITE_MPESA_CONSUMER_SECRET',
+  'VITE_MPESA_PASSKEY',
+  'VITE_REDIS_URL',
+  'VITE_REDIS_TOKEN',
+];
+
+for (const key of serverOnlyEnvVars) {
+  delete process.env[key];
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
