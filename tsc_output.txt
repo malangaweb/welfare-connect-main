@@ -1,0 +1,10 @@
+﻿src/lib/mpesa-types.ts(1,1): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(1,6): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(1,9): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(1,17): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(1,21): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(3,1): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(3,14): error TS1146: Declaration expected.
+src/lib/mpesa-types.ts(5,1): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(5,4): error TS1434: Unexpected keyword or identifier.
+src/lib/mpesa-types.ts(7,1): error TS1005: ':' expected.

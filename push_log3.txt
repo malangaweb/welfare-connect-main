@@ -1,0 +1,450 @@
+open C:\Users\ADMIN\.supabase\profile: The system cannot find the path specified.
+Loading project ref from file: supabase\.temp\project-ref
+Using connection pooler: postgresql://postgres.hfojxbfcjozguobwtcgt@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+Initialising login role...
+Using access token for profile: supabase
+Supabase CLI 2.78.1
+Using profile: supabase (supabase.co)
+Connecting to remote database...
+2026/03/14 01:50:58 PG Send: {"Type":"StartupMessage","ProtocolVersion":196608,"Parameters":{"database":"postgres","user":"cli_login_postgres.hfojxbfcjozguobwtcgt"}}
+2026/03/14 01:50:58 PG Recv: {"Type":"AuthenticationSASL","AuthMechanisms":["SCRAM-SHA-256"]}
+2026/03/14 01:50:58 PG Send: {"Type":"SASLInitialResponse","AuthMechanism":"SCRAM-SHA-256","Data":"n,,n=,r=tr1BVV5SB0Xn6UAz7HYN4Dkj"}
+2026/03/14 01:50:58 PG Recv: {"Type":"AuthenticationSASLContinue","Data":"r=tr1BVV5SB0Xn6UAz7HYN4DkjRU9UUEtqNEdiWGM0L2w2N3R0Y010eHNSSC9nVXhnPT0=,s=lAEmqNARaRBHU2uTvUYGLg==,i=4096"}
+2026/03/14 01:50:58 PG Send: {"Type":"SASLResponse","Data":"c=biws,r=tr1BVV5SB0Xn6UAz7HYN4DkjRU9UUEtqNEdiWGM0L2w2N3R0Y010eHNSSC9nVXhnPT0=,p=yHQnNLHM5aEx7fu1UauVd0isIT3Xz2aft8qpDrUpXBQ="}
+2026/03/14 01:50:59 PG Recv: {"Type":"AuthenticationSASLFinal","Data":"v=wjzWaHdSrRjmfjoLP/9iQaJbydDVI/mXVwetkTkOicc="}
+2026/03/14 01:50:59 PG Recv: {"Type":"AuthenticationOK"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"DateStyle","Value":"ISO, MDY"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"IntervalStyle","Value":"postgres"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"TimeZone","Value":"UTC"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"application_name","Value":"Supavisor"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"client_encoding","Value":"UTF8"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"default_transaction_read_only","Value":"off"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"in_hot_standby","Value":"off"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"integer_datetimes","Value":"on"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"is_superuser","Value":"off"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"server_encoding","Value":"UTF8"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"server_version","Value":"15.8"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"session_authorization","Value":"cli_login_postgres"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterStatus","Name":"standard_conforming_strings","Value":"on"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BackendKeyData","ProcessID":2585160499,"SecretKey":4641612}
+2026/03/14 01:50:59 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+2026/03/14 01:50:59 PG Send: {"Type":"Query","String":"SET SESSION ROLE postgres"}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"SET"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"lrupsc_1_0","Query":"SELECT version FROM supabase_migrations.schema_migrations ORDER BY version","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"S","Name":"lrupsc_1_0"}
+2026/03/14 01:50:59 PG Send: {"Type":"Sync"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParameterDescription","ParameterOIDs":[]}
+2026/03/14 01:50:59 PG Recv: {"Type":"RowDescription","Fields":[{"Name":"version","TableOID":270637,"TableAttributeNumber":1,"DataTypeOID":25,"DataTypeSize":-1,"TypeModifier":-1,"Format":0}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"lrupsc_1_0","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[0]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Sync"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"RowDescription","Fields":[{"Name":"version","TableOID":270637,"TableAttributeNumber":1,"DataTypeOID":25,"DataTypeSize":-1,"TypeModifier":-1,"Format":0}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"DataRow","Values":[{"text":"20231217000000"}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"DataRow","Values":[{"text":"20231217000001"}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"DataRow","Values":[{"text":"20260307000001"}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"DataRow","Values":[{"text":"20260307000002"}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"DataRow","Values":[{"text":"20260307000003"}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"DataRow","Values":[{"text":"20260307000004"}]}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"SELECT 6"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+Do you want to push these migrations to the remote database?
+ • 20260307000005_add_performance_indexes.sql
+ • 20260307000006_add_rls_policies.sql
+ • 20260307000007_add_rate_limiting.sql
+
+ [Y/n] y
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"SET lock_timeout = '4s'","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE SCHEMA IF NOT EXISTS supabase_migrations","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[]","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS name text","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Sync"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"NoData"}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"SET"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"NoData"}
+2026/03/14 01:50:59 PG Recv: {"Severity":"NOTICE","SeverityUnlocalized":"NOTICE","Code":"42P06","Message":"schema \"supabase_migrations\" already exists, skipping","Detail":"","Hint":"","Position":0,"InternalPosition":0,"InternalQuery":"","Where":"","SchemaName":"","TableName":"","ColumnName":"","DataTypeName":"","ConstraintName":"","File":"schemacmds.c","Line":131,"Routine":"CreateSchemaCommand","UnknownFields":null}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE SCHEMA"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"NoData"}
+2026/03/14 01:50:59 PG Recv: {"Severity":"NOTICE","SeverityUnlocalized":"NOTICE","Code":"42P07","Message":"relation \"schema_migrations\" already exists, skipping","Detail":"","Hint":"","Position":0,"InternalPosition":0,"InternalQuery":"","Where":"","SchemaName":"","TableName":"","ColumnName":"","DataTypeName":"","ConstraintName":"","File":"parse_utilcmd.c","Line":207,"Routine":"transformCreateStmt","UnknownFields":null}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE TABLE"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"NoData"}
+2026/03/14 01:50:59 PG Recv: {"Severity":"NOTICE","SeverityUnlocalized":"NOTICE","Code":"42701","Message":"column \"statements\" of relation \"schema_migrations\" already exists, skipping","Detail":"","Hint":"","Position":0,"InternalPosition":0,"InternalQuery":"","Where":"","SchemaName":"","TableName":"","ColumnName":"","DataTypeName":"","ConstraintName":"","File":"tablecmds.c","Line":7216,"Routine":"check_for_column_name_collision","UnknownFields":null}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:50:59 PG Recv: {"Type":"NoData"}
+2026/03/14 01:50:59 PG Recv: {"Severity":"NOTICE","SeverityUnlocalized":"NOTICE","Code":"42701","Message":"column \"name\" of relation \"schema_migrations\" already exists, skipping","Detail":"","Hint":"","Position":0,"InternalPosition":0,"InternalQuery":"","Where":"","SchemaName":"","TableName":"","ColumnName":"","DataTypeName":"","ConstraintName":"","File":"tablecmds.c","Line":7216,"Routine":"check_for_column_name_collision","UnknownFields":null}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+Applying migration 20260307000005_add_performance_indexes.sql...
+2026/03/14 01:50:59 PG Send: {"Type":"Query","String":"RESET ALL"}
+2026/03/14 01:50:59 PG Recv: {"Type":"CommandComplete","CommandTag":"RESET"}
+2026/03/14 01:50:59 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"-- Migration: Add database indexes for performance optimization\r\n-- Date: 2026-03-07\r\n-- Purpose: Improve query performance by adding strategic indexes\r\n-- Phase: 2 (Performance Improvements)\r\n\r\n-- Members table indexes\r\nCREATE INDEX IF NOT EXISTS idx_members_member_number ON members(member_number)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_members_phone_number ON members(phone_number)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_members_is_active ON members(is_active)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_members_wallet_balance ON members(wallet_balance)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"-- Transactions table indexes\r\nCREATE INDEX IF NOT EXISTS idx_transactions_member_id ON transactions(member_id)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_transactions_transaction_type ON transactions(transaction_type)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"-- Cases table indexes\r\nCREATE INDEX IF NOT EXISTS idx_cases_member_id ON cases(affected_member_id)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_cases_is_active ON cases(is_active)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"-- Residences table indexes\r\n-- (Indexes for residences removed due to missing columns in DB)\r\n\r\n-- Composite indexes for common queries\r\nCREATE INDEX IF NOT EXISTS idx_transactions_member_type ON transactions(member_id, transaction_type)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"-- Foreign key indexes (should already exist but ensuring)\r\nCREATE INDEX IF NOT EXISTS idx_transactions_member_fk ON transactions(member_id)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_cases_member_fk ON cases(affected_member_id)","ParameterOIDs":null}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Parse","Name":"","Query":"INSERT INTO supabase_migrations.schema_migrations(version, name, statements) VALUES($1, $2, $3)","ParameterOIDs":[25,25,1009]}
+2026/03/14 01:50:59 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":[0,0,1],"Parameters":[{"text":"20260307000005"},{"text":"add_performance_indexes"},{"binary":"0000000100000000000000190000000b000000010000012b2d2d204d6967726174696f6e3a2041646420646174616261736520696e646578657320666f7220706572666f726d616e6365206f7074696d697a6174696f6e0d0a2d2d20446174653a20323032362d30332d30370d0a2d2d20507572706f73653a20496d70726f766520717565727920706572666f726d616e636520627920616464696e672073747261746567696320696e64657865730d0a2d2d2050686173653a20322028506572666f726d616e636520496d70726f76656d656e7473290d0a0d0a2d2d204d656d62657273207461626c6520696e64657865730d0a43524541544520494e444558204946204e4f5420455849535453206964785f6d656d626572735f6d656d6265725f6e756d626572204f4e206d656d62657273286d656d6265725f6e756d626572290000004c43524541544520494e444558204946204e4f5420455849535453206964785f6d656d626572735f70686f6e655f6e756d626572204f4e206d656d626572732870686f6e655f6e756d626572290000004643524541544520494e444558204946204e4f5420455849535453206964785f6d656d626572735f69735f616374697665204f4e206d656d626572732869735f616374697665290000005043524541544520494e444558204946204e4f5420455849535453206964785f6d656d626572735f77616c6c65745f62616c616e6365204f4e206d656d626572732877616c6c65745f62616c616e6365290000006f2d2d205472616e73616374696f6e73207461626c6520696e64657865730d0a43524541544520494e444558204946204e4f5420455849535453206964785f7472616e73616374696f6e735f6d656d6265725f6964204f4e207472616e73616374696f6e73286d656d6265725f6964290000005e43524541544520494e444558204946204e4f5420455849535453206964785f7472616e73616374696f6e735f7472616e73616374696f6e5f74797065204f4e207472616e73616374696f6e73287472616e73616374696f6e5f7479706529000000632d2d204361736573207461626c6520696e64657865730d0a43524541544520494e444558204946204e4f5420455849535453206964785f63617365735f6d656d6265725f6964204f4e2063617365732861666665637465645f6d656d6265725f6964290000004243524541544520494e444558204946204e4f5420455849535453206964785f63617365735f69735f616374697665204f4e2063617365732869735f61637469766529000000ee2d2d205265736964656e636573207461626c6520696e64657865730d0a2d2d2028496e646578657320666f72207265736964656e6365732072656d6f7665642064756520746f206d697373696e6720636f6c756d6e7320696e204442290d0a0d0a2d2d20436f6d706f7369746520696e646578657320666f7220636f6d6d6f6e20717565726965730d0a43524541544520494e444558204946204e4f5420455849535453206964785f7472616e73616374696f6e735f6d656d6265725f74797065204f4e207472616e73616374696f6e73286d656d6265725f69642c207472616e73616374696f6e5f74797065290000008c2d2d20466f726569676e206b657920696e6465786573202873686f756c6420616c72656164792065786973742062757420656e737572696e67290d0a43524541544520494e444558204946204e4f5420455849535453206964785f7472616e73616374696f6e735f6d656d6265725f666b204f4e207472616e73616374696f6e73286d656d6265725f6964290000004b43524541544520494e444558204946204e4f5420455849535453206964785f63617365735f6d656d6265725f666b204f4e2063617365732861666665637465645f6d656d6265725f696429"}],"ResultFormatCodes":[]}
+2026/03/14 01:50:59 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:50:59 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:50:59 PG Send: {"Type":"Sync"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Severity":"NOTICE","SeverityUnlocalized":"NOTICE","Code":"42P07","Message":"relation \"idx_transactions_member_id\" already exists, skipping","Detail":"","Hint":"","Position":0,"InternalPosition":0,"InternalQuery":"","Where":"","SchemaName":"","TableName":"","ColumnName":"","DataTypeName":"","ConstraintName":"","File":"index.c","Line":865,"Routine":"index_create","UnknownFields":null}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Severity":"NOTICE","SeverityUnlocalized":"NOTICE","Code":"42P07","Message":"relation \"idx_transactions_transaction_type\" already exists, skipping","Detail":"","Hint":"","Position":0,"InternalPosition":0,"InternalQuery":"","Where":"","SchemaName":"","TableName":"","ColumnName":"","DataTypeName":"","ConstraintName":"","File":"index.c","Line":865,"Routine":"index_create","UnknownFields":null}
+NOTICE (42P07): relation "idx_transactions_member_id" already exists, skipping
+NOTICE (42P07): relation "idx_transactions_transaction_type" already exists, skipping
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"INSERT 0 1"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+Applying migration 20260307000006_add_rls_policies.sql...
+2026/03/14 01:51:00 PG Send: {"Type":"Query","String":"RESET ALL"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"RESET"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Migration: Add Row Level Security (RLS) policies\r\n-- Date: 2026-03-07\r\n-- Purpose: Implement row-level security to restrict data access by user role\r\n-- Phase: 4 (Security Hardening)\r\n\r\n-- Enable RLS on critical tables\r\nALTER TABLE members ENABLE ROW LEVEL SECURITY","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"ALTER TABLE transactions ENABLE ROW LEVEL SECURITY","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"ALTER TABLE cases ENABLE ROW LEVEL SECURITY","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"ALTER TABLE users ENABLE ROW LEVEL SECURITY","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- ============================================\r\n-- MEMBERS TABLE RLS POLICIES\r\n-- ============================================\r\n\r\n-- Admins can see all members\r\nCREATE POLICY admin_see_all_members ON members\r\n  FOR SELECT\r\n  USING (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Members can only see their own data\r\nCREATE POLICY member_see_own_data ON members\r\n  FOR SELECT\r\n  USING (\r\n    id IN (SELECT member_id FROM users WHERE id = auth.uid()) OR\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Only admins can insert members\r\nCREATE POLICY admin_insert_members ON members\r\n  FOR INSERT\r\n  WITH CHECK (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Only admins can update members\r\nCREATE POLICY admin_update_members ON members\r\n  FOR UPDATE\r\n  USING (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- ============================================\r\n-- TRANSACTIONS TABLE RLS POLICIES\r\n-- ============================================\r\n\r\n-- Admins can see all transactions\r\nCREATE POLICY admin_see_all_transactions ON transactions\r\n  FOR SELECT\r\n  USING (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Members can only see their own transactions\r\nCREATE POLICY member_see_own_transactions ON transactions\r\n  FOR SELECT\r\n  USING (\r\n    member_id IN (\r\n      SELECT member_id FROM users WHERE id = auth.uid()\r\n    ) OR\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Only system functions can insert transactions (no direct user insert)\r\nCREATE POLICY functions_insert_transactions ON transactions\r\n  FOR INSERT\r\n  WITH CHECK (\r\n    current_setting('app.bypass_rls') != 'on'\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- ============================================\r\n-- CASES TABLE RLS POLICIES\r\n-- ============================================\r\n\r\n-- Admins can see all cases\r\nCREATE POLICY admin_see_all_cases ON cases\r\n  FOR SELECT\r\n  USING (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Members can see their own cases\r\nCREATE POLICY member_see_own_cases ON cases\r\n  FOR SELECT\r\n  USING (\r\n    affected_member_id IN (\r\n      SELECT member_id FROM users WHERE id = auth.uid()\r\n    ) OR\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- ============================================\r\n-- USERS TABLE RLS POLICIES (Self-service only)\r\n-- ============================================\r\n\r\n-- Users can only see their own user record\r\nCREATE POLICY user_see_own_user ON users\r\n  FOR SELECT\r\n  USING (\r\n    auth.uid() = id\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Admins can see all users\r\nCREATE POLICY admin_see_all_users ON users\r\n  FOR SELECT\r\n  USING (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- ============================================\r\n-- AUDIT_LOGS TABLE RLS POLICIES (Admins only)\r\n-- ============================================\r\n\r\n-- Only admins can see audit logs\r\nCREATE POLICY admin_see_audit_logs ON audit_logs\r\n  FOR SELECT\r\n  USING (\r\n    auth.uid() IN (\r\n      SELECT id FROM users WHERE role = 'admin'\r\n    )\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"-- Audit logs are auto-inserted by triggers (no direct user insert)\r\nCREATE POLICY functions_insert_audit_logs ON audit_logs\r\n  FOR INSERT\r\n  WITH CHECK (\r\n    current_setting('app.bypass_rls') != 'on'\r\n  )","ParameterOIDs":null}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Parse","Name":"","Query":"INSERT INTO supabase_migrations.schema_migrations(version, name, statements) VALUES($1, $2, $3)","ParameterOIDs":[25,25,1009]}
+2026/03/14 01:51:00 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":[0,0,1],"Parameters":[{"text":"20260307000006"},{"text":"add_rls_policies"},{"binary":"00000001000000000000001900000012000000010000010c2d2d204d6967726174696f6e3a2041646420526f77204c6576656c2053656375726974792028524c532920706f6c69636965730d0a2d2d20446174653a20323032362d30332d30370d0a2d2d20507572706f73653a20496d706c656d656e7420726f772d6c6576656c20736563757269747920746f207265737472696374206461746120616363657373206279207573657220726f6c650d0a2d2d2050686173653a2034202853656375726974792048617264656e696e67290d0a0d0a2d2d20456e61626c6520524c53206f6e20637269746963616c207461626c65730d0a414c544552205441424c45206d656d6265727320454e41424c4520524f57204c4556454c20534543555249545900000032414c544552205441424c45207472616e73616374696f6e7320454e41424c4520524f57204c4556454c2053454355524954590000002b414c544552205441424c4520636173657320454e41424c4520524f57204c4556454c2053454355524954590000002b414c544552205441424c4520757365727320454e41424c4520524f57204c4556454c20534543555249545900000030414c544552205441424c452061756469745f6c6f677320454e41424c4520524f57204c4556454c2053454355524954590000013b2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d204d454d42455253205441424c4520524c5320504f4c49434945530d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d2041646d696e732063616e2073656520616c6c206d656d626572730d0a43524541544520504f4c4943592061646d696e5f7365655f616c6c5f6d656d62657273204f4e206d656d626572730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a202029000001012d2d204d656d626572732063616e206f6e6c7920736565207468656972206f776e20646174610d0a43524541544520504f4c494359206d656d6265725f7365655f6f776e5f64617461204f4e206d656d626572730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020696420494e202853454c454354206d656d6265725f69642046524f4d207573657273205748455245206964203d20617574682e756964282929204f520d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a202029000000c02d2d204f6e6c792061646d696e732063616e20696e73657274206d656d626572730d0a43524541544520504f4c4943592061646d696e5f696e736572745f6d656d62657273204f4e206d656d626572730d0a2020464f5220494e534552540d0a20205749544820434845434b20280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a202029000000bb2d2d204f6e6c792061646d696e732063616e20757064617465206d656d626572730d0a43524541544520504f4c4943592061646d696e5f7570646174655f6d656d62657273204f4e206d656d626572730d0a2020464f52205550444154450d0a20205553494e4720280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a2020290000014f2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d205452414e53414354494f4e53205441424c4520524c5320504f4c49434945530d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d2041646d696e732063616e2073656520616c6c207472616e73616374696f6e730d0a43524541544520504f4c4943592061646d696e5f7365655f616c6c5f7472616e73616374696f6e73204f4e207472616e73616374696f6e730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a2020290000012b2d2d204d656d626572732063616e206f6e6c7920736565207468656972206f776e207472616e73616374696f6e730d0a43524541544520504f4c494359206d656d6265725f7365655f6f776e5f7472616e73616374696f6e73204f4e207472616e73616374696f6e730d0a2020464f522053454c4543540d0a20205553494e4720280d0a202020206d656d6265725f696420494e20280d0a20202020202053454c454354206d656d6265725f69642046524f4d207573657273205748455245206964203d20617574682e75696428290d0a2020202029204f520d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a202029000000d72d2d204f6e6c792073797374656d2066756e6374696f6e732063616e20696e73657274207472616e73616374696f6e7320286e6f20646972656374207573657220696e73657274290d0a43524541544520504f4c4943592066756e6374696f6e735f696e736572745f7472616e73616374696f6e73204f4e207472616e73616374696f6e730d0a2020464f5220494e534552540d0a20205749544820434845434b20280d0a2020202063757272656e745f73657474696e6728276170702e6279706173735f726c73272920213d20276f6e270d0a202029000001332d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d204341534553205441424c4520524c5320504f4c49434945530d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d2041646d696e732063616e2073656520616c6c2063617365730d0a43524541544520504f4c4943592061646d696e5f7365655f616c6c5f6361736573204f4e2063617365730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a2020290000011a2d2d204d656d626572732063616e20736565207468656972206f776e2063617365730d0a43524541544520504f4c494359206d656d6265725f7365655f6f776e5f6361736573204f4e2063617365730d0a2020464f522053454c4543540d0a20205553494e4720280d0a2020202061666665637465645f6d656d6265725f696420494e20280d0a20202020202053454c454354206d656d6265725f69642046524f4d207573657273205748455245206964203d20617574682e75696428290d0a2020202029204f520d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a2020290000011d2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d205553455253205441424c4520524c5320504f4c4943494553202853656c662d73657276696365206f6e6c79290d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d2055736572732063616e206f6e6c7920736565207468656972206f776e2075736572207265636f72640d0a43524541544520504f4c49435920757365725f7365655f6f776e5f75736572204f4e2075736572730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020617574682e7569642829203d2069640d0a202029000000b22d2d2041646d696e732063616e2073656520616c6c2075736572730d0a43524541544520504f4c4943592061646d696e5f7365655f616c6c5f7573657273204f4e2075736572730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a202029000001522d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d2041554449545f4c4f4753205441424c4520524c5320504f4c4943494553202841646d696e73206f6e6c79290d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d204f6e6c792061646d696e732063616e20736565206175646974206c6f67730d0a43524541544520504f4c4943592061646d696e5f7365655f61756469745f6c6f6773204f4e2061756469745f6c6f67730d0a2020464f522053454c4543540d0a20205553494e4720280d0a20202020617574682e756964282920494e20280d0a20202020202053454c4543542069642046524f4d20757365727320574845524520726f6c65203d202761646d696e270d0a20202020290d0a202029000000ce2d2d204175646974206c6f677320617265206175746f2d696e73657274656420627920747269676765727320286e6f20646972656374207573657220696e73657274290d0a43524541544520504f4c4943592066756e6374696f6e735f696e736572745f61756469745f6c6f6773204f4e2061756469745f6c6f67730d0a2020464f5220494e534552540d0a20205749544820434845434b20280d0a2020202063757272656e745f73657474696e6728276170702e6279706173735f726c73272920213d20276f6e270d0a202029"}],"ResultFormatCodes":[]}
+2026/03/14 01:51:00 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:00 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:00 PG Send: {"Type":"Sync"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"ALTER TABLE"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE POLICY"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:00 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:00 PG Recv: {"Type":"CommandComplete","CommandTag":"INSERT 0 1"}
+2026/03/14 01:51:00 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+Applying migration 20260307000007_add_rate_limiting.sql...
+2026/03/14 01:51:00 PG Send: {"Type":"Query","String":"RESET ALL"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"RESET"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- Migration: Add rate limiting functions for authentication\r\n-- Date: 2026-03-07\r\n-- Purpose: Implement rate limiting to prevent brute force attacks\r\n-- Phase: 4 (Security Hardening)\r\n\r\n-- ============================================\r\n-- LOGIN RATE LIMITING\r\n-- ============================================\r\n\r\n-- Create a table to track login attempts\r\nCREATE TABLE IF NOT EXISTS login_attempts (\r\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\r\n  identifier TEXT NOT NULL, -- username or email\r\n  ip_address INET NOT NULL,\r\n  attempt_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,\r\n  was_successful BOOLEAN DEFAULT FALSE\r\n)","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- Create index for fast lookups\r\nCREATE INDEX IF NOT EXISTS idx_login_attempts_identifier_time \r\n  ON login_attempts(identifier, attempt_time DESC)","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_time \r\n  ON login_attempts(ip_address, attempt_time DESC)","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- Function to check if login is rate limited\r\nCREATE OR REPLACE FUNCTION is_login_rate_limited(\r\n  p_identifier TEXT,\r\n  p_ip_address INET,\r\n  p_max_attempts INT DEFAULT 5,\r\n  p_lockout_minutes INT DEFAULT 15\r\n)\r\nRETURNS TABLE (\r\n  is_limited BOOLEAN,\r\n  attempts_count INT,\r\n  lockout_until TIMESTAMP WITH TIME ZONE\r\n) AS $$\r\nDECLARE\r\n  v_recent_attempts INT;\r\n  v_lockout_time TIMESTAMP WITH TIME ZONE;\r\nBEGIN\r\n  -- Count failed attempts in the last N minutes\r\n  v_recent_attempts := COUNT(*)::INT FROM login_attempts\r\n    WHERE identifier = p_identifier\r\n    AND attempt_time \u003e NOW() - (p_lockout_minutes || ' minutes')::INTERVAL\r\n    AND was_successful = FALSE;\r\n\r\n  IF v_recent_attempts \u003e= p_max_attempts THEN\r\n    v_lockout_time := (\r\n      SELECT attempt_time + (p_lockout_minutes || ' minutes')::INTERVAL\r\n      FROM login_attempts\r\n      WHERE identifier = p_identifier\r\n      AND attempt_time \u003e NOW() - (p_lockout_minutes || ' minutes')::INTERVAL\r\n      AND was_successful = FALSE\r\n      ORDER BY attempt_time DESC\r\n      LIMIT 1\r\n    );\r\n    RETURN QUERY SELECT TRUE, v_recent_attempts, v_lockout_time;\r\n  ELSE\r\n    RETURN QUERY SELECT FALSE, v_recent_attempts, NULL;\r\n  END IF;\r\nEND;\r\n$$ LANGUAGE plpgsql STABLE","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- Function to record login attempt\r\nCREATE OR REPLACE FUNCTION record_login_attempt(\r\n  p_identifier TEXT,\r\n  p_ip_address INET,\r\n  p_was_successful BOOLEAN\r\n)\r\nRETURNS void AS $$\r\nBEGIN\r\n  INSERT INTO login_attempts (identifier, ip_address, was_successful, attempt_time)\r\n  VALUES (p_identifier, p_ip_address, p_was_successful, CURRENT_TIMESTAMP);\r\n  \r\n  -- Clean up old records (older than 1 day)\r\n  DELETE FROM login_attempts \r\n  WHERE attempt_time \u003c NOW() - INTERVAL '1 day';\r\nEND;\r\n$$ LANGUAGE plpgsql","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- ============================================\r\n-- PIN ATTEMPT RATE LIMITING (for members)\r\n-- ============================================\r\n\r\n-- Function to check if member PIN is rate limited\r\nCREATE OR REPLACE FUNCTION is_member_pin_locked(p_member_id UUID)\r\nRETURNS TABLE (\r\n  is_locked BOOLEAN,\r\n  locked_until TIMESTAMP WITH TIME ZONE,\r\n  attempts INT\r\n) AS $$\r\nBEGIN\r\n  RETURN QUERY SELECT\r\n    (pin_locked_until \u003e CURRENT_TIMESTAMP),\r\n    pin_locked_until,\r\n    pin_attempts\r\n  FROM members\r\n  WHERE id = p_member_id;\r\nEND;\r\n$$ LANGUAGE plpgsql STABLE","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- Function to increment PIN attempts and lock if needed\r\nCREATE OR REPLACE FUNCTION increment_pin_attempts(\r\n  p_member_id UUID,\r\n  p_max_attempts INT DEFAULT 5,\r\n  p_lockout_minutes INT DEFAULT 15\r\n)\r\nRETURNS void AS $$\r\nDECLARE\r\n  v_current_attempts INT;\r\nBEGIN\r\n  UPDATE members\r\n  SET pin_attempts = pin_attempts + 1\r\n  WHERE id = p_member_id;\r\n\r\n  SELECT pin_attempts INTO v_current_attempts FROM members WHERE id = p_member_id;\r\n\r\n  -- Lock account if max attempts reached\r\n  IF v_current_attempts \u003e= p_max_attempts THEN\r\n    UPDATE members\r\n    SET pin_locked_until = NOW() + (p_lockout_minutes || ' minutes')::INTERVAL\r\n    WHERE id = p_member_id;\r\n  END IF;\r\nEND;\r\n$$ LANGUAGE plpgsql","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"-- Function to reset PIN attempts on successful login\r\nCREATE OR REPLACE FUNCTION reset_pin_attempts(p_member_id UUID)\r\nRETURNS void AS $$\r\nBEGIN\r\n  UPDATE members\r\n  SET \r\n    pin_attempts = 0,\r\n    pin_locked_until = NULL,\r\n    last_login = CURRENT_TIMESTAMP\r\n  WHERE id = p_member_id;\r\nEND;\r\n$$ LANGUAGE plpgsql","ParameterOIDs":null}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":null,"Parameters":[],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Parse","Name":"","Query":"INSERT INTO supabase_migrations.schema_migrations(version, name, statements) VALUES($1, $2, $3)","ParameterOIDs":[25,25,1009]}
+2026/03/14 01:51:01 PG Send: {"Type":"Bind","DestinationPortal":"","PreparedStatement":"","ParameterFormatCodes":[0,0,1],"Parameters":[{"text":"20260307000007"},{"text":"add_rate_limiting"},{"binary":"00000001000000000000001900000008000000010000027d2d2d204d6967726174696f6e3a204164642072617465206c696d6974696e672066756e6374696f6e7320666f722061757468656e7469636174696f6e0d0a2d2d20446174653a20323032362d30332d30370d0a2d2d20507572706f73653a20496d706c656d656e742072617465206c696d6974696e6720746f2070726576656e7420627275746520666f7263652061747461636b730d0a2d2d2050686173653a2034202853656375726974792048617264656e696e67290d0a0d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d204c4f47494e2052415445204c494d4954494e470d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d204372656174652061207461626c6520746f20747261636b206c6f67696e20617474656d7074730d0a435245415445205441424c45204946204e4f5420455849535453206c6f67696e5f617474656d70747320280d0a202069642055554944205052494d415259204b45592044454641554c542067656e5f72616e646f6d5f7575696428292c0d0a20206964656e7469666965722054455854204e4f54204e554c4c2c202d2d20757365726e616d65206f7220656d61696c0d0a202069705f6164647265737320494e4554204e4f54204e554c4c2c0d0a2020617474656d70745f74696d652054494d455354414d5020574954482054494d45205a4f4e452044454641554c542043555252454e545f54494d455354414d502c0d0a20207761735f7375636365737366756c20424f4f4c45414e2044454641554c542046414c53450d0a29000000942d2d2043726561746520696e64657820666f722066617374206c6f6f6b7570730d0a43524541544520494e444558204946204e4f5420455849535453206964785f6c6f67696e5f617474656d7074735f6964656e7469666965725f74696d65200d0a20204f4e206c6f67696e5f617474656d707473286964656e7469666965722c20617474656d70745f74696d652044455343290000006a43524541544520494e444558204946204e4f5420455849535453206964785f6c6f67696e5f617474656d7074735f69705f74696d65200d0a20204f4e206c6f67696e5f617474656d7074732869705f616464726573732c20617474656d70745f74696d65204445534329000004c82d2d2046756e6374696f6e20746f20636865636b206966206c6f67696e2069732072617465206c696d697465640d0a435245415445204f52205245504c4143452046554e4354494f4e2069735f6c6f67696e5f726174655f6c696d69746564280d0a2020705f6964656e74696669657220544558542c0d0a2020705f69705f6164647265737320494e45542c0d0a2020705f6d61785f617474656d70747320494e542044454641554c5420352c0d0a2020705f6c6f636b6f75745f6d696e7574657320494e542044454641554c542031350d0a290d0a52455455524e53205441424c4520280d0a202069735f6c696d6974656420424f4f4c45414e2c0d0a2020617474656d7074735f636f756e7420494e542c0d0a20206c6f636b6f75745f756e74696c2054494d455354414d5020574954482054494d45205a4f4e450d0a292041532024240d0a4445434c4152450d0a2020765f726563656e745f617474656d70747320494e543b0d0a2020765f6c6f636b6f75745f74696d652054494d455354414d5020574954482054494d45205a4f4e453b0d0a424547494e0d0a20202d2d20436f756e74206661696c656420617474656d70747320696e20746865206c617374204e206d696e757465730d0a2020765f726563656e745f617474656d707473203a3d20434f554e54282a293a3a494e542046524f4d206c6f67696e5f617474656d7074730d0a202020205748455245206964656e746966696572203d20705f6964656e7469666965720d0a20202020414e4420617474656d70745f74696d65203e204e4f572829202d2028705f6c6f636b6f75745f6d696e75746573207c7c2027206d696e7574657327293a3a494e54455256414c0d0a20202020414e44207761735f7375636365737366756c203d2046414c53453b0d0a0d0a2020494620765f726563656e745f617474656d707473203e3d20705f6d61785f617474656d707473205448454e0d0a20202020765f6c6f636b6f75745f74696d65203a3d20280d0a20202020202053454c45435420617474656d70745f74696d65202b2028705f6c6f636b6f75745f6d696e75746573207c7c2027206d696e7574657327293a3a494e54455256414c0d0a20202020202046524f4d206c6f67696e5f617474656d7074730d0a2020202020205748455245206964656e746966696572203d20705f6964656e7469666965720d0a202020202020414e4420617474656d70745f74696d65203e204e4f572829202d2028705f6c6f636b6f75745f6d696e75746573207c7c2027206d696e7574657327293a3a494e54455256414c0d0a202020202020414e44207761735f7375636365737366756c203d2046414c53450d0a2020202020204f5244455220425920617474656d70745f74696d6520444553430d0a2020202020204c494d495420310d0a20202020293b0d0a2020202052455455524e2051554552592053454c45435420545255452c20765f726563656e745f617474656d7074732c20765f6c6f636b6f75745f74696d653b0d0a2020454c53450d0a2020202052455455524e2051554552592053454c4543542046414c53452c20765f726563656e745f617474656d7074732c204e554c4c3b0d0a2020454e442049463b0d0a454e443b0d0a2424204c414e475541474520706c706773716c20535441424c45000001fb2d2d2046756e6374696f6e20746f207265636f7264206c6f67696e20617474656d70740d0a435245415445204f52205245504c4143452046554e4354494f4e207265636f72645f6c6f67696e5f617474656d7074280d0a2020705f6964656e74696669657220544558542c0d0a2020705f69705f6164647265737320494e45542c0d0a2020705f7761735f7375636365737366756c20424f4f4c45414e0d0a290d0a52455455524e5320766f69642041532024240d0a424547494e0d0a2020494e5345525420494e544f206c6f67696e5f617474656d70747320286964656e7469666965722c2069705f616464726573732c207761735f7375636365737366756c2c20617474656d70745f74696d65290d0a202056414c5545532028705f6964656e7469666965722c20705f69705f616464726573732c20705f7761735f7375636365737366756c2c2043555252454e545f54494d455354414d50293b0d0a20200d0a20202d2d20436c65616e207570206f6c64207265636f72647320286f6c646572207468616e203120646179290d0a202044454c4554452046524f4d206c6f67696e5f617474656d707473200d0a2020574845524520617474656d70745f74696d65203c204e4f572829202d20494e54455256414c20273120646179273b0d0a454e443b0d0a2424204c414e475541474520706c706773716c000002302d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a2d2d2050494e20415454454d50542052415445204c494d4954494e472028666f72206d656d62657273290d0a2d2d203d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0d0a0d0a2d2d2046756e6374696f6e20746f20636865636b206966206d656d6265722050494e2069732072617465206c696d697465640d0a435245415445204f52205245504c4143452046554e4354494f4e2069735f6d656d6265725f70696e5f6c6f636b656428705f6d656d6265725f69642055554944290d0a52455455524e53205441424c4520280d0a202069735f6c6f636b656420424f4f4c45414e2c0d0a20206c6f636b65645f756e74696c2054494d455354414d5020574954482054494d45205a4f4e452c0d0a2020617474656d70747320494e540d0a292041532024240d0a424547494e0d0a202052455455524e2051554552592053454c4543540d0a202020202870696e5f6c6f636b65645f756e74696c203e2043555252454e545f54494d455354414d50292c0d0a2020202070696e5f6c6f636b65645f756e74696c2c0d0a2020202070696e5f617474656d7074730d0a202046524f4d206d656d626572730d0a20205748455245206964203d20705f6d656d6265725f69643b0d0a454e443b0d0a2424204c414e475541474520706c706773716c20535441424c45000002b62d2d2046756e6374696f6e20746f20696e6372656d656e742050494e20617474656d70747320616e64206c6f636b206966206e65656465640d0a435245415445204f52205245504c4143452046554e4354494f4e20696e6372656d656e745f70696e5f617474656d707473280d0a2020705f6d656d6265725f696420555549442c0d0a2020705f6d61785f617474656d70747320494e542044454641554c5420352c0d0a2020705f6c6f636b6f75745f6d696e7574657320494e542044454641554c542031350d0a290d0a52455455524e5320766f69642041532024240d0a4445434c4152450d0a2020765f63757272656e745f617474656d70747320494e543b0d0a424547494e0d0a2020555044415445206d656d626572730d0a20205345542070696e5f617474656d707473203d2070696e5f617474656d707473202b20310d0a20205748455245206964203d20705f6d656d6265725f69643b0d0a0d0a202053454c4543542070696e5f617474656d70747320494e544f20765f63757272656e745f617474656d7074732046524f4d206d656d62657273205748455245206964203d20705f6d656d6265725f69643b0d0a0d0a20202d2d204c6f636b206163636f756e74206966206d617820617474656d70747320726561636865640d0a2020494620765f63757272656e745f617474656d707473203e3d20705f6d61785f617474656d707473205448454e0d0a20202020555044415445206d656d626572730d0a202020205345542070696e5f6c6f636b65645f756e74696c203d204e4f572829202b2028705f6c6f636b6f75745f6d696e75746573207c7c2027206d696e7574657327293a3a494e54455256414c0d0a202020205748455245206964203d20705f6d656d6265725f69643b0d0a2020454e442049463b0d0a454e443b0d0a2424204c414e475541474520706c706773716c0000013a2d2d2046756e6374696f6e20746f2072657365742050494e20617474656d707473206f6e207375636365737366756c206c6f67696e0d0a435245415445204f52205245504c4143452046554e4354494f4e2072657365745f70696e5f617474656d70747328705f6d656d6265725f69642055554944290d0a52455455524e5320766f69642041532024240d0a424547494e0d0a2020555044415445206d656d626572730d0a2020534554200d0a2020202070696e5f617474656d707473203d20302c0d0a2020202070696e5f6c6f636b65645f756e74696c203d204e554c4c2c0d0a202020206c6173745f6c6f67696e203d2043555252454e545f54494d455354414d500d0a20205748455245206964203d20705f6d656d6265725f69643b0d0a454e443b0d0a2424204c414e475541474520706c706773716c"}],"ResultFormatCodes":[]}
+2026/03/14 01:51:01 PG Send: {"Type":"Describe","ObjectType":"P","Name":""}
+2026/03/14 01:51:01 PG Send: {"Type":"Execute","Portal":"","MaxRows":0}
+2026/03/14 01:51:01 PG Send: {"Type":"Sync"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE TABLE"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE INDEX"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE FUNCTION"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE FUNCTION"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE FUNCTION"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE FUNCTION"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"CREATE FUNCTION"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ParseComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"BindComplete"}
+2026/03/14 01:51:01 PG Recv: {"Type":"NoData"}
+2026/03/14 01:51:01 PG Recv: {"Type":"CommandComplete","CommandTag":"INSERT 0 1"}
+2026/03/14 01:51:01 PG Recv: {"Type":"ReadyForQuery","TxStatus":"I"}
+Finished supabase db push.
+2026/03/14 01:51:01 PG Send: {"Type":"Terminate"}
