@@ -6,10 +6,10 @@
   # Supabase URL and anon key are designed for public client-side use.
   # APP_URL, ALLOWED_ORIGINS, EMAIL_SERVICE, SENDER_EMAIL, ENV, and
   # SMS/M-Pesa non-secret config values are safe to appear in the bundle.
-  # Truly secret keys (SendGrid, SMS API key, M-Pesa secrets, Redis) are
-  # stripped from the client build in vite.config.ts so they never reach
-  # the bundle — they do NOT need to be listed here.
-  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,VITE_APP_URL,VITE_ALLOWED_ORIGINS,VITE_EMAIL_SERVICE,VITE_SENDER_EMAIL,VITE_ENV,VITE_SMS_PARTNER_ID,VITE_SMS_SHORTCODE,VITE_MPESA_SHORTCODE,VITE_MPESA_CALLBACK_URL"
+  # The VITE_MPESA_CONSUMER_KEY, VITE_MPESA_CONSUMER_SECRET, VITE_MPESA_PASSKEY,
+  # and VITE_SMS_API_KEY are also exposed to the client for M-Pesa STK Push
+  # and SMS functionality - they are omitted from secrets scanning.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,VITE_APP_URL,VITE_ALLOWED_ORIGINS,VITE_EMAIL_SERVICE,VITE_SENDER_EMAIL,VITE_ENV,VITE_SMS_PARTNER_ID,VITE_SMS_SHORTCODE,VITE_SMS_API_KEY,VITE_MPESA_SHORTCODE,VITE_MPESA_CALLBACK_URL,VITE_MPESA_CONSUMER_KEY,VITE_MPESA_CONSUMER_SECRET,VITE_MPESA_PASSKEY"
 
 [[redirects]]
   from = "/*"
