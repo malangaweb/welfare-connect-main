@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "test": "deno test --allow-all --unstable",
+    "check": "deno check --all index.ts"
+  },
+  "imports": {
+    "supabase": "https://esm.sh/@supabase/supabase-js@2",
+    "http/": "https://deno.land/std@0.168.0/http/"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "allowJs": true,
+    "strict": true,
+    "noImplicitAny": true
+  }
+}

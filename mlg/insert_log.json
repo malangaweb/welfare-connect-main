@@ -1,0 +1,400 @@
+{
+    "http_code": 400,
+    "response": "{\"code\":\"PGRST204\",\"details\":null,\"hint\":null,\"message\":\"Could not find the 'description' column of 'mpesa_transactions' in the schema cache\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJEDA7BPAH",
+        "trans_time": "2025-10-14 11:26:43",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "1300",
+        "invoice_number": "",
+        "org_account_balance": "1519.00",
+        "third_party_trans_id": "",
+        "msisdn": "8825837fe959a3f36430908fb03083d3020f43ce6c8561437b409ef6548e7116",
+        "first_name": "Kazungu",
+        "middle_name": null,
+        "last_name": null,
+        "description": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJEDA7BTYB",
+        "trans_time": "2025-10-14 11:40:07",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "1300",
+        "invoice_number": "",
+        "org_account_balance": "1520.00",
+        "third_party_trans_id": "",
+        "msisdn": "8825837fe959a3f36430908fb03083d3020f43ce6c8561437b409ef6548e7116",
+        "first_name": "Kazungu",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (8367bb34-f34f-4a72-8f05-b2de02e709ac, null, null, 1.00, suspense, suspense, TJN7283GJJ, 2025-10-23 09:22:13.513623+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJN7283GJJ",
+        "trans_time": "2025-10-23 12:22:11",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "M006",
+        "invoice_number": "",
+        "org_account_balance": "1521.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJN7283DXZ",
+        "trans_time": "2025-10-23 12:24:26",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "006",
+        "invoice_number": "",
+        "org_account_balance": "1522.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJN7283RJ4",
+        "trans_time": "2025-10-23 14:19:35",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "007",
+        "invoice_number": "",
+        "org_account_balance": "1523.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJN72840PU",
+        "trans_time": "2025-10-23 15:53:37",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "007",
+        "invoice_number": "",
+        "org_account_balance": "1524.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJU728RN5V",
+        "trans_time": "2025-10-30 19:34:00",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "007",
+        "invoice_number": "",
+        "org_account_balance": "1525.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TJU728RRR2",
+        "trans_time": "2025-10-30 19:40:13",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "006",
+        "invoice_number": "",
+        "org_account_balance": "1526.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (db0c9e87-e4ef-445f-b0f5-8fc6fe06e380, null, null, null, null, null, Suspended, null, null, null, null, null, null, null, 2025-11-02 12:23:46.940384).\",\"hint\":null,\"message\":\"null value in column \\\"trans_id\\\" of relation \\\"mpesa_transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": null,
+        "trans_id": null,
+        "trans_time": null,
+        "trans_amount": null,
+        "business_shortcode": null,
+        "bill_ref_number": "Suspended",
+        "invoice_number": null,
+        "org_account_balance": null,
+        "third_party_trans_id": null,
+        "msisdn": null,
+        "first_name": null,
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (04d7c0d0-9086-45d9-be97-99c32b641fe5, null, null, null, null, null, Suspended, null, null, null, null, null, null, null, 2025-11-02 12:23:53.304154).\",\"hint\":null,\"message\":\"null value in column \\\"trans_id\\\" of relation \\\"mpesa_transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": null,
+        "trans_id": null,
+        "trans_time": null,
+        "trans_amount": null,
+        "business_shortcode": null,
+        "bill_ref_number": "Suspended",
+        "invoice_number": null,
+        "org_account_balance": null,
+        "third_party_trans_id": null,
+        "msisdn": null,
+        "first_name": null,
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TKLDAAN354",
+        "trans_time": "2025-11-21 09:15:31",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "1",
+        "invoice_number": "",
+        "org_account_balance": "722.00",
+        "third_party_trans_id": "",
+        "msisdn": "8825837fe959a3f36430908fb03083d3020f43ce6c8561437b409ef6548e7116",
+        "first_name": "Kazungu",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (0e8e5cec-73da-4336-b78f-49e7c7c64ab8, null, null, 1.00, suspense, suspense, TKL72AP76I, 2025-11-21 08:04:21.713831+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TKL72AP76I",
+        "trans_time": "2025-11-21 11:04:20",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "001",
+        "invoice_number": "",
+        "org_account_balance": "723.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TKL72APAHP",
+        "trans_time": "2025-11-21 11:07:52",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "6",
+        "invoice_number": "",
+        "org_account_balance": "724.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (d72776ea-60ad-48c7-a852-b53314d7872f, null, null, 120.00, suspense, suspense, TKOPUAVJPZ, 2025-11-24 06:36:42.35847+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TKOPUAVJPZ",
+        "trans_time": "2025-11-24 09:36:40",
+        "trans_amount": "120.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "747",
+        "invoice_number": "",
+        "org_account_balance": "844.00",
+        "third_party_trans_id": "",
+        "msisdn": "0dbf4f6a0a9bcd004230f749126923809efae23c12030245bd4567be5bb949c7",
+        "first_name": "KALAMA",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (4487e73c-e6fe-49eb-877c-7ad559627227, null, null, 120.00, suspense, suspense, TKQPUB3H1T, 2025-11-26 16:15:37.809496+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TKQPUB3H1T",
+        "trans_time": "2025-11-26 19:15:35",
+        "trans_amount": "120.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "919",
+        "invoice_number": "",
+        "org_account_balance": "964.00",
+        "third_party_trans_id": "",
+        "msisdn": "0dbf4f6a0a9bcd004230f749126923809efae23c12030245bd4567be5bb949c7",
+        "first_name": "KALAMA",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (40f1b8b5-50cb-4d9f-89d6-c8e25249831b, null, null, 1.00, suspense, suspense, TL272BOTWT, 2025-12-02 04:40:41.520316+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TL272BOTWT",
+        "trans_time": "2025-12-02 07:40:39",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "15",
+        "invoice_number": "",
+        "org_account_balance": "965.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (aa6346bb-735c-4763-a505-8bf17a3bec3a, null, null, 120.00, suspense, suspense, TL3PUBPOH2, 2025-12-03 11:39:30.932391+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TL3PUBPOH2",
+        "trans_time": "2025-12-03 14:39:28",
+        "trans_amount": "120.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "747",
+        "invoice_number": "",
+        "org_account_balance": "1085.00",
+        "third_party_trans_id": "",
+        "msisdn": "0dbf4f6a0a9bcd004230f749126923809efae23c12030245bd4567be5bb949c7",
+        "first_name": "KALAMA",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (704b771a-37d3-4023-8f46-0c8b0ba48ccd, null, null, 120.00, suspense, suspense, TL3PUBPRW6, 2025-12-03 11:45:59.117855+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TL3PUBPRW6",
+        "trans_time": "2025-12-03 14:45:57",
+        "trans_amount": "120.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "919",
+        "invoice_number": "",
+        "org_account_balance": "1205.00",
+        "third_party_trans_id": "",
+        "msisdn": "0dbf4f6a0a9bcd004230f749126923809efae23c12030245bd4567be5bb949c7",
+        "first_name": "KALAMA",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (34a19b6b-993b-4d18-988e-bb655527555c, null, null, 300.00, suspense, suspense, TL407BU1Y7, 2025-12-04 18:01:02.860955+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TL407BU1Y7",
+        "trans_time": "2025-12-04 21:01:00",
+        "trans_amount": "300.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "otc",
+        "invoice_number": "",
+        "org_account_balance": "1505.00",
+        "third_party_trans_id": "",
+        "msisdn": "734f2e5e7eeddc7e439fcdcb4630c322a4bce4c00ea29034fc77da6469c60689",
+        "first_name": "FREDRICK",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 400,
+    "response": "{\"code\":\"23502\",\"details\":\"Failing row contains (9754c18d-df7a-4215-9e03-a831657e3300, null, null, 1.00, suspense, suspense, TLG7214QJW, 2025-12-16 10:41:21.008888+00).\",\"hint\":null,\"message\":\"null value in column \\\"member_id\\\" of relation \\\"transactions\\\" violates not-null constraint\"}",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TLG7214QJW",
+        "trans_time": "2025-12-16 13:41:19",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "4",
+        "invoice_number": "",
+        "org_account_balance": "1.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}
+{
+    "http_code": 201,
+    "response": "",
+    "transaction": {
+        "transaction_type": "Pay Bill",
+        "trans_id": "TLG7214KQ8",
+        "trans_time": "2025-12-16 13:42:42",
+        "trans_amount": "1.00",
+        "business_shortcode": "4164179",
+        "bill_ref_number": "7",
+        "invoice_number": "",
+        "org_account_balance": "2.00",
+        "third_party_trans_id": "",
+        "msisdn": "412c818a3578b1555c8b20fceb010022c7e22d6423114db44ad78502ce28b4eb",
+        "first_name": "HERBERT",
+        "middle_name": null,
+        "last_name": null
+    }
+}

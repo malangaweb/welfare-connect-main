@@ -1,0 +1,4 @@
+MemberNumber,Name,Gender,DateOfBirth,NationalIdNumber,PhoneNumber,EmailAddress,Residence,NextOfKin,RegistrationDate,IsActive
+
+# Example row:
+# M001,John Doe,male,1990-01-01,12345678,+254712345678,john@example.com,Nairobi,"{\"name\":\"Jane Doe\",\"relationship\":\"Spouse\",\"phoneNumber\":\"+254712345679\"}",2024-01-01,true 

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(apt-get *)",
+      "Bash(tar *)",
+      "Bash(mv *)",
+      "Bash(echo *)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(chmod *)",
+      "Bash(jq *)"
+    ]
+  },
+  "$version": 3
+}

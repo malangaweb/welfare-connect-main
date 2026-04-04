@@ -1,0 +1,225 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 42 34% 96%;
+    --foreground: 129 20% 18%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 129 20% 18%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 129 20% 18%;
+
+    --primary: 123 24% 33%;
+    --primary-foreground: 42 34% 96%;
+
+    --secondary: 108 19% 90%;
+    --secondary-foreground: 124 25% 26%;
+
+    --muted: 96 15% 90%;
+    --muted-foreground: 120 10% 38%;
+
+    --accent: 26 41% 44%;
+    --accent-foreground: 42 34% 96%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 103 16% 82%;
+    --input: 103 16% 82%;
+    --ring: 123 24% 33%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 90 22% 95%;
+    --sidebar-foreground: 122 18% 29%;
+    --sidebar-primary: 123 27% 32%;
+    --sidebar-primary-foreground: 42 34% 96%;
+    --sidebar-accent: 100 20% 90%;
+    --sidebar-accent-foreground: 122 24% 22%;
+    --sidebar-border: 100 16% 84%;
+    --sidebar-ring: 26 41% 44%;
+
+    /* Mobile-first font sizes */
+    font-size: 14px;
+  }
+
+  /* Mobile-first base styling */
+  * {
+    @apply box-border;
+  }
+
+  html,
+  body {
+    @apply w-full h-full m-0 p-0 overflow-hidden;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    @apply w-full h-full flex flex-col;
+  }
+
+  /* Mobile touch improvements */
+  @media (hover: none) and (pointer: coarse) {
+    button,
+    a,
+    [role="button"],
+    [role="tab"] {
+      @apply min-h-[44px] min-w-[44px];
+    }
+
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      @apply min-h-[44px];
+      font-size: 16px; /* Prevents iOS zoom-on-input */
+    }
+  }
+
+  /* Responsive typography adjustments */
+  @media (max-width: 640px) {
+    body {
+      font-size: 14px;
+    }
+
+    h1 {
+      @apply text-2xl;
+    }
+
+    h2 {
+      @apply text-xl;
+    }
+
+    h3 {
+      @apply text-lg;
+    }
+
+    h4 {
+      @apply text-base;
+    }
+  }
+
+  @media (min-width: 641px) {
+    body {
+      font-size: 14px;
+    }
+  }
+}
+
+@layer components {
+  /* Responsive button base */
+  .btn-responsive {
+    @apply px-3 py-2 sm:px-4 sm:py-2.5;
+  }
+
+  /* Responsive container */
+  .container-responsive {
+    @apply w-full px-3 sm:px-4 md:px-6 lg:px-8;
+  }
+
+  /* Responsive padding */
+  .p-responsive-sm {
+    @apply p-2 sm:p-3 md:p-4;
+  }
+
+  .p-responsive {
+    @apply p-3 sm:p-4 md:p-6;
+  }
+
+  .p-responsive-lg {
+    @apply p-4 sm:p-6 md:p-8;
+  }
+
+  /* Responsive gap */
+  .gap-responsive-sm {
+    @apply gap-2 sm:gap-3 md:gap-4;
+  }
+
+  .gap-responsive {
+    @apply gap-3 sm:gap-4 md:gap-6;
+  }
+
+  /* Mobile menu overlay */
+  .mobile-overlay {
+    @apply fixed inset-0 bg-black/50 z-40 md:hidden;
+  }
+
+  /* Hover lift animation for cards */
+  .hover-lift {
+    @apply transition-all duration-300 hover:shadow-lg hover:scale-105;
+  }
+
+  /* Safe area padding */
+  .safe-area {
+    padding-left: max(var(--safe-area-inset-left), 1rem);
+    padding-right: max(var(--safe-area-inset-right), 1rem);
+    padding-top: max(var(--safe-area-inset-top), 1rem);
+    padding-bottom: max(var(--safe-area-inset-bottom), 1rem);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Smooth scrolling for the entire page */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-secondary rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-primary/50 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary/70;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-glass;
+  }
+  
+  .neo-card {
+    @apply bg-white rounded-xl shadow-neo p-6;
+  }
+  
+  .hover-lift {
+    @apply transition-all duration-300 ease-in-out hover:-translate-y-1 hover:shadow-lg;
+  }
+  
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2;
+  }
+  
+  .page-transition {
+    @apply animate-fade-in transition-all duration-300 ease-in-out;
+  }
+}

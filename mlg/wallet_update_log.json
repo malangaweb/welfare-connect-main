@@ -1,0 +1,199 @@
+[]
+{
+    "member_id": "a646f9c6-ac7c-4945-8e6b-12e9e12145e6",
+    "wallet_before": 2950,
+    "wallet_after": 3050,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "a646f9c6-ac7c-4945-8e6b-12e9e12145e6",
+    "wallet_before": 2950,
+    "wallet_after": 3050,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "error": "Member not found",
+    "member_number": "PB20250624b"
+}
+{
+    "member_id": "a646f9c6-ac7c-4945-8e6b-12e9e12145e6",
+    "wallet_before": 2950,
+    "wallet_after": 3050,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "a646f9c6-ac7c-4945-8e6b-12e9e12145e6",
+    "wallet_before": 2950,
+    "wallet_after": 3050,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "a646f9c6-ac7c-4945-8e6b-12e9e12145e6",
+    "wallet_before": 2950,
+    "wallet_after": 2951,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "a8cc17c6-95b9-46c1-a53f-d2a40b2bf163",
+    "wallet_before": 0,
+    "wallet_after": 1,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1db15207-c624-4633-88ef-741e4065e974",
+    "wallet_before": 0,
+    "wallet_after": 1,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1db15207-c624-4633-88ef-741e4065e974",
+    "wallet_before": 0,
+    "wallet_after": 1,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1db15207-c624-4633-88ef-741e4065e974",
+    "wallet_before": 3,
+    "wallet_after": 4,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "e8f79124-d71b-45f1-b59b-d4c193bb9433",
+    "wallet_before": 3,
+    "wallet_after": 4,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "77228e92-c10a-4dc9-91a3-abcd0ddb90e1",
+    "wallet_before": 0,
+    "wallet_after": 1,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "77228e92-c10a-4dc9-91a3-abcd0ddb90e1",
+    "wallet_before": 2,
+    "wallet_after": 3,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "M006",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "e8f79124-d71b-45f1-b59b-d4c193bb9433",
+    "wallet_before": 5,
+    "wallet_after": 6,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1fb5dfc8-6bb5-4863-b0eb-5de8d7b7768e",
+    "wallet_before": 1,
+    "wallet_after": 2,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1fb5dfc8-6bb5-4863-b0eb-5de8d7b7768e",
+    "wallet_before": 3,
+    "wallet_after": 4,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1fb5dfc8-6bb5-4863-b0eb-5de8d7b7768e",
+    "wallet_before": 5,
+    "wallet_after": 6,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "e8f79124-d71b-45f1-b59b-d4c193bb9433",
+    "wallet_before": 7,
+    "wallet_after": 8,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "cad2d79b-f98d-4401-8a76-3443d6470edd",
+    "wallet_before": 1,
+    "wallet_after": 2,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "001",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "5412c259-6388-4ab3-bc54-eb6dce525d01",
+    "wallet_before": 1,
+    "wallet_after": 2,
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "747",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "919",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "15",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "747",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "919",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "otc",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_number": "4",
+    "status": "Suspended - Member not found",
+    "http_code": 204,
+    "response": ""
+}
+{
+    "member_id": "1f39f144-8a26-4406-85b5-fb9300ef851c",
+    "wallet_before": 1,
+    "wallet_after": 2,
+    "http_code": 204,
+    "response": ""
+}
