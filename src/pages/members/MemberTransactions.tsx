@@ -142,7 +142,7 @@ const MemberTransactions = () => {
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Total Transactions Card */}
-              <Card className="bg-gradient-to-br from-primary/5 to-primary/10">
+            <Card className="bg-card/80 border border-primary/20">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <DollarSign className="h-5 w-5 text-primary" />
@@ -156,7 +156,7 @@ const MemberTransactions = () => {
               </Card>
               
               {/* Total Credits Card */}
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/10 dark:to-green-900/20">
+            <Card className="bg-card/80 border border-green-100">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <ArrowUpRight className="h-5 w-5 text-green-600" />
@@ -170,7 +170,7 @@ const MemberTransactions = () => {
               </Card>
               
               {/* Total Debits Card */}
-              <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/10 dark:to-red-900/20">
+            <Card className="bg-card/80 border border-red-100">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <ArrowDownLeft className="h-5 w-5 text-red-600" />

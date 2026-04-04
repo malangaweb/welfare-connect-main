@@ -59,7 +59,7 @@ const TransactionItem = ({ transaction, onClick, renderAction }: {
 
   return (
     <div 
-      className="flex items-center justify-between p-3 sm:p-6 rounded-xl border bg-gradient-to-br from-card via-white to-gray-50 shadow-sm hover:shadow-lg hover:scale-[1.01] transition-all group"
+      className="flex items-center justify-between p-3 sm:p-6 rounded-xl border bg-card shadow-sm hover:shadow-lg hover:scale-[1.01] transition-all group"
     >
       <div className="flex items-center space-x-3 sm:space-x-5 flex-1 cursor-pointer" onClick={() => onClick(transaction)}>
         <div className="h-10 sm:h-12 w-10 sm:w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm flex-shrink-0">

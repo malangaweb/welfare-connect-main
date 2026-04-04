@@ -285,7 +285,7 @@ const Login = () => {
       </div>
 
       <div className="relative mx-auto grid w-full max-w-5xl overflow-hidden rounded-3xl border border-primary/20 bg-card shadow-2xl md:grid-cols-5">
-        <aside className="from-primary to-accent p-6 text-primary-foreground md:col-span-2 md:bg-gradient-to-br md:p-8">
+        <aside className="bg-primary p-6 text-primary-foreground md:col-span-2 md:p-8">
           <img
             src="/malanga-logo.png"
             alt="Malanga Welfare Connect"

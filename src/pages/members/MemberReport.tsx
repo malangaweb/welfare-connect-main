@@ -611,7 +611,7 @@ const MemberReport = () => {
               <Badge variant={member?.is_active ? 'outline' : 'destructive'}>{member?.is_active ? 'Active' : 'Inactive'}</Badge>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/10 dark:to-green-900/20">
+          <Card className="bg-card/80 border border-green-100">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Wallet className="h-5 w-5 text-green-600" />
@@ -623,7 +623,7 @@ const MemberReport = () => {
               <div className="text-sm text-muted-foreground mt-1">Calculated from all transactions</div>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/10 dark:to-blue-900/20">
+          <Card className="bg-card/80 border border-blue-100">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CreditCard className="h-5 w-5 text-blue-600" />

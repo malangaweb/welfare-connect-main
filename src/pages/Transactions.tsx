@@ -283,7 +283,7 @@ const Transactions = () => {
 
         {/* Edit Transaction Dialog */}
         <Dialog open={!!editingTx} onOpenChange={() => setEditingTx(null)}>
-          <DialogContent className="max-w-md bg-gradient-to-br from-white via-blue-50 to-gray-100 rounded-2xl shadow-xl p-0 w-[95vw] sm:w-full">
+          <DialogContent className="max-w-md bg-card rounded-2xl shadow-xl p-0 w-[95vw] sm:w-full">
             <div className="p-4 md:p-6">
               <DialogHeader>
                 <DialogTitle className="text-lg md:text-2xl font-bold mb-2 text-primary">Edit Transaction</DialogTitle>

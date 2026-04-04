@@ -64,7 +64,7 @@ const Index = () => {
 
             <Card className="overflow-hidden border-primary/20 bg-card/90 shadow-xl">
               <CardContent className="p-0">
-                <div className="bg-gradient-to-br from-primary/95 to-accent/95 p-6 text-primary-foreground sm:p-8">
+                <div className="bg-primary p-6 text-primary-foreground sm:p-8">
                   <p className="text-sm font-semibold uppercase tracking-wider opacity-90">Operations Snapshot</p>
                   <div className="mt-4 grid grid-cols-2 gap-4">
                     <div className="rounded-xl bg-white/15 p-4">

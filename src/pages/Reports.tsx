@@ -721,7 +721,7 @@ const Reports = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 p-1 md:p-6 min-h-screen bg-gradient-to-br from-background to-secondary/30">
+      <div className="space-y-8 p-1 md:p-6 min-h-screen bg-background">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
           <Card className="shadow-sm border-l-4 border-primary/70 hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
