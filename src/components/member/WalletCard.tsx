@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Wallet } from 'lucide-react';
 import WalletFundingDialog from './WalletFundingDialog';
 import TransferFundsDialog from './TransferFundsDialog';
+import WalletBalanceEditorDialog from './WalletBalanceEditorDialog';
 
 interface WalletCardProps {
   balance: number;
@@ -12,6 +13,8 @@ interface WalletCardProps {
   onFundingSuccess?: () => void;
   showFundingOption?: boolean;
   onTransferSuccess?: () => void;
+  isSuperAdmin?: boolean;
+  onBalanceUpdate?: () => void;
 }
 
 const WalletCard = ({ 
@@ -22,6 +25,8 @@ const WalletCard = ({
   onFundingSuccess,
   showFundingOption = false,
   onTransferSuccess,
+  isSuperAdmin = false,
+  onBalanceUpdate,
 }: WalletCardProps) => {
   return (
     <Card className="mt-6">
@@ -53,6 +58,15 @@ const WalletCard = ({
                 memberName={memberName}
                 currentBalance={balance}
                 onTransferSuccess={onTransferSuccess}
+              />
+            )}
+
+            {isSuperAdmin && memberId && memberName && onBalanceUpdate && (
+              <WalletBalanceEditorDialog
+                memberId={memberId}
+                memberName={memberName}
+                currentBalance={balance}
+                onBalanceUpdate={onBalanceUpdate}
               />
             )}
           </div>

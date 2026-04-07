@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Import refactored components
 import MemberProfileCard from '@/components/member/MemberProfileCard';
@@ -28,6 +29,7 @@ import MemberForm from '@/components/forms/MemberForm';
 const MemberDetails = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [member, setMember] = useState<Member | null>(null);
@@ -555,6 +557,8 @@ const MemberDetails = () => {
               onFundingSuccess={handleFundingSuccess}
               onTransferSuccess={handleTransferSuccess}
               showFundingOption
+              isSuperAdmin={isSuperAdmin()}
+              onBalanceUpdate={handleFundingSuccess}
             />
             <div className="mt-3">
               <Button

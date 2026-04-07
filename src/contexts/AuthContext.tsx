@@ -5,6 +5,7 @@ import {
   getCurrentUser,
   getCurrentMember,
   isAdmin,
+  isSuperAdmin,
   canManageMembers,
   canManageFinances,
   canManageCases,
@@ -17,6 +18,7 @@ import { UserRole } from '@/lib/types';
 interface AuthContextType {
   logout: () => Promise<void>;
   isAdmin: () => boolean;
+  isSuperAdmin: () => boolean;
   canManageMembers: () => boolean;
   canManageFinances: () => boolean;
   canManageCases: () => boolean;
@@ -60,6 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const contextValue: AuthContextType = {
     logout,
     isAdmin,
+    isSuperAdmin,
     canManageMembers,
     canManageFinances,
     canManageCases,
