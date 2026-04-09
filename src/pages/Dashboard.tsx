@@ -44,18 +44,13 @@ const Dashboard = () => {
     }
   })();
   const canAccess = (path: string) => canAccessPath(path, currentUserRole);
+  const hasCachedDashboard = persistentCache.has('dashboard');
   const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!hasCachedDashboard);
   const [data, setData] = useState<DashboardData>(() => {
     // ⚡ Instant load: Start with cached data if it exists
     const cached = persistentCache.get<DashboardData>('dashboard');
-    if (cached) {
-      // Small trick: schedule setLoading(false) right after initial render
-      // if we have cached data, to skip the skeleton state.
-      setTimeout(() => setLoading(false), 0);
-      return cached;
-    }
-    return {
+    return cached || {
       totalMembers: 0,
       activeCasesCount: 0,
       totalContributions: 0,

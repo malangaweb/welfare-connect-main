@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Member } from '@/lib/types';
 import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
 import { DbMember, DbDependant, mapDbMemberToMember } from '@/lib/db-types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DatePicker from 'react-datepicker';
@@ -48,10 +48,13 @@ const MemberDetails = () => {
   const [editInitialData, setEditInitialData] = useState<any>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [arrearsDialogOpen, setArrearsDialogOpen] = useState(false);
-  const [arrearsAmount, setArrearsAmount] = useState('');
-  const [arrearsReason, setArrearsReason] = useState('');
-  const [isDeductingArrears, setIsDeductingArrears] = useState(false);
+  const [deductDialogOpen, setDeductDialogOpen] = useState(false);
+  const [deductAmount, setDeductAmount] = useState('');
+  const [deductReason, setDeductReason] = useState('');
+  const [deductTarget, setDeductTarget] = useState<'arrears' | 'registration' | 'case'>('arrears');
+  const [deductCaseId, setDeductCaseId] = useState<string>('');
+  const [isDeducting, setIsDeducting] = useState(false);
+  const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string }[]>([]);
 
   const handleAddDependant = () => {
     setAddDependantOpen(true);
@@ -110,54 +113,90 @@ const MemberDetails = () => {
     await handleFundingSuccess();
   };
 
-  const handleDeductToArrears = async () => {
+  const handleDeductToAccount = async () => {
     if (!id || !member) return;
 
-    const amountNum = Number(arrearsAmount);
+    const amountNum = Number(deductAmount);
     if (!amountNum || amountNum <= 0) {
       toast({
         variant: 'destructive',
         title: 'Validation Error',
-        description: 'Please enter a valid arrears amount.',
+        description: 'Please enter a valid amount.',
       });
       return;
     }
 
-    setIsDeductingArrears(true);
+    if (amountNum > (member.walletBalance || 0)) {
+      toast({
+        variant: 'destructive',
+        title: 'Insufficient funds',
+        description: 'Member wallet balance is too low. Ask the member to add funds first.',
+      });
+      return;
+    }
+
+    if (deductTarget === 'case' && !deductCaseId) {
+      toast({
+        variant: 'destructive',
+        title: 'Select a case',
+        description: 'Choose a case to receive this deduction.',
+      });
+      return;
+    }
+
+    setIsDeducting(true);
     try {
-      const description = arrearsReason?.trim()
-        ? `Arrears deduction - ${arrearsReason.trim()}`
-        : 'Arrears deduction';
+      const baseDescription = deductReason?.trim()
+        ? `Deducted to ${deductTarget} - ${deductReason.trim()}`
+        : `Deducted to ${deductTarget}`;
 
-      const { error } = await supabase
-        .from('transactions')
-        .insert({
-          member_id: id,
-          amount: -Math.abs(amountNum),
-          transaction_type: 'arrears',
-          description,
-        } as any);
+      let transactionType: string = deductTarget === 'registration' ? 'registration' : 'arrears';
+      let transactionPayload: any = {
+        member_id: id,
+        amount: Math.abs(amountNum),
+        transaction_type: transactionType,
+        status: 'completed',
+        description: baseDescription,
+        metadata: {
+          source: 'deduct_to_account',
+          target: deductTarget,
+          case_id: deductTarget === 'case' ? deductCaseId : null,
+          reason: deductReason || null,
+        },
+      };
 
+      if (deductTarget === 'case') {
+        transactionType = 'contribution';
+        transactionPayload = {
+          ...transactionPayload,
+          transaction_type: transactionType,
+          case_id: deductCaseId,
+        };
+      }
+
+      const { error } = await supabase.from('transactions').insert(transactionPayload as any);
       if (error) throw error;
 
       toast({
         title: 'Success',
-        description: 'Amount deducted to arrears account.',
+        description: 'Amount deducted successfully.',
       });
 
-      setArrearsDialogOpen(false);
-      setArrearsAmount('');
-      setArrearsReason('');
+      setDeductDialogOpen(false);
+      setDeductAmount('');
+      setDeductReason('');
+      setDeductCaseId('');
+      setDeductTarget('arrears');
       await handleFundingSuccess();
     } catch (error) {
-      console.error('Error deducting to arrears:', error);
+      console.error('Error deducting to account:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to deduct to arrears account.',
+        description: error instanceof Error ? error.message : 'Failed to deduct to account.',
       });
     } finally {
-      setIsDeductingArrears(false);
+      setIsDeducting(false);
     }
   };
 
@@ -509,6 +548,27 @@ const MemberDetails = () => {
     fetchMember();
   }, [id, navigate]);
 
+  useEffect(() => {
+    const loadCases = async () => {
+      if (!deductDialogOpen || deductTarget !== 'case') return;
+      try {
+        const { data, error } = await supabase
+          .from('cases')
+          .select('id, case_number, title, is_active')
+          .eq('is_active', true);
+        if (error) throw error;
+        setAvailableCases((data || []).map((c: any) => ({
+          id: c.id,
+          case_number: c.case_number,
+          title: c.title,
+        })));
+      } catch (error) {
+        console.error('Error loading cases for deduction:', error);
+      }
+    };
+    loadCases();
+  }, [deductDialogOpen, deductTarget]);
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -571,9 +631,9 @@ const MemberDetails = () => {
               <Button
                 variant="destructive"
                 className="w-full"
-                onClick={() => setArrearsDialogOpen(true)}
+                onClick={() => setDeductDialogOpen(true)}
               >
-                Deduct to Arrears
+                Deduct to Account
               </Button>
             </div>
           </div>
@@ -717,46 +777,75 @@ const MemberDetails = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Deduct to Arrears Dialog */}
-      <Dialog open={arrearsDialogOpen} onOpenChange={setArrearsDialogOpen}>
+      {/* Deduct to Account Dialog */}
+      <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Deduct to Arrears</DialogTitle>
+            <DialogTitle>Deduct to Account</DialogTitle>
+            <DialogDescription>
+              Move funds out of this wallet into arrears, registration, or a specific case. The wallet balance will decrease immediately.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label>Amount*</label>
               <Input
                 type="number"
-                value={arrearsAmount}
-                onChange={(e) => setArrearsAmount(e.target.value)}
+                value={deductAmount}
+                onChange={(e) => setDeductAmount(e.target.value)}
                 placeholder="Enter amount"
                 min={0}
               />
             </div>
             <div>
+              <label>Target Account*</label>
+              <Select value={deductTarget} onValueChange={(v) => setDeductTarget(v as any)}>
+                <SelectTrigger><SelectValue placeholder="Select target" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="arrears">Arrears</SelectItem>
+                  <SelectItem value="registration">Registration</SelectItem>
+                  <SelectItem value="case">Case</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {deductTarget === 'case' && (
+              <div>
+                <label>Select Case*</label>
+                <Select value={deductCaseId} onValueChange={setDeductCaseId}>
+                  <SelectTrigger><SelectValue placeholder="Choose a case" /></SelectTrigger>
+                  <SelectContent>
+                    {availableCases.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.case_number} — {c.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
               <label>Reason (optional)</label>
               <Input
-                value={arrearsReason}
-                onChange={(e) => setArrearsReason(e.target.value)}
-                placeholder="E.g. Late payment / outstanding" 
+                value={deductReason}
+                onChange={(e) => setDeductReason(e.target.value)}
+                placeholder="e.g. Manual adjustment / re-allocation" 
               />
             </div>
           </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setArrearsDialogOpen(false)}
-              disabled={isDeductingArrears}
+              onClick={() => setDeductDialogOpen(false)}
+              disabled={isDeducting}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              onClick={handleDeductToArrears}
-              disabled={isDeductingArrears}
+              onClick={handleDeductToAccount}
+              disabled={isDeducting}
             >
-              {isDeductingArrears ? 'Saving...' : 'Deduct'}
+              {isDeducting ? 'Saving...' : 'Deduct'}
             </Button>
           </DialogFooter>
         </DialogContent>
