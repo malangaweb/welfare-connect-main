@@ -49,25 +49,24 @@ const WalletBalanceEditorDialog = ({
       setIsSubmitting(true);
       
       const numericBalance = parseFloat(newBalance);
-      
-      // Update stored wallet_balance; DB trigger will keep transactions-derived balances in sync
-      const { error: updateError } = await (supabase
-        .from("members")
-        .update({ 
-          wallet_balance: numericBalance,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", memberId)) as any;
+      const difference = numericBalance - currentBalance;
+      const isIncrease = difference >= 0;
 
-      if (updateError) throw updateError;
+      // Choose transaction type to align with existing accounting rules:
+      // - Positive diff: wallet_funding (adds to balance)
+      // - Negative diff: arrears (stored as negative by DB calc)
+      const txType = isIncrease ? "wallet_funding" : "arrears";
+      const txAmount = isIncrease ? difference : Math.abs(difference);
 
+      // Insert adjustment transaction; DB trigger will recalc wallet_balance
       const { error: txError } = await (supabase.from("transactions").insert({
         member_id: memberId,
-        amount: numericBalance - currentBalance,
-        transaction_type: "wallet_adjustment",
-        payment_method: "manual",
+        amount: txAmount,
+        transaction_type: txType,
         status: "completed",
         description: reason ? `Balance adjustment - ${reason}` : "Manual balance adjustment",
+        reference: "balance_edit",
+        created_at: new Date().toISOString(),
         metadata: {
           source: "wallet_balance_editor",
           previous_balance: currentBalance,
@@ -78,7 +77,6 @@ const WalletBalanceEditorDialog = ({
 
       if (txError) throw txError;
 
-      const difference = numericBalance - currentBalance;
       const direction = difference >= 0 ? "increased" : "decreased";
       
       toast.success("Wallet balance updated successfully", {
@@ -93,7 +91,7 @@ const WalletBalanceEditorDialog = ({
     } catch (error) {
       console.error("Error updating wallet balance:", error);
       toast.error("Failed to update wallet balance", {
-        description: "Please try again.",
+        description: error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
       setIsSubmitting(false);
