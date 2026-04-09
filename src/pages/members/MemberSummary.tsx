@@ -35,17 +35,19 @@ const MemberSummary = () => {
       .single()
       .then(({ data }) => {
         setMember(data);
+        // Prefer stored wallet_balance maintained by DB trigger; fallback to calculated sum
+        const balanceFromMember = Number(data?.wallet_balance) || 0;
+        const balanceFromTx = (transactions || []).reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+        setWalletBalance(Number.isFinite(balanceFromMember) ? balanceFromMember : balanceFromTx);
         setLoading(false);
       });
-    // Fetch all transactions and calculate wallet balance
+    // Fetch all transactions (used elsewhere); balances come from member row
     (supabase as any)
       .from("transactions")
       .select("*")
       .eq("member_id", member_id)
       .then(({ data }: { data: any[] }) => {
         setTransactions(data || []);
-        const balance = (data || []).reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
-        setWalletBalance(balance);
       });
   }, [navigate]);
 

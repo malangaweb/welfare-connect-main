@@ -439,7 +439,8 @@ const MemberDetails = () => {
           residence,
           next_of_kin,
           registration_date,
-          is_active
+          is_active,
+          wallet_balance
         `)
         .eq('id', id)
         .maybeSingle();
@@ -476,7 +477,8 @@ const MemberDetails = () => {
         console.error('Error fetching transactions:', txError);
         throw txError;
       }
-      const walletBalance = (transactions || []).reduce((sum, tx: any) => {
+      // Prefer stored wallet_balance maintained by DB trigger; fall back to calculated sum for safety
+      const calculatedBalance = (transactions || []).reduce((sum, tx: any) => {
         const amount = Number(tx.amount) || 0;
         const type = String(tx.transaction_type || '').toLowerCase();
         const normalizedAmount = ['registration', 'renewal', 'penalty', 'contribution', 'arrears'].includes(type)
@@ -484,6 +486,11 @@ const MemberDetails = () => {
           : amount;
         return sum + normalizedAmount;
       }, 0);
+
+      const walletBalance = Number.isFinite(dbMember.wallet_balance)
+        ? Number(dbMember.wallet_balance)
+        : calculatedBalance;
+
       setMember({ ...memberWithDependants, walletBalance });
     } catch (error) {
       console.error('Error in fetchMember:', error);

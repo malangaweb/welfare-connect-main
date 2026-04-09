@@ -54,9 +54,10 @@ const MemberDashboard = () => {
 
       setMember(memberData);
       setTransactions(allTransData || []);
-      // Calculate wallet balance as sum of all transaction amounts
-      const balance = (allTransData || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-      setWalletBalance(balance);
+      // Prefer stored wallet_balance maintained by DB triggers; fallback to calculated sum
+      const balanceFromMember = Number(memberData?.wallet_balance) || 0;
+      const balanceFromTx = (allTransData || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      setWalletBalance(Number.isFinite(balanceFromMember) ? balanceFromMember : balanceFromTx);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast({

@@ -50,6 +50,7 @@ const WalletBalanceEditorDialog = ({
       
       const numericBalance = parseFloat(newBalance);
       
+      // Update stored wallet_balance; DB trigger will keep transactions-derived balances in sync
       const { error: updateError } = await (supabase
         .from("members")
         .update({ 
@@ -60,7 +61,7 @@ const WalletBalanceEditorDialog = ({
 
       if (updateError) throw updateError;
 
-      await (supabase.from("transactions").insert({
+      const { error: txError } = await (supabase.from("transactions").insert({
         member_id: memberId,
         amount: numericBalance - currentBalance,
         transaction_type: "wallet_adjustment",
@@ -74,6 +75,8 @@ const WalletBalanceEditorDialog = ({
           reason: reason || null,
         },
       }) as any);
+
+      if (txError) throw txError;
 
       const difference = numericBalance - currentBalance;
       const direction = difference >= 0 ? "increased" : "decreased";
