@@ -1,0 +1,10 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:malanga_welfare_companion/core/db/app_database.dart",
+    "package:malanga_welfare_companion/core/db/cache_repository.dart",
+    "package:malanga_welfare_companion/core/network/app_api_client.dart",
+    "package:malanga_welfare_companion/core/sync/sync_engine.dart"
+  ]
+}

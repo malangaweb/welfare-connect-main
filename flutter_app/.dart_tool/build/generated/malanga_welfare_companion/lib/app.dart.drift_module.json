@@ -1,0 +1,11 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:go_router/go_router.dart",
+    "package:malanga_welfare_companion/auth/session_controller.dart",
+    "package:malanga_welfare_companion/features/auth/login_screen.dart",
+    "package:malanga_welfare_companion/features/home/home_screen.dart"
+  ]
+}

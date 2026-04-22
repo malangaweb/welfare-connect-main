@@ -1,0 +1,1 @@
+{"valid_import":true,"imports":[{"uri":"package:flutter_riverpod/flutter_riverpod.dart","transitive":false},{"uri":"package:malanga_welfare_companion/core/network/app_api_client.dart","transitive":false},{"uri":"package:malanga_welfare_companion/core/providers.dart","transitive":false}],"elements":[]}

@@ -1,0 +1,7 @@
+{
+  "elements": {},
+  "imports": [
+    "package:drift/drift.dart",
+    "package:malanga_welfare_companion/core/db/app_database.dart"
+  ]
+}

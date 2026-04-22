@@ -1,0 +1,9 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:intl/intl.dart",
+    "package:malanga_welfare_companion/features/wallet/wallet_controller.dart"
+  ]
+}

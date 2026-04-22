@@ -1,0 +1,1 @@
+{"valid_import":true,"imports":[{"uri":"package:dio/dio.dart","transitive":false},{"uri":"package:flutter_riverpod/flutter_riverpod.dart","transitive":false},{"uri":"package:malanga_welfare_companion/auth/session_controller.dart","transitive":false},{"uri":"package:malanga_welfare_companion/core/config/app_config.dart","transitive":false}],"elements":[]}
