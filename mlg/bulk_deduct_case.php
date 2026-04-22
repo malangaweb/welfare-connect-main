@@ -124,12 +124,14 @@ $caseNumber = (string) ($case['case_number'] ?? '');
 $deducted = [];
 $skipped_already_paid = [];
 $skipped_insufficient = [];
+$skipped_ineligible = [];
 
 foreach ($uniqueMemberIds as $memberId) {
     $paidResp = sb_get(
         '/rest/v1/transactions?member_id=eq.' . rawurlencode($memberId) .
         '&case_id=eq.' . rawurlencode($caseId) .
         '&transaction_type=in.(contribution,case_wallet_deduction)' .
+        '&status=eq.completed' .
         '&select=id&limit=1',
         $supabaseUrl,
         $key
@@ -141,7 +143,7 @@ foreach ($uniqueMemberIds as $memberId) {
 
     $memResp = sb_get(
         '/rest/v1/members?id=eq.' . rawurlencode($memberId) .
-        '&select=id,wallet_balance,is_active&limit=1',
+        '&select=id,wallet_balance,is_active,status&limit=1',
         $supabaseUrl,
         $key
     );
@@ -150,7 +152,20 @@ foreach ($uniqueMemberIds as $memberId) {
         continue;
     }
 
-    $wallet = floatval($memResp['data'][0]['wallet_balance'] ?? 0);
+    $member = $memResp['data'][0];
+    $isActive = !empty($member['is_active']);
+    $status = strtolower(trim((string)($member['status'] ?? '')));
+    if (!$isActive || !in_array($status, ['active', 'probation'], true)) {
+        $skipped_ineligible[] = [
+            'member_id' => $memberId,
+            'reason' => 'member_not_eligible',
+            'is_active' => $isActive,
+            'status' => $status,
+        ];
+        continue;
+    }
+
+    $wallet = floatval($member['wallet_balance'] ?? 0);
     if ($wallet + 1e-6 < $required) {
         $skipped_insufficient[] = ['member_id' => $memberId, 'reason' => 'insufficient_balance', 'wallet_balance' => $wallet];
         continue;
@@ -199,5 +214,6 @@ echo json_encode([
     'required_amount' => $required,
     'deducted' => $deducted,
     'skipped_already_paid' => $skipped_already_paid,
+    'skipped_ineligible' => $skipped_ineligible,
     'skipped_insufficient' => $skipped_insufficient,
 ]);

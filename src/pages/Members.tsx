@@ -75,6 +75,17 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
+type DeductPreviewStatus = 'eligible' | 'paid' | 'insufficient' | 'ineligible' | 'unknown';
+type DeductPreviewRow = {
+  member_id: string;
+  member_number: string;
+  name: string;
+  wallet_balance: number;
+  is_active: boolean;
+  status: string;
+  preview_status: DeductPreviewStatus;
+};
+
 const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer, showBulkSelect, selected, onToggleSelect }: {
   member: Member,
   index: number,
@@ -304,6 +315,8 @@ const Members = () => {
   const [deductCases, setDeductCases] = useState<{ id: string; case_number: string; contribution_per_member: number }[]>([]);
   const [deductCaseId, setDeductCaseId] = useState('');
   const [deductSubmitting, setDeductSubmitting] = useState(false);
+  const [deductPreviewLoading, setDeductPreviewLoading] = useState(false);
+  const [deductPreviewRows, setDeductPreviewRows] = useState<DeductPreviewRow[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -380,6 +393,17 @@ const Members = () => {
       toast({ variant: 'destructive', title: 'Select a case and at least one member' });
       return;
     }
+    const eligibleMemberIds = deductPreviewRows
+      .filter((r) => r.preview_status === 'eligible')
+      .map((r) => r.member_id);
+    if (eligibleMemberIds.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'No eligible members to deduct',
+        description: 'All selected members are already paid, ineligible, or have insufficient balance for this case.',
+      });
+      return;
+    }
     const token = getAppToken();
     if (!token) {
       toast({ variant: 'destructive', title: 'Session expired', description: 'Please log in again.' });
@@ -390,7 +414,7 @@ const Members = () => {
       const { data, error } = await supabase.functions.invoke('api-case-bulk-deduct', {
         body: {
           case_id: deductCaseId,
-          member_ids: Array.from(selectedMemberIds),
+          member_ids: eligibleMemberIds,
         },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -400,6 +424,7 @@ const Members = () => {
         error?: string;
         deducted?: string[];
         skipped_already_paid?: string[];
+        skipped_ineligible?: unknown[];
         skipped_insufficient?: unknown[];
       };
       if (!d?.success) {
@@ -407,10 +432,11 @@ const Members = () => {
       }
       toast({
         title: 'Deduct to case finished',
-        description: `Deducted: ${d.deducted?.length ?? 0}. Already paid: ${d.skipped_already_paid?.length ?? 0}. Skipped / other: ${d.skipped_insufficient?.length ?? 0}.`,
+        description: `Deducted: ${d.deducted?.length ?? 0}. Already paid: ${d.skipped_already_paid?.length ?? 0}. Ineligible: ${d.skipped_ineligible?.length ?? 0}. Insufficient / other: ${d.skipped_insufficient?.length ?? 0}.`,
       });
       setDeductDialogOpen(false);
       setSelectedMemberIds(new Set());
+      setDeductPreviewRows([]);
       await fetchMembers();
     } catch (error) {
       console.error(error);
@@ -424,6 +450,95 @@ const Members = () => {
     }
   };
 
+  const loadDeductPreview = async () => {
+    if (!deductDialogOpen || !deductCaseId || selectedMemberIds.size === 0) {
+      setDeductPreviewRows([]);
+      return;
+    }
+    try {
+      setDeductPreviewLoading(true);
+      const selectedIds = Array.from(selectedMemberIds);
+      const selectedCase = deductCases.find((c) => c.id === deductCaseId);
+      const requiredAmount = Number(selectedCase?.contribution_per_member || 0);
+
+      const chunkSize = 200;
+      const memberRows: any[] = [];
+      for (let i = 0; i < selectedIds.length; i += chunkSize) {
+        const chunk = selectedIds.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+          .from('members')
+          .select('id, member_number, name, wallet_balance, is_active, status')
+          .in('id', chunk);
+        if (error) throw error;
+        memberRows.push(...(data || []));
+      }
+
+      const paidSet = new Set<string>();
+      for (let i = 0; i < selectedIds.length; i += chunkSize) {
+        const chunk = selectedIds.slice(i, i + chunkSize);
+        const { data: txRows, error: txError } = await supabase
+          .from('transactions')
+          .select('member_id')
+          .eq('case_id', deductCaseId)
+          .eq('status', 'completed')
+          .in('transaction_type', ['contribution', 'case_wallet_deduction'])
+          .in('member_id', chunk);
+        if (txError) throw txError;
+        (txRows || []).forEach((t: any) => {
+          if (t.member_id) paidSet.add(String(t.member_id));
+        });
+      }
+
+      const preview: DeductPreviewRow[] = selectedIds.map((memberId) => {
+        const row = memberRows.find((m) => String(m.id) === memberId);
+        if (!row) {
+          return {
+            member_id: memberId,
+            member_number: '',
+            name: 'Unknown',
+            wallet_balance: 0,
+            is_active: false,
+            status: '',
+            preview_status: 'unknown',
+          };
+        }
+
+        const wallet = Number(row.wallet_balance) || 0;
+        const status = String(row.status || '').toLowerCase();
+        const isEligibleByMemberState = Boolean(row.is_active) && (status === 'active' || status === 'probation');
+        const isPaid = paidSet.has(memberId);
+        const hasSufficient = wallet + 1e-6 >= requiredAmount;
+
+        let previewStatus: DeductPreviewStatus = 'eligible';
+        if (!isEligibleByMemberState) previewStatus = 'ineligible';
+        else if (isPaid) previewStatus = 'paid';
+        else if (!hasSufficient) previewStatus = 'insufficient';
+
+        return {
+          member_id: memberId,
+          member_number: String(row.member_number || ''),
+          name: String(row.name || 'Unknown'),
+          wallet_balance: wallet,
+          is_active: Boolean(row.is_active),
+          status: String(row.status || ''),
+          preview_status: previewStatus,
+        };
+      });
+
+      setDeductPreviewRows(preview);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load deduction preview',
+        description: error instanceof Error ? error.message : 'Please try again.',
+      });
+      setDeductPreviewRows([]);
+    } finally {
+      setDeductPreviewLoading(false);
+    }
+  };
+
   const handleTransferFromMember = (m: Member) => {
     setTransferFromMember(m);
     setTransferOpen(true);
@@ -433,43 +548,63 @@ const Members = () => {
     try {
       setLoading(true);
 
-      // Fetch ALL members with filters (no pagination yet)
-      let query = supabase
-        .from('members')
-        .select('*', { count: 'exact' });
+      const buildMembersQuery = (withCount: boolean) => {
+        let query = supabase
+          .from('members')
+          .select('*', withCount ? { count: 'exact' } : undefined);
 
-      // Apply Server-Side Search
-      if (debouncedSearch) {
-        query = query.or(`member_number.ilike.%${debouncedSearch}%,name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%`);
-      }
-
-      // Apply Server-Side Filters
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'active' || statusFilter === 'probation') {
-          query = query.eq('status', statusFilter);
-        } else if (statusFilter === 'inactive' || statusFilter === 'deceased') {
-          query = query.eq('status', statusFilter);
-        } else {
-          const isActive = statusFilter === 'active';
-          query = query.eq('is_active', isActive);
+        // Apply Server-Side Search
+        if (debouncedSearch) {
+          query = query.or(`member_number.ilike.%${debouncedSearch}%,name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%`);
         }
+
+        // Apply Server-Side Filters
+        if (statusFilter !== 'all') {
+          if (statusFilter === 'active' || statusFilter === 'probation') {
+            query = query.eq('status', statusFilter);
+          } else if (statusFilter === 'inactive' || statusFilter === 'deceased') {
+            query = query.eq('status', statusFilter);
+          } else {
+            const isActive = statusFilter === 'active';
+            query = query.eq('is_active', isActive);
+          }
+        }
+
+        if (locationFilter !== 'all') {
+          query = query.eq('residence', locationFilter);
+        }
+
+        return query;
+      };
+
+      const fetchedRows: any[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      let totalCountValue = 0;
+
+      while (true) {
+        const withCount = from === 0;
+        const { data, error, count } = await buildMembersQuery(withCount).range(from, from + pageSize - 1);
+        if (error) throw error;
+        const batch = (data as any[]) || [];
+        fetchedRows.push(...batch);
+
+        if (withCount && count !== null) {
+          totalCountValue = count;
+          setTotalCount(count);
+        }
+
+        if (batch.length < pageSize) break;
+        from += pageSize;
       }
 
-      if (locationFilter !== 'all') {
-        query = query.eq('residence', locationFilter);
-      }
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      if (count !== null) {
-        setTotalCount(count);
+      if (totalCountValue === 0) {
+        setTotalCount(fetchedRows.length);
       }
 
       // Map members - use stored wallet_balance from database
       // (RPC calls for every member cause resource exhaustion with large member lists)
-      const membersWithBalances = (data as any[] || []).map((m: any) => {
+      const membersWithBalances = (fetchedRows || []).map((m: any) => {
         const baseMember = mapDbMemberToMember(m);
         return {
           ...baseMember,
@@ -543,6 +678,10 @@ const Members = () => {
   useEffect(() => {
     setSelectedMemberIds(new Set());
   }, [debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
+
+  useEffect(() => {
+    void loadDeductPreview();
+  }, [deductDialogOpen, deductCaseId, selectedMemberIds, deductCases]);
 
   const paginatedMembers = members;
 
@@ -1218,22 +1357,22 @@ const Members = () => {
                         <TableHead className="w-10 px-2">
                           <Checkbox
                             checked={
-                              paginatedMembers.length > 0 &&
-                              paginatedMembers.every((m) => selectedMemberIds.has(m.id))
+                              allMembers.length > 0 &&
+                              allMembers.every((m) => selectedMemberIds.has(m.id))
                             }
                             onCheckedChange={(v) => {
                               const checked = v === true;
                               setSelectedMemberIds((prev) => {
                                 const next = new Set(prev);
                                 if (checked) {
-                                  paginatedMembers.forEach((m) => next.add(m.id));
+                                  allMembers.forEach((m) => next.add(m.id));
                                 } else {
-                                  paginatedMembers.forEach((m) => next.delete(m.id));
+                                  allMembers.forEach((m) => next.delete(m.id));
                                 }
                                 return next;
                               });
                             }}
-                            aria-label="Select all members on this page"
+                            aria-label="Select all filtered members"
                           />
                         </TableHead>
                       )}
@@ -1339,7 +1478,7 @@ const Members = () => {
       </div>
 
       <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Deduct to Case</DialogTitle>
             <DialogDescription>
@@ -1366,6 +1505,32 @@ const Members = () => {
             <p className="text-sm text-muted-foreground">
               Applying to <strong>{selectedMemberIds.size}</strong> selected member(s).
             </p>
+            <p className="text-xs text-muted-foreground">
+              Eligible members only: <strong>is_active = true</strong> and status <strong>active</strong> or <strong>probation</strong>.
+            </p>
+            {deductPreviewLoading ? (
+              <p className="text-xs text-muted-foreground">Checking paid / wallet eligibility for selected case...</p>
+            ) : deductPreviewRows.length > 0 ? (
+              <div className="space-y-2 rounded-md border p-2">
+                <div className="text-xs text-muted-foreground">
+                  Eligible: <strong>{deductPreviewRows.filter((r) => r.preview_status === 'eligible').length}</strong> | Paid:{' '}
+                  <strong>{deductPreviewRows.filter((r) => r.preview_status === 'paid').length}</strong> | Insufficient:{' '}
+                  <strong>{deductPreviewRows.filter((r) => r.preview_status === 'insufficient').length}</strong> | Ineligible:{' '}
+                  <strong>{deductPreviewRows.filter((r) => r.preview_status === 'ineligible').length}</strong>
+                </div>
+                <details>
+                  <summary className="cursor-pointer text-xs text-muted-foreground">View member breakdown</summary>
+                  <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1">
+                    {deductPreviewRows.map((row) => (
+                      <div key={row.member_id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
+                        <span className="truncate mr-2">#{row.member_number || '-'} {row.name}</span>
+                        <span className="font-medium capitalize">{row.preview_status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            ) : null}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => setDeductDialogOpen(false)} disabled={deductSubmitting}>
