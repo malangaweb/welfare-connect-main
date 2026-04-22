@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/db/cache_repository.dart';
 import '../../core/network/app_api_client.dart';
 import '../../core/providers.dart';
 
-final walletControllerProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+final walletControllerProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.watch(appApiClientProvider);
   final cache = ref.watch(cacheRepositoryProvider);
   try {
