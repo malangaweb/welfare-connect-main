@@ -633,9 +633,9 @@ const Members = () => {
       setAllMembers(sortedMembers);
 
       // Apply client-side pagination
-      const from = (currentPage - 1) * itemsPerPage;
-      const to = from + itemsPerPage;
-      const paginatedMembers = sortedMembers.slice(from, to);
+      const pageFrom = (currentPage - 1) * itemsPerPage;
+      const pageTo = pageFrom + itemsPerPage;
+      const paginatedMembers = sortedMembers.slice(pageFrom, pageTo);
 
       setMembers(paginatedMembers);
 
