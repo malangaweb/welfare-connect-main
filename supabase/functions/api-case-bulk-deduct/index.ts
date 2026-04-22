@@ -59,9 +59,19 @@ serve(async (req) => {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
+    const lower = msg.toLowerCase();
     if (msg === "Forbidden") {
       return jsonResponse(403, { error: "Forbidden" });
     }
-    return jsonResponse(401, { error: "Unauthorized" });
+    if (
+      lower.includes("missing bearer token") ||
+      lower.includes("jwt") ||
+      lower.includes("signature") ||
+      lower.includes("exp") ||
+      lower.includes("app_jwt_secret")
+    ) {
+      return jsonResponse(401, { error: msg });
+    }
+    return jsonResponse(500, { error: msg });
   }
 });

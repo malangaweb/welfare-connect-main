@@ -17,6 +17,29 @@ export function clearAppToken(): void {
   localStorage.removeItem("token");
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const json = atob(padded);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function isAppTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return true;
+  const exp = Number(payload.exp || 0);
+  if (!exp) return true;
+  const now = Math.floor(Date.now() / 1000);
+  return exp <= now;
+}
+
 export function normalizePhone(phone: string): string {
   const digits = String(phone || "").replace(/\D/g, "");
   if (digits.startsWith("254")) return digits;

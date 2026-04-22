@@ -31,7 +31,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { clearAppToken, getAppToken } from '@/lib/appAuth';
+import { clearAppToken, getAppToken, isAppTokenExpired } from '@/lib/appAuth';
 import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
@@ -405,21 +405,36 @@ const Members = () => {
       return;
     }
     const token = getAppToken();
-    if (!token) {
+    if (!token || isAppTokenExpired(token)) {
+      clearAppToken();
       toast({ variant: 'destructive', title: 'Session expired', description: 'Please log in again.' });
       return;
     }
     setDeductSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('api-case-bulk-deduct', {
-        body: {
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api-case-bulk-deduct`;
+      const res = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           case_id: deductCaseId,
           member_ids: eligibleMemberIds,
-        },
-        headers: { Authorization: `Bearer ${token}` },
+        }),
       });
-      if (error) throw new Error(error.message);
-      const d = data as {
+
+      const parsed = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errMsg = typeof parsed?.error === 'string'
+          ? parsed.error
+          : `Deduction request failed (${res.status})`;
+        throw new Error(errMsg);
+      }
+
+      const d = parsed as {
         success?: boolean;
         error?: string;
         deducted?: string[];
