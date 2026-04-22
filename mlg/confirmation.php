@@ -1,5 +1,9 @@
 <?php
 
+define('MPESA_ENDPOINT_LABEL', 'mpesa_confirmation');
+define('MPESA_RAW_LOG_FILE', 'mpesa_confirmation_raw.log');
+define('MPESA_DEBUG_LOG_FILE', 'confirmation_log.json');
+
 // ==================================================
 // SUPABASE CONFIG (SERVICE ROLE KEY ONLY)
 // ==================================================
@@ -14,7 +18,12 @@ $data  = json_decode($input, true);
 
 // Log raw callback
 file_put_contents(
-    'confirmation_log.json',
+    MPESA_RAW_LOG_FILE,
+    date('c') . ' [' . MPESA_ENDPOINT_LABEL . '] ' . $input . PHP_EOL,
+    FILE_APPEND
+);
+file_put_contents(
+    MPESA_DEBUG_LOG_FILE,
     date('c') . PHP_EOL . $input . PHP_EOL,
     FILE_APPEND
 );
@@ -80,7 +89,7 @@ $parsedReference = parseBillReference($transaction['bill_ref_number']);
 $referenceType = $parsedReference['format'];
 
 file_put_contents(
-    'confirmation_log.json',
+    MPESA_DEBUG_LOG_FILE,
     date('c') . " PARSED: " . json_encode($parsedReference) . PHP_EOL,
     FILE_APPEND
 );
@@ -159,10 +168,7 @@ if (empty($memberId) && $referenceType === 'member_only') {
 
 // SCENARIO 1: Member + Case → Create case contribution
 if (!empty($memberId) && !empty($caseId) && floatval($transaction['trans_amount']) > 0) {
-    $currentWallet = floatval($member['wallet_balance'] ?? 0);
-    $newWallet = $currentWallet + floatval($transaction['trans_amount']);
-
-    // Create contribution transaction
+    // Ledger row only; members.wallet_balance is derived from completed transactions via DB trigger.
     $txPayload = [
         'member_id' => $memberId,
         'case_id' => $caseId,
@@ -184,36 +190,30 @@ if (!empty($memberId) && !empty($caseId) && floatval($transaction['trans_amount'
 
     supabaseInsertStrict('/rest/v1/transactions', $txPayload);
 
-    // Update wallet
-    supabasePatch(
-        "/rest/v1/members?id=eq." . $memberId,
-        ['wallet_balance' => $newWallet]
-    );
-
     sendSmsIfValid($transaction);
     respondToSafaricom();
 }
 
-// SCENARIO 2: Member only → Regular wallet funding
+// SCENARIO 2: Member only → wallet funding transaction (same ledger model as Edge C2B)
 if (!empty($memberId) && empty($caseId) && floatval($transaction['trans_amount']) > 0) {
-    $currentWallet = floatval($member['wallet_balance'] ?? 0);
-    $newWallet = $currentWallet + floatval($transaction['trans_amount']);
+    $amt = floatval($transaction['trans_amount']);
+    $txPayload = [
+        'member_id' => $memberId,
+        'amount' => $amt,
+        'transaction_type' => 'wallet_funding',
+        'payment_method' => 'mpesa',
+        'mpesa_reference' => $transaction['trans_id'],
+        'reference' => $transaction['bill_ref_number'],
+        'description' => 'M-Pesa C2B (PHP) — Member ' . ($parsedReference['member_number'] ?? $transaction['bill_ref_number']),
+        'status' => 'completed',
+        'created_at' => $transaction['trans_time'],
+        'metadata' => json_encode([
+            'webhook_source' => 'php_confirmation_v2',
+            'payment_for' => 'wallet',
+        ]),
+    ];
 
-    $walletUpdate = supabasePatch(
-        "/rest/v1/members?id=eq." . $memberId,
-        ['wallet_balance' => $newWallet]
-    );
-
-    if ($walletUpdate['http'] !== 204) {
-        storeWrongTransaction(
-            $transaction,
-            'Wallet update failed',
-            $data,
-            $referenceType,
-            $parsedReference
-        );
-        respondToSafaricom();
-    }
+    supabaseInsertStrict('/rest/v1/transactions', $txPayload);
 
     sendSmsIfValid($transaction);
     respondToSafaricom();
@@ -299,6 +299,8 @@ function supabaseInsertStrict($path, $payload)
         ], JSON_PRETTY_PRINT) . PHP_EOL,
         FILE_APPEND
     );
+
+    return ['http' => $http, 'response' => $response];
 }
 
 function supabaseGet($path)

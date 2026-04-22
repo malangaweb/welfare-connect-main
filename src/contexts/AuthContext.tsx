@@ -1,6 +1,7 @@
 import { createContext, useContext, ReactNode, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { clearAppToken } from '@/lib/appAuth';
 import {
   getCurrentUser,
   getCurrentMember,
@@ -44,7 +45,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(async () => {
     try {
       await supabase.auth.signOut();
-      localStorage.removeItem('token');
+      clearAppToken();
       localStorage.removeItem('currentUser');
       localStorage.removeItem('member_member_id');
       localStorage.removeItem('member_name');

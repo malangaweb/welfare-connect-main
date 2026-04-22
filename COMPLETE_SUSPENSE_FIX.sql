@@ -146,13 +146,6 @@ BEGIN
                 v_row.transaction_date
             );
 
-            -- Update member balance
-            PERFORM update_wallet_balance(
-                v_member_id,
-                v_row.amount,
-                'deposit'
-            );
-
             -- Log the auto-match action
             INSERT INTO audit_logs (
                 user_id,

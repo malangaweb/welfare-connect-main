@@ -199,8 +199,8 @@ const Cases = () => {
           while (true) {
             const { data: contribTx, error: contribError } = await (supabase as any)
               .from('transactions')
-              .select('amount, description, transaction_type')
-              .eq('transaction_type', 'contribution')
+              .select('amount, description, transaction_type, status')
+              .in('transaction_type', ['contribution', 'case_wallet_deduction'])
               .or(orFilter)
               .range(from, from + pageSize - 1);
 
@@ -211,6 +211,7 @@ const Cases = () => {
 
             const batch = contribTx || [];
             totalContributions += batch.reduce((sum, row) => {
+              if (row.status && row.status !== 'completed') return sum;
               const amt = Number(row.amount) || 0;
               return sum + (amt < 0 ? -amt : amt);
             }, 0);
@@ -224,8 +225,8 @@ const Cases = () => {
           while (true) {
             const { data: refundTx, error: refundError } = await (supabase as any)
               .from('transactions')
-              .select('amount, transaction_type')
-              .eq('transaction_type', 'contribution_refund')
+              .select('amount, transaction_type, status')
+              .in('transaction_type', ['contribution_refund', 'case_wallet_refund'])
               .or(orFilter)
               .range(from, from + pageSize - 1);
 
@@ -236,6 +237,7 @@ const Cases = () => {
 
             const batch = refundTx || [];
             totalRefunds += batch.reduce((sum, row) => {
+              if (row.status && row.status !== 'completed') return sum;
               const amt = Number(row.amount) || 0;
               return sum + (amt > 0 ? amt : 0); // Refunds are positive
             }, 0);

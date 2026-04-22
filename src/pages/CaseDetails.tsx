@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@/components/ui/use-toast';
-import { ChevronLeft, Edit, User, Calendar, DollarSign, CheckCircle, TimerOff, Clock, ArrowRight, Wallet, RotateCcw } from 'lucide-react';
+import { ChevronLeft, Edit, User, Calendar, DollarSign, CheckCircle, TimerOff, Clock, ArrowRight, RotateCcw } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -47,6 +47,7 @@ type CaseContributionTransactionRow = {
   amount: number | null;
   created_at: string;
   transaction_type: string | null;
+  status?: string | null;
   members?: {
     name?: string | null;
     member_number?: string | null;
@@ -64,12 +65,6 @@ type CaseContributionActivity = {
   refunded: number;
   netContributed: number;
   lastActivity: string | null;
-};
-
-type MemberWalletRow = {
-  id: string;
-  name: string;
-  member_number: string;
 };
 
 const PAGE_SIZE = 1000;
@@ -134,12 +129,18 @@ const fetchCaseContributionTransactions = async (caseId: string, caseNumber: str
           amount,
           created_at,
           transaction_type,
+          status,
           members (
             name,
             member_number
           )
         `)
-        .in('transaction_type', ['contribution', 'contribution_refund']);
+        .in('transaction_type', [
+          'contribution',
+          'contribution_refund',
+          'case_wallet_deduction',
+          'case_wallet_refund',
+        ]);
 
       const { data, error } = await applyFilter(baseQuery)
         .order('created_at', { ascending: true })
@@ -173,14 +174,16 @@ const fetchCaseContributionTransactions = async (caseId: string, caseNumber: str
 const calculateContributionTotals = (transactions: CaseContributionTransactionRow[]) => {
   return transactions.reduce(
     (totals, tx) => {
+      if (tx.status && tx.status !== 'completed') {
+        return totals;
+      }
       const amount = Number(tx.amount) || 0;
 
-      if (tx.transaction_type === 'contribution') {
-        // Contributions: use absolute value (deductions are stored as negative)
+      if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction') {
         totals.totalContributions += Math.abs(amount);
       }
 
-      if (tx.transaction_type === 'contribution_refund') {
+      if (tx.transaction_type === 'contribution_refund' || tx.transaction_type === 'case_wallet_refund') {
         // Refunds: only count positive amounts (negative would be a deduction, but we treat as contribution)
         // This matches Cases.tsx logic: sum + (amt > 0 ? amt : 0)
         if (amount > 0) {
@@ -199,6 +202,7 @@ const buildContributionActivity = (transactions: CaseContributionTransactionRow[
 
   for (const tx of transactions) {
     if (!tx.member_id) continue;
+    if (tx.status && tx.status !== 'completed') continue;
 
     const member = resolveMemberRecord(tx.members);
     const existing = activityByMember.get(tx.member_id) || {
@@ -212,12 +216,11 @@ const buildContributionActivity = (transactions: CaseContributionTransactionRow[
     };
 
     const amount = Number(tx.amount) || 0;
-    if (tx.transaction_type === 'contribution') {
-      // Contributions should always be positive
+    if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction') {
       existing.grossContributed += Math.abs(amount);
     }
 
-    if (tx.transaction_type === 'contribution_refund') {
+    if (tx.transaction_type === 'contribution_refund' || tx.transaction_type === 'case_wallet_refund') {
       // Refunds can be positive (refund amount) or negative (deduction)
       if (amount >= 0) {
         // Positive amount adds to refunded total
@@ -237,28 +240,6 @@ const buildContributionActivity = (transactions: CaseContributionTransactionRow[
   }
 
   return Array.from(activityByMember.values()).sort((a, b) => a.memberName.localeCompare(b.memberName));
-};
-
-const fetchAllMembersBasic = async () => {
-  const members: MemberWalletRow[] = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from('members')
-      .select('id, name, member_number')
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (error) throw error;
-
-    const batch = (data || []) as MemberWalletRow[];
-    members.push(...batch);
-
-    if (batch.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-
-  return members;
 };
 
 const recalculateMemberWalletBalances = async (memberIds: string[]) => {
@@ -531,9 +512,8 @@ const CaseDetails = () => {
   const [isDisbursing, setIsDisbursing] = useState(false);
   const [disbursementRefreshKey, setDisbursementRefreshKey] = useState(0);
   const [contributionRefreshKey, setContributionRefreshKey] = useState(0);
-  const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
-  const [contributionAction, setContributionAction] = useState<'deduct' | 'revert' | null>(null);
+  const [contributionAction, setContributionAction] = useState<'revert' | null>(null);
 
   useEffect(() => {
     const fetchCase = async () => {
@@ -601,7 +581,6 @@ const CaseDetails = () => {
 
   const expectedAmount = caseData ? caseData.contributionPerMember * memberCount : 0;
   const progress = caseData && expectedAmount > 0 ? (collectedAmount / expectedAmount) * 100 : 0;
-  const hasOutstandingContributions = expectedAmount - collectedAmount > WALLET_BALANCE_EPSILON;
   const hasCollectedContributions = collectedAmount > WALLET_BALANCE_EPSILON;
   
   const getCaseTypeColor = (type: CaseType) => {
@@ -756,82 +735,6 @@ const CaseDetails = () => {
       });
     } finally {
       setIsUpdating(false);
-    }
-  };
-
-  const handleDeductContributions = async () => {
-    if (!id || !caseData) return;
-
-    setDeductDialogOpen(false);
-    setContributionAction('deduct');
-
-    try {
-      const [members, existingTransactions] = await Promise.all([
-        fetchAllMembersBasic(),
-        fetchCaseContributionTransactions(id, caseData.caseNumber),
-      ]);
-
-      const activityByMember = new Map(
-        buildContributionActivity(existingTransactions).map((activity) => [activity.memberId, activity])
-      );
-
-      const createdAt = new Date().toISOString();
-      const rowsToInsert: TransactionInsert[] = members.reduce<TransactionInsert[]>((rows, member) => {
-        const existingActivity = activityByMember.get(member.id);
-        const outstandingAmount = caseData.contributionPerMember - (existingActivity?.netContributed || 0);
-
-        if (outstandingAmount > WALLET_BALANCE_EPSILON) {
-          rows.push({
-            member_id: member.id,
-            case_id: id,
-            amount: -Number(outstandingAmount.toFixed(2)),
-            transaction_type: 'contribution',
-            description: `Contribution for Case #${caseData.caseNumber} - ${caseData.caseType}`,
-            created_at: createdAt,
-          });
-        }
-
-        return rows;
-      }, []);
-
-      if (rowsToInsert.length === 0) {
-        toast({
-          title: 'Nothing to deduct',
-          description: 'All member wallets already reflect this case contribution.',
-        });
-        return;
-      }
-
-      for (let i = 0; i < rowsToInsert.length; i += PAGE_SIZE) {
-        const batch = rowsToInsert.slice(i, i + PAGE_SIZE);
-        const { error: insertError } = await (supabase.from('transactions') as any).insert(batch);
-        if (insertError) throw insertError;
-      }
-
-      await recalculateMemberWalletBalances(
-        rowsToInsert
-          .map((row) => row.member_id)
-          .filter((memberId): memberId is string => Boolean(memberId))
-      );
-
-      const nextCollectedAmount = await syncCaseActualAmount(id, caseData.caseNumber);
-      setCollectedAmount(nextCollectedAmount);
-      setCaseData((prev) => (prev ? { ...prev, actualAmount: nextCollectedAmount } : prev));
-      setContributionRefreshKey((prev) => prev + 1);
-      invalidateCaseCaches();
-
-      toast({
-        title: 'Contributions deducted',
-        description: `Deducted KES ${rowsToInsert.reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0).toLocaleString()} from ${rowsToInsert.length.toLocaleString()} member wallets.`,
-      });
-    } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to deduct contributions',
-        description: e instanceof Error ? e.message : 'Please try again.',
-      });
-    } finally {
-      setContributionAction(null);
     }
   };
 
@@ -1158,20 +1061,11 @@ const CaseDetails = () => {
                     <h3 className="font-medium mb-2">Actions</h3>
                     <div className="space-y-2">
                       {!caseData.isFinalized && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => setDeductDialogOpen(true)}
-                          disabled={Boolean(contributionAction) || !hasOutstandingContributions}
-                        >
-                          <Wallet className="h-4 w-4 mr-2" />
-                          {contributionAction === 'deduct'
-                            ? 'Deducting...'
-                            : hasCollectedContributions
-                              ? 'Deduct Outstanding Contributions'
-                              : 'Deduct From Member Wallets'}
-                        </Button>
+                        <p className="text-sm text-muted-foreground rounded-md border border-dashed p-3">
+                          To deduct from member wallets for this case, go to{' '}
+                          <strong>People</strong>, select members, then use <strong>Deduct to Case</strong>{' '}
+                          (active cases only).
+                        </p>
                       )}
                       {!caseData.isFinalized && (
                         <Button
@@ -1283,26 +1177,6 @@ const CaseDetails = () => {
           </TabsContent>
         </Tabs>
       </div>
-
-      <AlertDialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Deduct Contributions</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will deduct the outstanding case contribution from member wallets and link those transactions to this case.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={contributionAction === 'deduct'}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeductContributions}
-              disabled={contributionAction === 'deduct'}
-            >
-              {contributionAction === 'deduct' ? 'Deducting...' : 'Deduct'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen}>
         <AlertDialogContent>

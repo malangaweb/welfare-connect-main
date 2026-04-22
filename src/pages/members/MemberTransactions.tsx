@@ -20,6 +20,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { invokeWithAppToken } from "@/lib/appAuth";
+
+const WALLET_DEBIT_TYPES = new Set([
+  "registration",
+  "renewal",
+  "contribution",
+  "penalty",
+  "arrears",
+  "case_wallet_deduction",
+]);
+
+/** Signed effect on wallet; null if row does not affect balance yet (e.g. pending). Matches DB trigger. */
+function walletRowDelta(
+  transactionType: string | null | undefined,
+  amount: number | null | undefined,
+  status: string | null | undefined
+): number | null {
+  if (status && status !== "completed") return null;
+  const t = transactionType || "";
+  const a = Number(amount) || 0;
+  if (t === "reversal_memo") return 0;
+  if (WALLET_DEBIT_TYPES.has(t)) return -Math.abs(a);
+  return a;
+}
 
 const MemberTransactions = () => {
   const [transactions, setTransactions] = useState<DbTransaction[]>([]);
@@ -40,25 +64,23 @@ const MemberTransactions = () => {
 
     const fetchTransactions = async () => {
       try {
-        const { data } = await supabase
-          .from("transactions")
-          .select("*")
-          .eq("member_id", member_id)
-          .order("created_at", { ascending: false });
+        const response = await invokeWithAppToken<any>("api-member-transactions", {
+          member_id,
+          page: 1,
+          page_size: 200,
+        });
 
-        const transactions: DbTransaction[] = data || [];
+        const transactions: DbTransaction[] = response?.transactions || [];
         setTransactions(transactions);
         setFilteredTransactions(transactions);
         
-        // Calculate totals
         let credits = 0;
         let debits = 0;
-        transactions.forEach(t => {
-          if (t.transaction_type === "contribution" || t.transaction_type === "deposit") {
-            credits += Math.abs(t.amount || 0);
-          } else {
-            debits += Math.abs(t.amount || 0);
-          }
+        transactions.forEach((t) => {
+          const d = walletRowDelta(t.transaction_type, t.amount, t.status);
+          if (d === null) return;
+          if (d > 0) credits += d;
+          else if (d < 0) debits += -d;
         });
         setTotalCredit(credits);
         setTotalDebit(debits);
@@ -90,23 +112,36 @@ const MemberTransactions = () => {
     setFilteredTransactions(filtered);
   }, [searchQuery, typeFilter, transactions]);
 
-  const getTransactionTypeIcon = (type: string) => {
-    if (type === "contribution" || type === "deposit") {
+  const getTransactionTypeIcon = (t: DbTransaction) => {
+    const d = walletRowDelta(t.transaction_type, t.amount, t.status);
+    if (d === null) {
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
+    }
+    if (d > 0) {
       return <ArrowUpRight className="h-4 w-4 text-green-500" />;
     }
-    return <ArrowDownLeft className="h-4 w-4 text-red-500" />;
+    if (d < 0) {
+      return <ArrowDownLeft className="h-4 w-4 text-red-500" />;
+    }
+    return <DollarSign className="h-4 w-4 text-muted-foreground" />;
   };
 
   const getTransactionTypeColor = (type: string) => {
     switch (type?.toLowerCase()) {
       case "contribution":
         return "bg-blue-100 text-blue-800";
+      case "case_wallet_deduction":
+        return "bg-blue-100 text-blue-800";
       case "deposit":
+        return "bg-green-100 text-green-800";
+      case "wallet_funding":
         return "bg-green-100 text-green-800";
       case "disbursement":
         return "bg-amber-100 text-amber-800";
       case "withdrawal":
         return "bg-red-100 text-red-800";
+      case "reversal_memo":
+        return "bg-slate-100 text-slate-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -165,7 +200,7 @@ const MemberTransactions = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold text-green-600">{formatCurrency(totalCredit)}</div>
-                  <p className="text-sm text-muted-foreground mt-1">Deposits & Contributions</p>
+                  <p className="text-sm text-muted-foreground mt-1">Completed activity that increased your wallet</p>
                 </CardContent>
               </Card>
               
@@ -179,7 +214,7 @@ const MemberTransactions = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold text-red-600">{formatCurrency(totalDebit)}</div>
-                  <p className="text-sm text-muted-foreground mt-1">Withdrawals & Disbursements</p>
+                  <p className="text-sm text-muted-foreground mt-1">Completed activity that decreased your wallet</p>
                 </CardContent>
               </Card>
             </div>
@@ -244,16 +279,21 @@ const MemberTransactions = () => {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {filteredTransactions.map((t) => (
+                        {filteredTransactions.map((t) => {
+                          const d = walletRowDelta(t.transaction_type, t.amount, t.status);
+                          const pending = d === null;
+                          const pos = d !== null && d > 0;
+                          const neg = d !== null && d < 0;
+                          return (
                           <div key={t.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/10 transition-colors">
                             <div className="flex items-center gap-4">
                               <Avatar className="h-10 w-10 border">
                                 <AvatarFallback className={`
-                                  ${t.transaction_type === "contribution" ? "bg-blue-100 text-blue-800" : ""}
-                                  ${t.transaction_type === "deposit" ? "bg-green-100 text-green-800" : ""}
+                                  ${t.transaction_type === "contribution" || t.transaction_type === "case_wallet_deduction" ? "bg-blue-100 text-blue-800" : ""}
+                                  ${t.transaction_type === "deposit" || t.transaction_type === "wallet_funding" ? "bg-green-100 text-green-800" : ""}
                                   ${t.transaction_type === "withdrawal" ? "bg-red-100 text-red-800" : ""}
                                   ${t.transaction_type === "disbursement" ? "bg-amber-100 text-amber-800" : ""}
-                                  ${!["contribution", "deposit", "withdrawal", "disbursement"].includes(t.transaction_type) ? "bg-gray-100 text-gray-800" : ""}
+                                  ${!["contribution", "case_wallet_deduction", "deposit", "wallet_funding", "withdrawal", "disbursement"].includes(String(t.transaction_type)) ? "bg-gray-100 text-gray-800" : ""}
                                 `}>
                                   {getInitials(t.description)}
                                 </AvatarFallback>
@@ -267,18 +307,21 @@ const MemberTransactions = () => {
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className={t.transaction_type === "contribution" || t.transaction_type === "deposit" 
-                              ? "text-green-600 font-semibold" 
-                              : "text-red-600 font-semibold"}>
-                              {t.transaction_type === "contribution" || t.transaction_type === "deposit" ? "+" : "-"}
-                              KES {Math.abs(t.amount || 0).toLocaleString()}
+                              <div className={
+                                pending ? "text-muted-foreground font-semibold" :
+                                pos ? "text-green-600 font-semibold" :
+                                neg ? "text-red-600 font-semibold" :
+                                "text-muted-foreground font-semibold"
+                              }>
+                              {pending ? "" : pos ? "+" : neg ? "-" : ""}
+                              {pending ? "Pending" : `KES ${Math.abs(d ?? 0).toLocaleString()}`}
                               </div>
                               <Badge variant="outline" className={getTransactionTypeColor(t.transaction_type)}>
                                 {t.transaction_type}
                               </Badge>
                             </div>
                           </div>
-                        ))}
+                        );})}
                       </div>
                     )}
                   </TabsContent>
@@ -299,7 +342,7 @@ const MemberTransactions = () => {
                         {filteredTransactions.map((t, index) => (
                           <div key={t.id} className="mb-8 relative">
                             <div className="absolute -left-[2.7rem] w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                              {getTransactionTypeIcon(t.transaction_type)}
+                              {getTransactionTypeIcon(t)}
                             </div>
                             <div className="mb-1 text-sm text-muted-foreground">
                               {format(new Date(t.created_at), "MMMM d, yyyy • h:mm a")}
@@ -314,12 +357,22 @@ const MemberTransactions = () => {
                               <CardContent className="py-3 px-4">
                                 <div className="flex justify-between items-center">
                                   <div className="text-sm text-muted-foreground">Amount</div>
-                                  <div className={t.transaction_type === "contribution" || t.transaction_type === "deposit" 
-                                    ? "text-green-600 font-semibold" 
-                                    : "text-red-600 font-semibold"}>
-                                    {t.transaction_type === "contribution" || t.transaction_type === "deposit" ? "+" : "-"}
-                                    KES {Math.abs(t.amount || 0).toLocaleString()}
+                                  {(() => {
+                                    const d = walletRowDelta(t.transaction_type, t.amount, t.status);
+                                    const pending = d === null;
+                                    const pos = d !== null && d > 0;
+                                    const neg = d !== null && d < 0;
+                                    return (
+                                  <div className={
+                                    pending ? "text-muted-foreground font-semibold" :
+                                    pos ? "text-green-600 font-semibold" :
+                                    neg ? "text-red-600 font-semibold" :
+                                    "text-muted-foreground font-semibold"
+                                  }>
+                                    {pending ? "Pending" : `${pos ? "+" : neg ? "-" : ""}KES ${Math.abs(d ?? 0).toLocaleString()}`}
                                   </div>
+                                    );
+                                  })()}
                                 </div>
                               </CardContent>
                             </Card>

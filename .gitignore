@@ -1,1 +1,4 @@
 node_modules
+
+# Local-only PHP secrets (copy from bulk_deduct_config.example.php)
+mlg/bulk_deduct_config.php

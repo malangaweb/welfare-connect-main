@@ -18,8 +18,8 @@ $url = 'https://api.safaricom.co.ke/mpesa/c2b/v2/registerurl';
 $payload = [
     'ShortCode' => $shortcode,
     'ResponseType' => 'Completed',
-    'ConfirmationURL' => 'https://javanet.co.ke/mlg/confirmation.php',
-    'ValidationURL' => 'https://javanet.co.ke/mlg/validation.php'
+    'ConfirmationURL' => 'https://javanet.co.ke/mlg/mpesa_confirmation.php',
+    'ValidationURL' => 'https://javanet.co.ke/mlg/mpesa_validation.php'
 ];
 
 $ch = curl_init($url);

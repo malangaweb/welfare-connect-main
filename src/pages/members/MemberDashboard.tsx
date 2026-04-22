@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
+import { invokeWithAppToken } from "@/lib/appAuth";
 
 const MemberDashboard = () => {
   const [member, setMember] = useState<any>(null);
@@ -38,19 +39,11 @@ const MemberDashboard = () => {
     }
 
     try {
-      // Fetch member details
-      const { data: memberData } = await supabase
-        .from("members")
-        .select("*")
-        .eq("id", member_id)
-        .single();
-
-      // Fetch all transactions for the member
-      const { data: allTransData } = await supabase
-        .from("transactions")
-        .select("*")
-        .eq("member_id", member_id)
-        .order("created_at", { ascending: false });
+      const summary = await invokeWithAppToken<any>("api-member-summary", {
+        member_id,
+      });
+      const memberData = summary?.member;
+      const allTransData = summary?.recent_transactions || [];
 
       setMember(memberData);
       setTransactions(allTransData || []);

@@ -185,13 +185,6 @@ serve(async (req) => {
           } else {
             console.log('✅ SUCCESS: Transaction created')
 
-            // Update member wallet balance
-            await supabase.rpc('update_wallet_balance', {
-              p_member_id: member.id,
-              p_amount: Number(Amount),
-              p_transaction_type: 'deposit',
-            })
-
             await supabase.from('audit_logs').insert({
               action: 'PAYMENT_RECEIVED',
               table_name: 'transactions',
@@ -301,17 +294,6 @@ serve(async (req) => {
 
       if (updateError) {
         console.error('❌ ERROR updating transaction:', updateError.message)
-      }
-
-      // Update member wallet balance
-      const { error: balanceError } = await supabase.rpc('update_wallet_balance', {
-        p_member_id: transaction.member_id,
-        p_amount: Number(Amount),
-        p_transaction_type: 'deposit',
-      })
-
-      if (balanceError) {
-        console.error('Error updating wallet balance:', balanceError.message)
       }
 
       // Log successful payment

@@ -36,7 +36,7 @@ export default function ProtectedRoute({
       
       if (!mounted) return;
 
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('app_token') || localStorage.getItem('token');
       const hasAnyAuthSignal = !!session || !!token;
       if (!hasAnyAuthSignal) {
         setIsAuthorized(false);
@@ -81,7 +81,7 @@ export default function ProtectedRoute({
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       const resolvedAllowedRoles = allowedRoles || getAllowedRolesForPath(window.location.pathname);
       if (!mounted) return;
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('app_token') || localStorage.getItem('token');
       const hasAnyAuthSignal = !!session || !!token;
 
       if (!hasAnyAuthSignal) {

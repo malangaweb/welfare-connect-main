@@ -213,13 +213,6 @@ serve(async (req: Request): Promise<Response> => {
       })
 
       if (txError) throw txError
-      
-      // Update the target member's wallet balance
-      await supabase.rpc('update_wallet_balance', {
-        p_member_id: memberId,
-        p_amount: transAmount,
-        p_transaction_type: 'deposit',
-      })
 
       console.log('✅ Case contribution created successfully for member:', memberId, 'case:', caseId)
 
@@ -241,12 +234,6 @@ serve(async (req: Request): Promise<Response> => {
       })
 
       if (txError) throw txError
-      
-      await supabase.rpc('update_wallet_balance', {
-        p_member_id: memberId,
-        p_amount: transAmount,
-        p_transaction_type: 'deposit',
-      })
 
       console.log('✅ Wallet funding created successfully for member:', memberId)
 

@@ -1,4 +1,5 @@
 import { User, List, FileText, BarChart3, Home } from "lucide-react";
+import { clearAppToken } from "@/lib/appAuth";
 
 export const memberLinks = [
   { icon: <Home className="w-5 h-5" />, label: "Dashboard", href: "/member/dashboard" },
@@ -9,7 +10,11 @@ export const memberLinks = [
 ];
 
 export const memberLogout = (navigate) => {
+  clearAppToken();
   localStorage.removeItem("member_user_id");
   localStorage.removeItem("member_member_id");
+  localStorage.removeItem("member_name");
+  localStorage.removeItem("member_phone_number");
+  localStorage.removeItem("member_login_time");
   navigate("/");
 };

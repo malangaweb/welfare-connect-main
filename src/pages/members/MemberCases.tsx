@@ -45,16 +45,31 @@ const MemberCases = () => {
         // Fetch all transactions
         const { data: transactionsData } = await supabase
           .from("transactions")
-          .select("id, amount, description, case_id, created_at");
+          .select("id, amount, description, case_id, created_at, transaction_type, status");
         setTransactions(transactionsData || []);
+        const caseNum = (cn: string | null | undefined) => String(cn || "").trim().toLowerCase();
+        const isCompleted = (tx: { status?: string | null }) =>
+          !tx.status || tx.status === "completed";
         // Map cases to include calculated actual_amount and expected_amount
         const mappedCases = (casesData || []).map(c => {
-          // Calculate collected amount for this case
           let collected = 0;
           if (transactionsData && c.case_number) {
-            collected = transactionsData
-              .filter(tx => tx.description && tx.description.toLowerCase().includes(c.case_number.toLowerCase()))
-              .reduce((sum, tx) => sum + Math.abs(Number(tx.amount) || 0), 0);
+            const cn = caseNum(c.case_number);
+            collected = transactionsData.reduce((sum, tx) => {
+              if (!isCompleted(tx)) return sum;
+              const linked =
+                (tx.case_id && tx.case_id === c.id) ||
+                (!!tx.description && tx.description.toLowerCase().includes(cn));
+              if (!linked) return sum;
+              const amt = Number(tx.amount) || 0;
+              if (tx.transaction_type === "contribution" || tx.transaction_type === "case_wallet_deduction") {
+                return sum + Math.abs(amt);
+              }
+              if (tx.transaction_type === "contribution_refund" || tx.transaction_type === "case_wallet_refund") {
+                return sum - (amt > 0 ? amt : 0);
+              }
+              return sum;
+            }, 0);
           }
           return {
             ...c,

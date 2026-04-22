@@ -366,7 +366,7 @@ export const usersService = {
 
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('id, username, name, email, role, member_id, is_active, created_at, updated_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -391,7 +391,7 @@ export const usersService = {
 
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('id, username, name, email, role, member_id, is_active, created_at, updated_at')
       .eq('id', userId)
       .single();
 

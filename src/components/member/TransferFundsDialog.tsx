@@ -15,10 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, Search, User } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import type { Database } from "@/integrations/supabase/types";
-
-type MemberUpdate = Database["public"]["Tables"]["members"]["Update"];
-
 interface TransferFundsDialogProps {
   memberId: string;
   memberName: string;
@@ -134,29 +130,7 @@ const TransferFundsDialog = ({
       if (result && result.success === false) {
         throw new Error(result.message || 'Transfer failed');
       }
-      
-      // Refresh wallet balances for both members to ensure UI shows correct values
-      try {
-        const [fromBalance, toBalance] = await Promise.all([
-          (supabase.rpc as any)('calculate_wallet_balance', { p_member_id: memberId }),
-          (supabase.rpc as any)('calculate_wallet_balance', { p_member_id: selectedMember.id })
-        ]);
-        
-        // Update both members' stored wallet_balance
-        if (fromBalance.data !== null) {
-          const memberUpdate: MemberUpdate = { wallet_balance: Number(fromBalance.data) || 0 };
-          const { error: updateError1 } = await (supabase.from('members') as any).update(memberUpdate).eq('id', memberId);
-          if (updateError1) console.warn('Failed to update sender balance:', updateError1);
-        }
-        if (toBalance.data !== null) {
-          const memberUpdate: MemberUpdate = { wallet_balance: Number(toBalance.data) || 0 };
-          const { error: updateError2 } = await (supabase.from('members') as any).update(memberUpdate).eq('id', selectedMember.id);
-          if (updateError2) console.warn('Failed to update recipient balance:', updateError2);
-        }
-      } catch (refreshError) {
-        console.warn('Balance refresh failed, UI will update on next load:', refreshError);
-      }
-      
+
       toast.success("Transfer successful", {
         description: `KES ${numAmount.toLocaleString()} has been transferred to ${selectedMember.name}.`,
       });

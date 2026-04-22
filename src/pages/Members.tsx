@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown, Upload, Pencil, Settings, Trash2, ArrowRight } from 'lucide-react';
+import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown, Upload, Pencil, Settings, Trash2, ArrowRight, Briefcase } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,11 @@ import { mapDbMemberToMember } from '@/lib/db-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
 import * as XLSX from 'xlsx';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { useAuth } from '@/contexts/AuthContext';
+import { clearAppToken, getAppToken } from '@/lib/appAuth';
 import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
@@ -71,7 +75,7 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
-const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer }: {
+const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer, showBulkSelect, selected, onToggleSelect }: {
   member: Member,
   index: number,
   navigate: (path: string) => void,
@@ -79,11 +83,23 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
   onManage: (m: Member) => void
   onDelete: (m: Member) => void
   onTransfer: (m: Member) => void
+  showBulkSelect?: boolean
+  selected?: boolean
+  onToggleSelect?: (memberId: string, checked: boolean) => void
 }) => {
   return (
     <TableRow
       className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group h-14 md:h-16"
     >
+      {showBulkSelect && (
+        <TableCell className="w-10 px-2 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={!!selected}
+            onCheckedChange={(v) => onToggleSelect?.(member.id, v === true)}
+            aria-label={`Select member ${member.memberNumber}`}
+          />
+        </TableCell>
+      )}
       <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">#{member.memberNumber}</TableCell>
       <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
@@ -250,6 +266,8 @@ const sortMembers = (list: Member[], sortConfig: SortConfig): Member[] => {
 
 const Members = () => {
   const navigate = useNavigate();
+  const { canManageFinances } = useAuth();
+  const canBulkDeduct = canManageFinances();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,6 +299,11 @@ const Members = () => {
   });
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferFromMember, setTransferFromMember] = useState<Member | null>(null);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  const [deductDialogOpen, setDeductDialogOpen] = useState(false);
+  const [deductCases, setDeductCases] = useState<{ id: string; case_number: string; contribution_per_member: number }[]>([]);
+  const [deductCaseId, setDeductCaseId] = useState('');
+  const [deductSubmitting, setDeductSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -308,8 +331,97 @@ const Members = () => {
     } catch (error) {
       console.error('Error signing out:', error);
     }
-    localStorage.removeItem('token');
+    clearAppToken();
     navigate('/login');
+  };
+
+  const toggleMemberSelected = (memberId: string, checked: boolean) => {
+    setSelectedMemberIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(memberId);
+      else next.delete(memberId);
+      return next;
+    });
+  };
+
+  const openDeductDialog = async () => {
+    if (selectedMemberIds.size === 0) return;
+    try {
+      const { data, error } = await supabase
+        .from('cases')
+        .select('id, case_number, contribution_per_member')
+        .eq('is_active', true)
+        .eq('is_finalized', false)
+        .order('case_number');
+      if (error) throw error;
+      const rows = (data || []) as { id: string; case_number: string; contribution_per_member: number }[];
+      if (rows.length === 0) {
+        toast({
+          title: 'No active cases',
+          description: 'Open a case (active, not finalized) before running wallet deductions.',
+        });
+        return;
+      }
+      setDeductCases(rows);
+      setDeductCaseId(rows[0]?.id || '');
+      setDeductDialogOpen(true);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: 'destructive',
+        title: 'Could not load cases',
+        description: error instanceof Error ? error.message : 'Try again.',
+      });
+    }
+  };
+
+  const runCaseDeduct = async () => {
+    if (!deductCaseId || selectedMemberIds.size === 0) {
+      toast({ variant: 'destructive', title: 'Select a case and at least one member' });
+      return;
+    }
+    const token = getAppToken();
+    if (!token) {
+      toast({ variant: 'destructive', title: 'Session expired', description: 'Please log in again.' });
+      return;
+    }
+    setDeductSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('api-case-bulk-deduct', {
+        body: {
+          case_id: deductCaseId,
+          member_ids: Array.from(selectedMemberIds),
+        },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (error) throw new Error(error.message);
+      const d = data as {
+        success?: boolean;
+        error?: string;
+        deducted?: string[];
+        skipped_already_paid?: string[];
+        skipped_insufficient?: unknown[];
+      };
+      if (!d?.success) {
+        throw new Error(d?.error || 'Deduction failed');
+      }
+      toast({
+        title: 'Deduct to case finished',
+        description: `Deducted: ${d.deducted?.length ?? 0}. Already paid: ${d.skipped_already_paid?.length ?? 0}. Skipped / other: ${d.skipped_insufficient?.length ?? 0}.`,
+      });
+      setDeductDialogOpen(false);
+      setSelectedMemberIds(new Set());
+      await fetchMembers();
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: 'destructive',
+        title: 'Deduction failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+      });
+    } finally {
+      setDeductSubmitting(false);
+    }
   };
 
   const handleTransferFromMember = (m: Member) => {
@@ -426,6 +538,10 @@ const Members = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
+  }, [debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
+
+  useEffect(() => {
+    setSelectedMemberIds(new Set());
   }, [debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
 
   const paginatedMembers = members;
@@ -1059,6 +1175,23 @@ const Members = () => {
           </div>
         </div>
 
+        {canBulkDeduct && selectedMemberIds.size > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3">
+            <p className="text-sm font-medium text-slate-800">
+              {selectedMemberIds.size} member{selectedMemberIds.size !== 1 ? 's' : ''} selected
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setSelectedMemberIds(new Set())}>
+                Clear selection
+              </Button>
+              <Button type="button" size="sm" onClick={() => void openDeductDialog()}>
+                <Briefcase className="h-4 w-4 mr-2" />
+                Deduct to Case
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
@@ -1081,6 +1214,29 @@ const Members = () => {
                 <Table>
                   <TableHeader className="bg-slate-50 border-b border-slate-100">
                     <TableRow className="hover:bg-transparent">
+                      {canBulkDeduct && (
+                        <TableHead className="w-10 px-2">
+                          <Checkbox
+                            checked={
+                              paginatedMembers.length > 0 &&
+                              paginatedMembers.every((m) => selectedMemberIds.has(m.id))
+                            }
+                            onCheckedChange={(v) => {
+                              const checked = v === true;
+                              setSelectedMemberIds((prev) => {
+                                const next = new Set(prev);
+                                if (checked) {
+                                  paginatedMembers.forEach((m) => next.add(m.id));
+                                } else {
+                                  paginatedMembers.forEach((m) => next.delete(m.id));
+                                }
+                                return next;
+                              });
+                            }}
+                            aria-label="Select all members on this page"
+                          />
+                        </TableHead>
+                      )}
                       <TableHead className="font-bold text-slate-900 cursor-pointer hover:text-primary transition-colors h-12 md:h-14 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap" onClick={() => setSortConfig({...sortConfig, key: 'memberNumber', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})}>
                         <div className="flex items-center gap-1 md:gap-2">
                           Member No
@@ -1126,6 +1282,9 @@ const Members = () => {
                           setManageMemberOpen(true);
                         }}
                         onTransfer={handleTransferFromMember}
+                        showBulkSelect={canBulkDeduct}
+                        selected={selectedMemberIds.has(member.id)}
+                        onToggleSelect={toggleMemberSelected}
                       />
                     ))}
                   </TableBody>
@@ -1178,6 +1337,46 @@ const Members = () => {
           </div>
         )}
       </div>
+
+      <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deduct to Case</DialogTitle>
+            <DialogDescription>
+              Debits each selected member&apos;s wallet by this case&apos;s per-member amount. Members who already paid
+              (M-Pesa or prior deduction) or have insufficient balance are skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Active case</Label>
+              <Select value={deductCaseId} onValueChange={setDeductCaseId} disabled={deductCases.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={deductCases.length ? 'Choose case' : 'No open cases'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {deductCases.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      #{c.case_number} — KES {Number(c.contribution_per_member || 0).toLocaleString()} / member
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Applying to <strong>{selectedMemberIds.size}</strong> selected member(s).
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setDeductDialogOpen(false)} disabled={deductSubmitting}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void runCaseDeduct()} disabled={deductSubmitting || !deductCaseId}>
+              {deductSubmitting ? 'Working…' : 'Run deduction'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Member Modal */}
       <Dialog open={editMemberOpen} onOpenChange={setEditMemberOpen}>

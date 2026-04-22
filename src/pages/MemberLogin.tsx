@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, User, Phone } from "lucide-react";
+import { normalizePhone, setAppToken } from "@/lib/appAuth";
 
 const MemberLogin = () => {
   const [memberNumber, setMemberNumber] = useState("");
@@ -18,56 +19,20 @@ const MemberLogin = () => {
     setLoading(true);
 
     try {
-      // 1. Find the member by member_number
-      const { data: member, error: memberError } = await (supabase as any)
-        .from("members")
-        .select("id, member_number, name, is_active, phone_number")
-        .eq("member_number", memberNumber)
-        .maybeSingle();
-
-      if (memberError || !member) {
-        console.error('Member lookup error:', memberError);
-        toast({
-          variant: "destructive",
-          title: "Login failed",
-          description: "Invalid Member Number. Please try again."
-        });
-        return;
+      const { data, error } = await supabase.functions.invoke("auth-member-login", {
+        body: {
+          member_number: memberNumber.trim(),
+          phone_number: normalizePhone(phoneNumber),
+        },
+      });
+      if (error) throw new Error(error.message || "Login failed");
+      const appToken = data?.app_token as string | undefined;
+      const member = data?.member as any;
+      if (!appToken || !member) {
+        throw new Error("Invalid login response");
       }
+      setAppToken(appToken);
 
-      if (!member.is_active) {
-        toast({
-          variant: "destructive",
-          title: "Account inactive",
-          description: "Your account is not active. Please contact support."
-        });
-        return;
-      }
-
-      // 2. Verify phone number (clean both inputs for comparison)
-      const cleanEnteredPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-      const cleanStoredPhone = (member.phone_number || '').replace(/[\s\-\(\)]/g, '');
-
-      if (cleanEnteredPhone !== cleanStoredPhone || cleanStoredPhone === '') {
-        toast({
-          variant: "destructive",
-          title: "Login failed",
-          description: "Invalid phone number. Please try again."
-        });
-        return;
-      }
-
-      // 3. Log successful login to audit trail
-      await (supabase as any)
-        .from('audit_logs')
-        .insert({
-          action: 'LOGIN',
-          table_name: 'members',
-          record_id: member.id,
-          status: 'success'
-        });
-
-      // 4. Store member info in localStorage
       localStorage.setItem("member_member_id", member.id);
       localStorage.setItem("member_name", member.name);
       localStorage.setItem("member_phone_number", member.phone_number || '');

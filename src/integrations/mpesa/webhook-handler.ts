@@ -105,18 +105,6 @@ async function updateTransactionSuccess(
     return;
   }
 
-  // Update member wallet balance
-  const { error: balanceError } = await supabase.rpc('update_wallet_balance', {
-    p_member_id: memberId,
-    p_amount: amount,
-    p_transaction_type: 'deposit',
-  });
-
-  if (balanceError) {
-    console.error('Failed to update wallet balance:', balanceError);
-    return;
-  }
-
   // Log the successful payment
   await supabase.from('audit_logs').insert({
     user_id: memberId,
