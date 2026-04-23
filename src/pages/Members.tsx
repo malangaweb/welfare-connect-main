@@ -317,6 +317,8 @@ const Members = () => {
   const [deductSubmitting, setDeductSubmitting] = useState(false);
   const [deductPreviewLoading, setDeductPreviewLoading] = useState(false);
   const [deductPreviewRows, setDeductPreviewRows] = useState<DeductPreviewRow[]>([]);
+  const [deductPreviewNotice, setDeductPreviewNotice] = useState<string>('');
+  const [deductInlineMessage, setDeductInlineMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -389,28 +391,34 @@ const Members = () => {
   };
 
   const runCaseDeduct = async () => {
+    setDeductInlineMessage('');
     if (!deductCaseId || selectedMemberIds.size === 0) {
       toast({ variant: 'destructive', title: 'Select a case and at least one member' });
+      setDeductInlineMessage('Select a case and at least one member.');
       return;
     }
     const eligibleMemberIds = deductPreviewRows
       .filter((r) => r.preview_status === 'eligible')
       .map((r) => r.member_id);
-    if (eligibleMemberIds.length === 0) {
+    const memberIdsToSubmit = eligibleMemberIds;
+    if (memberIdsToSubmit.length === 0) {
       toast({
         variant: 'destructive',
         title: 'No eligible members to deduct',
         description: 'All selected members are already paid, ineligible, or have insufficient balance for this case.',
       });
+      setDeductInlineMessage('No eligible members to deduct for the selected case.');
       return;
     }
     const token = getAppToken();
     if (!token || isAppTokenExpired(token)) {
       clearAppToken();
       toast({ variant: 'destructive', title: 'Session expired', description: 'Please log in again.' });
+      setDeductInlineMessage('Session expired. Please log in again.');
       return;
     }
     setDeductSubmitting(true);
+    setDeductInlineMessage(`Submitting deduction for ${memberIdsToSubmit.length.toLocaleString()} member(s)...`);
     try {
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api-case-bulk-deduct`;
       const res = await fetch(fnUrl, {
@@ -422,7 +430,7 @@ const Members = () => {
         },
         body: JSON.stringify({
           case_id: deductCaseId,
-          member_ids: eligibleMemberIds,
+          member_ids: memberIdsToSubmit,
         }),
       });
 
@@ -445,13 +453,48 @@ const Members = () => {
       if (!d?.success) {
         throw new Error(d?.error || 'Deduction failed');
       }
+      const deductedCount = d.deducted?.length ?? 0;
+      const toastVariant = deductedCount > 0 ? undefined : 'destructive';
+      const toastTitle = deductedCount > 0 ? 'Deduct to case finished' : 'No deductions applied';
+      console.log('Deduction response:', d);
+      console.log('Skipped insufficient:', d.skipped_insufficient);
+      console.log('Skipped ineligible:', d.skipped_ineligible);
+      console.log('Skipped already paid:', d.skipped_already_paid);
       toast({
-        title: 'Deduct to case finished',
-        description: `Deducted: ${d.deducted?.length ?? 0}. Already paid: ${d.skipped_already_paid?.length ?? 0}. Ineligible: ${d.skipped_ineligible?.length ?? 0}. Insufficient / other: ${d.skipped_insufficient?.length ?? 0}.`,
+        variant: toastVariant,
+        title: toastTitle,
+        description: `Deducted: ${deductedCount}. Already paid: ${d.skipped_already_paid?.length ?? 0}. Ineligible: ${d.skipped_ineligible?.length ?? 0}. Insufficient / other: ${d.skipped_insufficient?.length ?? 0}.`,
       });
-      setDeductDialogOpen(false);
-      setSelectedMemberIds(new Set());
-      setDeductPreviewRows([]);
+      if (deductedCount > 0) {
+        setDeductInlineMessage('Deduction completed successfully.');
+        setDeductDialogOpen(false);
+        setSelectedMemberIds(new Set());
+        setDeductPreviewRows([]);
+      } else {
+        const insufficient = (d.skipped_insufficient || [])[0] as any;
+        const reasons: string[] = [];
+        if (insufficient?.reason) {
+          reasons.push(`Insufficient: ${insufficient.reason}`);
+          if (insufficient.wallet_balance !== undefined) {
+            reasons.push(`wallet ${insufficient.wallet_balance}`);
+          }
+          if (insufficient.detail) {
+            reasons.push(`detail ${String(insufficient.detail).slice(0, 180)}`);
+          }
+          if (insufficient.retry_detail) {
+            reasons.push(`retry ${String(insufficient.retry_detail).slice(0, 180)}`);
+          }
+        }
+        const ineligible = (d.skipped_ineligible || [])[0] as any;
+        if (ineligible?.reason) {
+          reasons.push(`Ineligible: ${ineligible.reason}`);
+          if (ineligible.status) reasons.push(`status ${ineligible.status}`);
+        }
+        const reasonStr = reasons.length > 0 ? reasons.join(', ') : 'unknown reason';
+        setDeductInlineMessage(
+          `No members deducted. Case requires KES ${d.required_amount}. First skip: ${reasonStr}.`
+        );
+      }
       await fetchMembers();
     } catch (error) {
       console.error(error);
@@ -460,6 +503,7 @@ const Members = () => {
         title: 'Deduction failed',
         description: error instanceof Error ? error.message : 'Please try again.',
       });
+      setDeductInlineMessage(error instanceof Error ? error.message : 'Deduction failed.');
     } finally {
       setDeductSubmitting(false);
     }
@@ -468,10 +512,12 @@ const Members = () => {
   const loadDeductPreview = async () => {
     if (!deductDialogOpen || !deductCaseId || selectedMemberIds.size === 0) {
       setDeductPreviewRows([]);
+      setDeductPreviewNotice('');
       return;
     }
     try {
       setDeductPreviewLoading(true);
+      setDeductPreviewNotice('');
       const selectedIds = Array.from(selectedMemberIds);
       const selectedCase = deductCases.find((c) => c.id === deductCaseId);
       const requiredAmount = Number(selectedCase?.contribution_per_member || 0);
@@ -488,19 +534,30 @@ const Members = () => {
         memberRows.push(...(data || []));
       }
 
-      const paidSet = new Set<string>();
+      const netPaidByMember = new Map<string, number>();
       for (let i = 0; i < selectedIds.length; i += chunkSize) {
         const chunk = selectedIds.slice(i, i + chunkSize);
         const { data: txRows, error: txError } = await supabase
           .from('transactions')
-          .select('member_id')
+          .select('member_id, transaction_type, amount')
           .eq('case_id', deductCaseId)
-          .eq('status', 'completed')
-          .in('transaction_type', ['contribution', 'case_wallet_deduction'])
+          .in('transaction_type', ['contribution', 'case_wallet_deduction', 'contribution_refund', 'case_wallet_refund'])
+          .or('status.eq.completed,status.is.null')
           .in('member_id', chunk);
         if (txError) throw txError;
         (txRows || []).forEach((t: any) => {
-          if (t.member_id) paidSet.add(String(t.member_id));
+          if (!t.member_id) return;
+          const memberId = String(t.member_id);
+          const txType = String(t.transaction_type || '').toLowerCase();
+          const amount = Number(t.amount) || 0;
+          const current = netPaidByMember.get(memberId) || 0;
+          let delta = 0;
+          if (txType === 'contribution' || txType === 'case_wallet_deduction') {
+            delta = Math.abs(amount);
+          } else if (txType === 'contribution_refund' || txType === 'case_wallet_refund') {
+            delta = amount >= 0 ? -amount : amount;
+          }
+          netPaidByMember.set(memberId, current + delta);
         });
       }
 
@@ -521,7 +578,8 @@ const Members = () => {
         const wallet = Number(row.wallet_balance) || 0;
         const status = String(row.status || '').toLowerCase();
         const isEligibleByMemberState = Boolean(row.is_active) && (status === 'active' || status === 'probation');
-        const isPaid = paidSet.has(memberId);
+        const netPaid = netPaidByMember.get(memberId) || 0;
+        const isPaid = netPaid + 1e-6 >= requiredAmount;
         const hasSufficient = wallet + 1e-6 >= requiredAmount;
 
         let previewStatus: DeductPreviewStatus = 'eligible';
@@ -541,6 +599,7 @@ const Members = () => {
       });
 
       setDeductPreviewRows(preview);
+      setDeductPreviewNotice('');
     } catch (error) {
       console.error(error);
       toast({
@@ -549,6 +608,7 @@ const Members = () => {
         description: error instanceof Error ? error.message : 'Please try again.',
       });
       setDeductPreviewRows([]);
+      setDeductPreviewNotice('Preview check failed. Please retry selecting the case.');
     } finally {
       setDeductPreviewLoading(false);
     }
@@ -1525,6 +1585,8 @@ const Members = () => {
             </p>
             {deductPreviewLoading ? (
               <p className="text-xs text-muted-foreground">Checking paid / wallet eligibility for selected case...</p>
+            ) : deductPreviewNotice ? (
+              <p className="text-xs text-muted-foreground">{deductPreviewNotice}</p>
             ) : deductPreviewRows.length > 0 ? (
               <div className="space-y-2 rounded-md border p-2">
                 <div className="text-xs text-muted-foreground">
@@ -1533,18 +1595,25 @@ const Members = () => {
                   <strong>{deductPreviewRows.filter((r) => r.preview_status === 'insufficient').length}</strong> | Ineligible:{' '}
                   <strong>{deductPreviewRows.filter((r) => r.preview_status === 'ineligible').length}</strong>
                 </div>
-                <details>
-                  <summary className="cursor-pointer text-xs text-muted-foreground">View member breakdown</summary>
-                  <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1">
-                    {deductPreviewRows.map((row) => (
-                      <div key={row.member_id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
-                        <span className="truncate mr-2">#{row.member_number || '-'} {row.name}</span>
-                        <span className="font-medium capitalize">{row.preview_status}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
+                {selectedMemberIds.size <= 300 ? (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-muted-foreground">View member breakdown</summary>
+                    <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1">
+                      {deductPreviewRows.map((row) => (
+                        <div key={row.member_id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
+                          <span className="truncate mr-2">#{row.member_number || '-'} {row.name}</span>
+                          <span className="font-medium capitalize">{row.preview_status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Member breakdown hidden for large selections.</p>
+                )}
               </div>
+            ) : null}
+            {deductInlineMessage ? (
+              <p className="text-xs text-muted-foreground">{deductInlineMessage}</p>
             ) : null}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">

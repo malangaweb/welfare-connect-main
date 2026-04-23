@@ -432,7 +432,7 @@ function DisbursementsTab({ caseId, refreshKey }: { caseId: string; refreshKey: 
             amount,
             description,
             created_at,
-            payment_method
+            metadata
           `)
           .eq('case_id', caseId)
           .eq('transaction_type', 'disbursement')
@@ -483,7 +483,7 @@ function DisbursementsTab({ caseId, refreshKey }: { caseId: string; refreshKey: 
                 <TableCell className="text-right text-sm text-muted-foreground">
                   {new Date(tx.created_at).toLocaleDateString()}
                 </TableCell>
-                <TableCell className="capitalize">{tx.payment_method || 'cash'}</TableCell>
+                <TableCell className="capitalize">{tx.metadata?.payment_method || 'cash'}</TableCell>
               </TableRow>
             ))
           )}
@@ -757,6 +757,12 @@ const CaseDetails = () => {
             amount: Number(memberActivity.netContributed.toFixed(2)),
             transaction_type: 'contribution_refund',
             description: `Contribution refund for Case #${caseData.caseNumber} - ${caseData.caseType}`,
+            status: 'completed',
+            payment_method: 'wallet',
+            metadata: {
+              source: 'case_revert_contributions',
+              case_number: caseData.caseNumber,
+            },
             created_at: new Date().toISOString(),
           });
         }
@@ -836,10 +842,12 @@ const CaseDetails = () => {
         case_id: id,
         transaction_type: 'disbursement',
         amount: Math.abs(Number(disbursementAmount)),
-        payment_method: disbursementMethod,
         description,
         reference: disbursementReference || null,
         created_at: new Date().toISOString(),
+        metadata: {
+          payment_method: disbursementMethod,
+        },
       };
 
       const { error: insertError } = await (supabase as any)

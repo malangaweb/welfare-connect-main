@@ -6,14 +6,16 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
-$configPath = __DIR__ . '/bulk_deduct_config.php';
-if (!file_exists($configPath)) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'bulk_deduct_config.php missing. Copy bulk_deduct_config.example.php.']);
-    exit;
-}
+// Default/fallback config (used when bulk_deduct_config.php is absent)
+$supabaseUrl = getenv('SUPABASE_URL') ?: 'https://hfojxbfcjozguobwtcgt.supabase.co';
+$supabaseServiceRoleKey = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhmb2p4YmZjam96Z3VvYnd0Y2d0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MjQxMDQzMiwiZXhwIjoyMDU3OTg2NDMyfQ.wqm4HmM2zPM1h3Eb17sELQz40Zsjp2ruAwBBroQaA1c';
+$MLG_INTERNAL_BULK_KEY = getenv('MLG_INTERNAL_BULK_KEY') ?: '6edee798ad1c408712db4e6e88c937edf39c027f2534e3f34ec33d94ea0b9a96';
 
-require_once $configPath;
+// Optional override file (recommended for cPanel)
+$configPath = __DIR__ . '/bulk_deduct_config.php';
+if (file_exists($configPath)) {
+    require_once $configPath;
+}
 
 $internal = $_SERVER['HTTP_X_MLG_INTERNAL_KEY'] ?? '';
 if (!isset($MLG_INTERNAL_BULK_KEY) || $internal === '' || !hash_equals((string) $MLG_INTERNAL_BULK_KEY, (string) $internal)) {
@@ -92,6 +94,127 @@ function sb_post(string $path, array $rows, string $supabaseUrl, string $key): a
     return ['http' => $http, 'body' => $response];
 }
 
+function sb_patch(string $path, array $payload, string $supabaseUrl, string $key): array
+{
+    $ch = curl_init($supabaseUrl . $path);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => 'PATCH',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            "apikey: $key",
+            "Authorization: Bearer $key",
+            "Content-Type: application/json",
+            "Accept: application/json",
+            "Prefer: return=representation",
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload),
+    ]);
+    $response = curl_exec($ch);
+    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    @curl_close($ch);
+    return ['http' => $http, 'body' => $response];
+}
+
+function getNetPaidForCase(string $memberId, string $caseId, string $supabaseUrl, string $key): float
+{
+    $resp = sb_get(
+        '/rest/v1/transactions?member_id=eq.' . rawurlencode($memberId) .
+        '&case_id=eq.' . rawurlencode($caseId) .
+        '&or=(status.eq.completed,status.is.null)' .
+        '&transaction_type=in.(contribution,case_wallet_deduction,contribution_refund,case_wallet_refund)' .
+        '&select=transaction_type,amount',
+        $supabaseUrl,
+        $key
+    );
+    if ($resp['http'] !== 200 || !is_array($resp['data'])) {
+        return 0.0;
+    }
+
+    $gross = 0.0;
+    $refunded = 0.0;
+    foreach ($resp['data'] as $row) {
+        $type = strtolower(trim((string)($row['transaction_type'] ?? '')));
+        $amount = floatval($row['amount'] ?? 0);
+        if ($type === 'contribution' || $type === 'case_wallet_deduction') {
+            $gross += abs($amount);
+            continue;
+        }
+        if ($type === 'contribution_refund' || $type === 'case_wallet_refund') {
+            if ($amount >= 0) {
+                $refunded += $amount;
+            } else {
+                $gross += $amount; // negative refund behaves like deduction
+            }
+        }
+    }
+    return $gross - $refunded;
+}
+
+function resolveCaseDeductionConflict(
+    string $memberId,
+    string $caseId,
+    float $required,
+    float $netPaid,
+    string $supabaseUrl,
+    string $key
+): array {
+    if ($netPaid + 1e-6 >= $required) {
+        return ['ok' => false, 'reason' => 'already_paid'];
+    }
+
+    $existingResp = sb_get(
+        '/rest/v1/transactions?member_id=eq.' . rawurlencode($memberId) .
+        '&case_id=eq.' . rawurlencode($caseId) .
+        '&transaction_type=eq.case_wallet_deduction' .
+        '&select=id,amount,status&order=created_at.desc&limit=1',
+        $supabaseUrl,
+        $key
+    );
+
+    if ($existingResp['http'] !== 200 || empty($existingResp['data'][0]['id'])) {
+        return [
+            'ok' => false,
+            'reason' => 'conflict_row_not_found',
+            'http' => $existingResp['http'],
+            'response' => $existingResp['data'],
+        ];
+    }
+
+    $existing = $existingResp['data'][0];
+    $existingAmount = abs(floatval($existing['amount'] ?? 0));
+    $existingStatus = strtolower(trim((string)($existing['status'] ?? '')));
+    $currentCounted = ($existingStatus === '' || $existingStatus === 'completed') ? $existingAmount : 0.0;
+
+    // Add one required deduction to the currently counted contribution.
+    // If the previous row was reversed, currentCounted=0, so this restores one deduction.
+    $newAmount = round($currentCounted + $required, 2);
+    if ($newAmount <= 0) {
+        $newAmount = round($required, 2);
+    }
+
+    $patch = sb_patch(
+        '/rest/v1/transactions?id=eq.' . rawurlencode((string) $existing['id']),
+        [
+            'amount' => $newAmount,
+            'status' => 'completed',
+            'payment_method' => 'wallet',
+        ],
+        $supabaseUrl,
+        $key
+    );
+
+    if ($patch['http'] === 200 || $patch['http'] === 204) {
+        return ['ok' => true];
+    }
+
+    return [
+        'ok' => false,
+        'reason' => 'conflict_patch_failed',
+        'http' => $patch['http'],
+        'response' => $patch['body'],
+    ];
+}
+
 $caseResp = sb_get(
     '/rest/v1/cases?id=eq.' . rawurlencode($caseId) .
     '&select=id,case_number,contribution_per_member,is_active,is_finalized',
@@ -101,7 +224,15 @@ $caseResp = sb_get(
 
 if ($caseResp['http'] !== 200 || empty($caseResp['data'][0])) {
     http_response_code(404);
-    echo json_encode(['success' => false, 'error' => 'Case not found']);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Case not found',
+        'debug' => [
+            'http' => $caseResp['http'],
+            'case_id' => $caseId,
+            'data' => $caseResp['data'],
+        ]
+    ]);
     exit;
 }
 
@@ -127,16 +258,8 @@ $skipped_insufficient = [];
 $skipped_ineligible = [];
 
 foreach ($uniqueMemberIds as $memberId) {
-    $paidResp = sb_get(
-        '/rest/v1/transactions?member_id=eq.' . rawurlencode($memberId) .
-        '&case_id=eq.' . rawurlencode($caseId) .
-        '&transaction_type=in.(contribution,case_wallet_deduction)' .
-        '&status=eq.completed' .
-        '&select=id&limit=1',
-        $supabaseUrl,
-        $key
-    );
-    if ($paidResp['http'] === 200 && !empty($paidResp['data'])) {
+    $netPaid = getNetPaidForCase($memberId, $caseId, $supabaseUrl, $key);
+    if ($netPaid + 1e-6 >= $required) {
         $skipped_already_paid[] = $memberId;
         continue;
     }
@@ -148,7 +271,12 @@ foreach ($uniqueMemberIds as $memberId) {
         $key
     );
     if ($memResp['http'] !== 200 || empty($memResp['data'][0])) {
-        $skipped_insufficient[] = ['member_id' => $memberId, 'reason' => 'member_not_found'];
+        $skipped_insufficient[] = [
+            'member_id' => $memberId,
+            'reason' => 'member_not_found',
+            'http_status' => $memResp['http'],
+            'response' => $memResp['data'],
+        ];
         continue;
     }
 
@@ -193,9 +321,51 @@ foreach ($uniqueMemberIds as $memberId) {
         continue;
     }
 
-    // Unique violation / duplicate → treat as already deducted (idempotent retry)
+    // Unique violation / duplicate
     if ($ins['http'] === 409) {
-        $skipped_already_paid[] = $memberId;
+        $conflictResolved = resolveCaseDeductionConflict($memberId, $caseId, $required, $netPaid, $supabaseUrl, $key);
+        if (!empty($conflictResolved['ok'])) {
+            $deducted[] = $memberId;
+            continue;
+        }
+        if (($conflictResolved['reason'] ?? '') === 'already_paid') {
+            $skipped_already_paid[] = $memberId;
+            continue;
+        }
+        $skipped_insufficient[] = [
+            'member_id' => $memberId,
+            'reason' => 'conflict_recovery_failed',
+            'detail' => $conflictResolved,
+        ];
+        continue;
+    }
+
+    // Compatibility retry: some deployments enforce stricter constraints
+    // on optional columns like payment_method/metadata. Retry without them.
+    $compatPayload = $payload;
+    unset($compatPayload['payment_method']);
+    unset($compatPayload['metadata']);
+    $insCompat = sb_post('/rest/v1/transactions', [$compatPayload], $supabaseUrl, $key);
+
+    if ($insCompat['http'] === 201 || $insCompat['http'] === 200) {
+        $deducted[] = $memberId;
+        continue;
+    }
+    if ($insCompat['http'] === 409) {
+        $conflictResolved = resolveCaseDeductionConflict($memberId, $caseId, $required, $netPaid, $supabaseUrl, $key);
+        if (!empty($conflictResolved['ok'])) {
+            $deducted[] = $memberId;
+            continue;
+        }
+        if (($conflictResolved['reason'] ?? '') === 'already_paid') {
+            $skipped_already_paid[] = $memberId;
+            continue;
+        }
+        $skipped_insufficient[] = [
+            'member_id' => $memberId,
+            'reason' => 'conflict_recovery_failed',
+            'detail' => $conflictResolved,
+        ];
         continue;
     }
 
@@ -204,6 +374,8 @@ foreach ($uniqueMemberIds as $memberId) {
         'reason' => 'insert_failed',
         'http' => $ins['http'],
         'detail' => $ins['body'],
+        'retry_http' => $insCompat['http'],
+        'retry_detail' => $insCompat['body'],
     ];
 }
 
@@ -213,7 +385,12 @@ echo json_encode([
     'case_number' => $caseNumber,
     'required_amount' => $required,
     'deducted' => $deducted,
+    'deducted_count' => count($deducted),
     'skipped_already_paid' => $skipped_already_paid,
+    'skipped_already_paid_count' => count($skipped_already_paid),
     'skipped_ineligible' => $skipped_ineligible,
+    'skipped_ineligible_count' => count($skipped_ineligible),
     'skipped_insufficient' => $skipped_insufficient,
+    'skipped_insufficient_count' => count($skipped_insufficient),
+    'total_processed' => count($uniqueMemberIds),
 ]);
