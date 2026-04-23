@@ -23,6 +23,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Pagination,
   PaginationContent,
@@ -106,6 +108,7 @@ const getPageNumbers = (currentPage: number, totalPages: number) => {
 
 const contributionHeaders: HeaderMap[] = [
   { key: 'id', label: 'Transaction ID' },
+  { key: 'case_number', label: 'Case Number' },
   { key: 'transaction_type', label: 'Type' },
   { key: 'amount', label: 'Amount (KES)' },
   { key: 'mpesa_reference', label: 'M-Pesa Ref' },
@@ -162,6 +165,8 @@ const Reports = () => {
   const [transactionSearchTerm, setTransactionSearchTerm] = useState('');
   const [transactionTypeFilter, setTransactionTypeFilter] = useState('all');
   const [transactionStatusFilter, setTransactionStatusFilter] = useState('all');
+  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
+  const [caseFilterSearch, setCaseFilterSearch] = useState('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -187,7 +192,7 @@ const Reports = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, selectedCaseIds]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -314,11 +319,48 @@ const Reports = () => {
     return map;
   }, [members]);
 
+  const caseLookup = useMemo(() => {
+    const map = new Map<string, { caseNumber: string; caseType: string }>();
+    cases.forEach((c) => {
+      map.set(c.id, {
+        caseNumber: c.caseNumber || '',
+        caseType: String(c.caseType || ''),
+      });
+    });
+    return map;
+  }, [cases]);
+
+  const caseFilterOptions = useMemo(() => {
+    return cases
+      .map((c) => ({
+        id: c.id,
+        label: `#${c.caseNumber} - ${String(c.caseType || '').toUpperCase()}`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [cases]);
+
+  const filteredCaseFilterOptions = useMemo(() => {
+    const term = caseFilterSearch.trim().toLowerCase();
+    if (!term) return caseFilterOptions;
+    return caseFilterOptions.filter((c) => c.label.toLowerCase().includes(term));
+  }, [caseFilterOptions, caseFilterSearch]);
+
+  const contributionsData = useMemo(() => {
+    return filteredTransactions
+      .filter((tx) => isCountableTransaction(tx) && isContributionTransaction(tx))
+      .filter((tx) => selectedCaseIds.length === 0 || (tx.case_id ? selectedCaseIds.includes(tx.case_id) : false))
+      .map((tx) => ({
+        ...tx,
+        case_number: tx.case_id ? caseLookup.get(tx.case_id)?.caseNumber || '-' : '-',
+        case_type: tx.case_id ? caseLookup.get(tx.case_id)?.caseType || '' : '',
+        amount: getContributionSignedAmount(tx),
+      }));
+  }, [filteredTransactions, selectedCaseIds, caseLookup]);
+
   const contributionTrendData: MonthlyContribution[] = useMemo(() => {
     const grouped = new Map<string, { month: string; monthKey: number; amount: number; count: number }>();
 
-    filteredTransactions
-      .filter((tx) => isCountableTransaction(tx) && isContributionTransaction(tx))
+    contributionsData
       .forEach((tx) => {
         const txDate = new Date(tx.created_at);
         const monthKey = txDate.getFullYear() * 100 + (txDate.getMonth() + 1);
@@ -330,7 +372,7 @@ const Reports = () => {
           count: 0,
         };
 
-        existing.amount += getContributionSignedAmount(tx);
+        existing.amount += Number(tx.amount || 0);
         existing.count += 1;
         grouped.set(key, existing);
       });
@@ -338,7 +380,7 @@ const Reports = () => {
     return Array.from(grouped.values())
       .sort((a, b) => a.monthKey - b.monthKey)
       .map(({ month, amount, count }) => ({ month, amount, count }));
-  }, [filteredTransactions]);
+  }, [contributionsData]);
 
   const genderDistribution: MemberDemographic[] = useMemo(() => {
     const counts: Record<string, number> = { male: 0, female: 0 };
@@ -455,15 +497,6 @@ const Reports = () => {
     }
   }, [sortColumn]);
 
-  const contributionsData = useMemo(() => {
-    return filteredTransactions
-      .filter((tx) => isCountableTransaction(tx) && isContributionTransaction(tx))
-      .map((tx) => ({
-        ...tx,
-        amount: getContributionSignedAmount(tx),
-      }));
-  }, [filteredTransactions]);
-
   const contributionAnalytics = useMemo(() => {
     const totalAmount = contributionsData.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
     const count = contributionsData.length;
@@ -477,6 +510,7 @@ const Reports = () => {
     const previousTotal = transactions
       .filter((tx) => {
         if (!isCountableTransaction(tx) || !isContributionTransaction(tx)) return false;
+        if (selectedCaseIds.length > 0 && (!tx.case_id || !selectedCaseIds.includes(tx.case_id))) return false;
         const txDate = new Date(tx.created_at);
         return txDate >= previousRangeStart && txDate <= previousRangeEnd;
       })
@@ -484,7 +518,7 @@ const Reports = () => {
 
     const growthRate = previousTotal > 0 ? ((totalAmount - previousTotal) / previousTotal) * 100 : null;
     return { totalAmount, count, uniqueContributors, growthRate };
-  }, [contributionsData, dateRange.endDate, dateRange.startDate, transactions]);
+  }, [contributionsData, dateRange.endDate, dateRange.startDate, transactions, selectedCaseIds]);
 
   const transactionTypeOptions = useMemo(() => {
     return Array.from(new Set(transactions.map((tx) => tx.transaction_type).filter(Boolean))).sort();
@@ -864,6 +898,61 @@ const Reports = () => {
                   <CardDescription className="text-base font-medium">Historical member contributions</CardDescription>
                 </div>
                 <div className="flex gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="lg" className="border-2 font-bold min-w-[220px] justify-start">
+                        {selectedCaseIds.length === 0 ? 'All cases' : `${selectedCaseIds.length} case(s) selected`}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-3" align="end">
+                      <div className="space-y-3">
+                        <Input
+                          placeholder="Search cases..."
+                          value={caseFilterSearch}
+                          onChange={(e) => setCaseFilterSearch(e.target.value)}
+                        />
+                        <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                          {filteredCaseFilterOptions.map((option) => (
+                            <label key={option.id} className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                checked={selectedCaseIds.includes(option.id)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedCaseIds((prev) => {
+                                    if (checked) return prev.includes(option.id) ? prev : [...prev, option.id];
+                                    return prev.filter((id) => id !== option.id);
+                                  });
+                                }}
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          ))}
+                          {filteredCaseFilterOptions.length === 0 && (
+                            <p className="text-xs text-muted-foreground py-2">No cases match your search.</p>
+                          )}
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedCaseIds([])}
+                            disabled={selectedCaseIds.length === 0}
+                          >
+                            Clear
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedCaseIds(caseFilterOptions.map((c) => c.id))}
+                            disabled={caseFilterOptions.length === 0 || selectedCaseIds.length === caseFilterOptions.length}
+                          >
+                            Select all
+                          </Button>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <Button 
                     variant="outline" 
                     size="lg" 
@@ -889,6 +978,9 @@ const Reports = () => {
                       <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('id')}>
                         Transaction ID {sortColumn === 'id' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
                       </TableHead>
+                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('case_number')}>
+                        Case {sortColumn === 'case_number' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
+                      </TableHead>
                       <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('transaction_type')}>
                         Type {sortColumn === 'transaction_type' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
                       </TableHead>
@@ -906,14 +998,14 @@ const Reports = () => {
                     {loading ? (
                       [...Array(5)].map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell colSpan={6} className="py-6">
+                          <TableCell colSpan={7} className="py-6">
                             <Skeleton className="h-6 w-full" />
                           </TableCell>
                         </TableRow>
                       ))
                     ) : paginatedContributions.total === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           No data available
                         </TableCell>
                       </TableRow>
@@ -921,6 +1013,7 @@ const Reports = () => {
                       paginatedContributions.data.map(tx => (
                         <TableRow key={tx.id} className="hover:bg-muted/40 transition-colors">
                           <TableCell className="font-medium text-primary">{String(tx.id).substring(0, 8)}</TableCell>
+                          <TableCell className="font-medium">{String(tx.case_number || '-')}</TableCell>
                           <TableCell className="capitalize">{String(tx.transaction_type || '').replace(/_/g, ' ')}</TableCell>
                           <TableCell className={`font-bold ${Number(tx.amount) < 0 ? 'text-destructive' : 'text-primary'}`}>{Number(tx.amount).toLocaleString()}</TableCell>
                           <TableCell className="text-muted-foreground font-mono">{tx.mpesa_reference || '-'}</TableCell>

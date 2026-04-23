@@ -38,6 +38,8 @@ import 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface MonthlySummary {
   month: string
@@ -79,6 +81,8 @@ interface ContributionTransaction {
   description: string | null
   member_name: string
   member_number: string
+  case_id: string | null
+  case_number: string | null
 }
 
 interface DashboardSummary {
@@ -140,6 +144,8 @@ const FiscalReports = () => {
   const [contributionsSearch, setContributionsSearch] = useState('')
   const [contributionTransactionsSearch, setContributionTransactionsSearch] = useState('')
   const [contributionTypeFilter, setContributionTypeFilter] = useState<'all' | 'contribution' | 'contribution_refund'>('all')
+  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
+  const [caseFilterSearch, setCaseFilterSearch] = useState('')
   const [casesSearch, setCasesSearch] = useState('')
   const [membersSearch, setMembersSearch] = useState('')
   const [contributionsPage, setContributionsPage] = useState(1)
@@ -157,7 +163,7 @@ const FiscalReports = () => {
           supabase.from('member_transaction_summary').select('*').order('member_number'),
           supabase
             .from('transactions')
-            .select('id, created_at, transaction_type, amount, status, mpesa_reference, description, members(member_number, name)')
+            .select('id, created_at, transaction_type, amount, status, mpesa_reference, description, case_id, members(member_number, name), cases(case_number)')
             .in('transaction_type', ['contribution', 'contribution_refund'])
             .order('created_at', { ascending: false })
             .limit(2000),
@@ -180,6 +186,8 @@ const FiscalReports = () => {
               description: tx.description || null,
               member_name: membersData?.name || 'Unknown',
               member_number: membersData?.member_number || '-',
+              case_id: tx.case_id || null,
+              case_number: (Array.isArray(tx.cases) ? tx.cases[0] : tx.cases)?.case_number || null,
             } as ContributionTransaction
           })
         )
@@ -284,6 +292,21 @@ const FiscalReports = () => {
     return Array.from(years).sort((a, b) => b - a)
   }, [monthlyData, contributionTransactions])
 
+  const caseFilterOptions = useMemo(() => {
+    return caseData
+      .map((c) => ({
+        id: String(c.case_id),
+        label: `#${c.case_number} - ${String(c.case_type || '').toUpperCase()}`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [caseData])
+
+  const filteredCaseFilterOptions = useMemo(() => {
+    const term = caseFilterSearch.trim().toLowerCase()
+    if (!term) return caseFilterOptions
+    return caseFilterOptions.filter((c) => c.label.toLowerCase().includes(term))
+  }, [caseFilterOptions, caseFilterSearch])
+
   const filteredContributionTransactions = useMemo(() => {
     const term = contributionTransactionsSearch.trim().toLowerCase()
     return contributionTransactions.filter((tx) => {
@@ -291,16 +314,18 @@ const FiscalReports = () => {
       const monthMatch = selectedMonth === 'all' || date.getMonth() === Number(selectedMonth)
       const yearMatch = selectedYear === 'all' || date.getFullYear().toString() === selectedYear
       const typeMatch = contributionTypeFilter === 'all' || tx.transaction_type === contributionTypeFilter
+      const caseMatch = selectedCaseIds.length === 0 || (tx.case_id ? selectedCaseIds.includes(tx.case_id) : false)
       const searchMatch =
         term === '' ||
         tx.member_name.toLowerCase().includes(term) ||
         tx.member_number.toLowerCase().includes(term) ||
+        String(tx.case_number || '').toLowerCase().includes(term) ||
         String(tx.mpesa_reference || '').toLowerCase().includes(term) ||
         String(tx.description || '').toLowerCase().includes(term)
 
-      return monthMatch && yearMatch && typeMatch && searchMatch
+      return monthMatch && yearMatch && typeMatch && caseMatch && searchMatch
     })
-  }, [contributionTransactions, contributionTransactionsSearch, selectedMonth, selectedYear, contributionTypeFilter])
+  }, [contributionTransactions, contributionTransactionsSearch, selectedMonth, selectedYear, contributionTypeFilter, selectedCaseIds])
 
   const filteredCaseData = useMemo(() => {
     return caseData.filter((item) => {
@@ -339,7 +364,7 @@ const FiscalReports = () => {
   useEffect(() => {
     setContributionsPage(1)
     setContributionTransactionsPage(1)
-  }, [selectedMonth, selectedYear, contributionsSearch, contributionTransactionsSearch, contributionTypeFilter])
+  }, [selectedMonth, selectedYear, contributionsSearch, contributionTransactionsSearch, contributionTypeFilter, selectedCaseIds])
 
   const renderPagination = (currentPage: number, totalPages: number, onPageChange: (page: number) => void, total: number, start: number, end: number) => {
     if (totalPages <= 1) return null
@@ -495,6 +520,79 @@ const FiscalReports = () => {
                         <SelectItem value="contribution_refund">Contribution Refund</SelectItem>
                       </SelectContent>
                     </Select>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="min-w-[220px] justify-start">
+                          {selectedCaseIds.length === 0 ? 'All cases' : `${selectedCaseIds.length} case(s) selected`}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[320px] p-3" align="end">
+                        <div className="space-y-3">
+                          <Input
+                            placeholder="Search cases..."
+                            value={caseFilterSearch}
+                            onChange={(e) => setCaseFilterSearch(e.target.value)}
+                          />
+                          <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                            {filteredCaseFilterOptions.map((option) => (
+                              <label key={option.id} className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={selectedCaseIds.includes(option.id)}
+                                  onCheckedChange={(checked) => {
+                                    setSelectedCaseIds((prev) => {
+                                      if (checked) {
+                                        return prev.includes(option.id) ? prev : [...prev, option.id]
+                                      }
+                                      return prev.filter((id) => id !== option.id)
+                                    })
+                                  }}
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            ))}
+                            {filteredCaseFilterOptions.length === 0 && (
+                              <p className="text-xs text-muted-foreground py-2">No cases match your search.</p>
+                            )}
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedCaseIds([])}
+                              disabled={selectedCaseIds.length === 0}
+                            >
+                              Clear
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedCaseIds(caseFilterOptions.map((c) => c.id))}
+                              disabled={caseFilterOptions.length === 0 || selectedCaseIds.length === caseFilterOptions.length}
+                            >
+                              Select all
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => exportToExcel('Case Contribution Transactions', filteredContributionTransactions)}
+                    >
+                      <FileSpreadsheet className="mr-2 h-4 w-4" />
+                      Excel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => exportToCSV('Case Contribution Transactions', filteredContributionTransactions)}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      CSV
+                    </Button>
                   </div>
                 </div>
                 <div className="relative max-w-md">
@@ -513,6 +611,7 @@ const FiscalReports = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
+                        <TableHead>Case</TableHead>
                         <TableHead>Member</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Status</TableHead>
@@ -522,14 +621,15 @@ const FiscalReports = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {loading ? renderSkeletonRows(7) : paginatedContributionTransactions.data.length === 0 ? (
+                      {loading ? renderSkeletonRows(8) : paginatedContributionTransactions.data.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No contribution transactions found</TableCell>
+                          <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No contribution transactions found</TableCell>
                         </TableRow>
                       ) : (
                         paginatedContributionTransactions.data.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell>{format(new Date(item.created_at), 'dd MMM yyyy HH:mm')}</TableCell>
+                            <TableCell className="font-medium">{item.case_number ? `#${item.case_number}` : '-'}</TableCell>
                             <TableCell>
                               <div>
                                 <p className="font-medium">{item.member_name}</p>

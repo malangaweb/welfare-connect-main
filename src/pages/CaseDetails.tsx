@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@/components/ui/use-toast';
-import { ChevronLeft, Edit, User, Calendar, DollarSign, CheckCircle, TimerOff, Clock, ArrowRight, RotateCcw } from 'lucide-react';
+import { ChevronLeft, Edit, User, Calendar, DollarSign, CheckCircle, TimerOff, Clock, ArrowRight, RotateCcw, FileSpreadsheet, FileText } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select';
 import type { Database } from '@/integrations/supabase/types';
 import { persistentCache } from '@/lib/cache';
+import { createReportFilename, exportRowsToCSV, exportRowsToXLSX } from '@/lib/reportExport';
 
 type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 type MemberUpdate = Database["public"]["Tables"]["members"]["Update"];
@@ -310,6 +311,73 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
   const [contributions, setContributions] = useState<CaseContributionActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const exportContributionRows = () => {
+    return contributions.map((tx) => {
+      const isPaid = tx.netContributed >= contributionPerMember - WALLET_BALANCE_EPSILON;
+      const isRefunded = tx.netContributed <= WALLET_BALANCE_EPSILON && tx.refunded > WALLET_BALANCE_EPSILON;
+      const isPartial = tx.netContributed > WALLET_BALANCE_EPSILON && !isPaid;
+      const status = isPaid ? 'Paid' : isRefunded ? 'Refunded' : isPartial ? 'Partial' : 'Not paid';
+
+      return {
+        memberNumber: tx.memberNumber || '',
+        memberName: tx.memberName,
+        chargedKes: Number(tx.grossContributed.toFixed(2)),
+        refundedKes: Number(tx.refunded.toFixed(2)),
+        netKes: Number(Math.max(tx.netContributed, 0).toFixed(2)),
+        lastActivity: tx.lastActivity ? new Date(tx.lastActivity).toLocaleDateString() : '',
+        status,
+      };
+    });
+  };
+
+  const handleExportContributionsXlsx = () => {
+    if (contributions.length === 0) {
+      toast({
+        title: 'No data to export',
+        description: 'There are no contribution rows for this case yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const rows = exportContributionRows();
+    const headers = [
+      { key: 'memberNumber', label: 'Member Number' },
+      { key: 'memberName', label: 'Member Name' },
+      { key: 'chargedKes', label: 'Charged (KES)' },
+      { key: 'refundedKes', label: 'Refunded (KES)' },
+      { key: 'netKes', label: 'Net (KES)' },
+      { key: 'lastActivity', label: 'Last Activity' },
+      { key: 'status', label: 'Status' },
+    ];
+    exportRowsToXLSX(createReportFilename(`case_${caseNumber}_member_contributions`, 'xlsx'), rows, headers);
+    toast({ title: 'Export complete', description: `Exported ${rows.length} contribution rows.` });
+  };
+
+  const handleExportContributionsCsv = () => {
+    if (contributions.length === 0) {
+      toast({
+        title: 'No data to export',
+        description: 'There are no contribution rows for this case yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const rows = exportContributionRows();
+    const headers = [
+      { key: 'memberNumber', label: 'Member Number' },
+      { key: 'memberName', label: 'Member Name' },
+      { key: 'chargedKes', label: 'Charged (KES)' },
+      { key: 'refundedKes', label: 'Refunded (KES)' },
+      { key: 'netKes', label: 'Net (KES)' },
+      { key: 'lastActivity', label: 'Last Activity' },
+      { key: 'status', label: 'Status' },
+    ];
+    exportRowsToCSV(createReportFilename(`case_${caseNumber}_member_contributions`, 'csv'), rows, headers);
+    toast({ title: 'Export complete', description: `Exported ${rows.length} contribution rows.` });
+  };
+
   useEffect(() => {
     const loadContributions = async () => {
       try {
@@ -339,9 +407,19 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
             Expected: KES {contributionPerMember.toLocaleString()} per member
           </p>
         </div>
-        <Badge variant="outline">
-          {contributions.length} members
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">
+            {contributions.length} members
+          </Badge>
+          <Button variant="outline" size="sm" onClick={handleExportContributionsXlsx}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportContributionsCsv}>
+            <FileText className="h-4 w-4 mr-2" />
+            CSV
+          </Button>
+        </div>
       </div>
 
       <div className="border rounded-md">
