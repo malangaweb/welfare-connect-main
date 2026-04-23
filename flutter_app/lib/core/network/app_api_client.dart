@@ -19,7 +19,10 @@ class AppApiClient {
             headers: {
               "Content-Type": "application/json",
               "apikey": AppConfig.supabaseAnonKey,
-              if (appToken != null) "Authorization": "Bearer $appToken",
+              // Supabase gateway expects a project JWT in Authorization.
+              "Authorization": "Bearer ${AppConfig.supabaseAnonKey}",
+              // App-level auth token verified inside edge functions.
+              if (appToken != null) "x-app-token": appToken,
             },
           ),
         );

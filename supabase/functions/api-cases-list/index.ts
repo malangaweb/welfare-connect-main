@@ -11,6 +11,49 @@ function jsonResponse(status: number, payload: Record<string, unknown>) {
   });
 }
 
+function normalizeCandidate(value: unknown): string | null {
+  const v = String(value ?? "").trim();
+  return v.length > 0 ? v : null;
+}
+
+function isInvalidUuidError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = String(error.message || "").toLowerCase();
+  return error.code === "22P02" || msg.includes("invalid input syntax for type uuid");
+}
+
+async function resolveMemberId(
+  supabase: ReturnType<typeof createClient>,
+  selectors: string[],
+): Promise<string | null> {
+  for (const selector of selectors) {
+    const byId = await supabase
+      .from("members")
+      .select("id")
+      .eq("id", selector)
+      .maybeSingle();
+    if (byId.data?.id) {
+      return String(byId.data.id);
+    }
+    if (byId.error && !isInvalidUuidError(byId.error)) {
+      throw byId.error;
+    }
+
+    const byMemberNumber = await supabase
+      .from("members")
+      .select("id")
+      .eq("member_number", selector)
+      .maybeSingle();
+    if (byMemberNumber.error) {
+      throw byMemberNumber.error;
+    }
+    if (byMemberNumber.data?.id) {
+      return String(byMemberNumber.data.id);
+    }
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (!["GET", "POST"].includes(req.method)) return jsonResponse(405, { error: "Method not allowed" });
@@ -38,12 +81,27 @@ serve(async (req) => {
     memberCount = count || 0;
 
     let paidCaseIds = new Set<string>();
-    if (role === "member" && claims.member_id && (cases || []).length > 0) {
+    if (role === "member" && (cases || []).length > 0) {
+      const selectors = Array.from(
+        new Set(
+          [claims.member_id, claims.sub, (claims as { member_number?: string }).member_number]
+            .map(normalizeCandidate)
+            .filter((v): v is string => v != null),
+        ),
+      );
+      const resolvedMemberId = selectors.length > 0
+        ? await resolveMemberId(supabase, selectors)
+        : null;
+
+      if (!resolvedMemberId) {
+        return jsonResponse(404, { error: "Member not found" });
+      }
+
       const ids = (cases || []).map((c: any) => c.id);
       const { data: tx } = await supabase
         .from("transactions")
         .select("case_id, status")
-        .eq("member_id", claims.member_id)
+        .eq("member_id", resolvedMemberId)
         .in("case_id", ids)
         .in("transaction_type", ["contribution", "case_wallet_deduction"]);
       paidCaseIds = new Set(

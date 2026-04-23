@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart';
-
 import 'app_database.dart';
 
 class CacheRepository {
@@ -26,7 +24,8 @@ class CacheRepository {
     return jsonDecode(row.payloadJson) as Map<String, dynamic>;
   }
 
-  Future<void> enqueueOutbox(String action, Map<String, dynamic> payload) async {
+  Future<void> enqueueOutbox(
+      String action, Map<String, dynamic> payload) async {
     await db.into(db.outboxItems).insert(
           OutboxItemsCompanion.insert(
             action: action,

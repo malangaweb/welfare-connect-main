@@ -5,7 +5,7 @@ import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { supabase } from '@/integrations/supabase/client';
-import { normalizePhone, setAppToken } from '@/lib/appAuth';
+import { clearMemberSession, isAppTokenExpired, normalizePhone, setAppToken } from '@/lib/appAuth';
 
 // Define explicit types for the user row
 interface UserProfile {
@@ -59,13 +59,16 @@ const Login = () => {
   useEffect(() => {
     const checkSession = async () => {
       const memberId = localStorage.getItem('member_member_id');
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('app_token') || localStorage.getItem('token');
       const currentUser = localStorage.getItem('currentUser');
 
       if (loginMode === 'member') {
-        if (memberId) {
+        if (memberId && token && !isAppTokenExpired(token)) {
           navigate('/member/dashboard', { replace: true });
           return;
+        }
+        if (memberId || token) {
+          clearMemberSession();
         }
       } else {
         if (token && currentUser) {

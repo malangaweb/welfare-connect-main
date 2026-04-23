@@ -86,6 +86,10 @@ const MemberTransactions = () => {
         setTotalDebit(debits);
       } catch (error) {
         console.error("Error fetching transactions:", error);
+        if (error instanceof Error && /session expired/i.test(error.message)) {
+          navigate("/member/login", { replace: true });
+          return;
+        }
       } finally {
         setLoading(false);
       }

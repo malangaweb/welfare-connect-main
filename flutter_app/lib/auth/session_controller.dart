@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:state_notifier/state_notifier.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const _storage = FlutterSecureStorage();
@@ -52,6 +51,8 @@ class SessionController extends StateNotifier<AppSession> {
   Future<void> _hydrate() async {
     final raw = await _storage.read(key: _sessionKey);
     if (raw == null) return;
+    // Avoid overriding a freshly set in-memory session with stale storage data.
+    if (state.appToken != null || state.role != null) return;
     state = AppSession.fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
 

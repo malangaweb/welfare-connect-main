@@ -4,7 +4,7 @@ import { jwtVerify } from "https://esm.sh/jose@5.9.6";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-app-token",
 };
 
 function jsonResponse(status: number, payload: Record<string, unknown>) {
@@ -14,7 +14,62 @@ function jsonResponse(status: number, payload: Record<string, unknown>) {
   });
 }
 
+function normalizeCandidate(value: unknown): string | null {
+  const v = String(value ?? "").trim();
+  return v.length > 0 ? v : null;
+}
+
+function isInvalidUuidError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = String(error.message || "").toLowerCase();
+  return error.code === "22P02" || msg.includes("invalid input syntax for type uuid");
+}
+
+async function resolveMember(
+  supabase: ReturnType<typeof createClient>,
+  selectors: string[],
+) {
+  for (const selector of selectors) {
+    const byId = await supabase
+      .from("members")
+      .select("id, member_number, name, wallet_balance, is_active")
+      .eq("id", selector)
+      .maybeSingle();
+
+    if (byId.data) {
+      return byId.data;
+    }
+    if (byId.error && !isInvalidUuidError(byId.error)) {
+      throw byId.error;
+    }
+
+    const byMemberNumber = await supabase
+      .from("members")
+      .select("id, member_number, name, wallet_balance, is_active")
+      .eq("member_number", selector)
+      .maybeSingle();
+
+    if (byMemberNumber.error) {
+      throw byMemberNumber.error;
+    }
+    if (byMemberNumber.data) {
+      return byMemberNumber.data;
+    }
+  }
+  return null;
+}
+
 async function verifyToken(req: Request) {
+  const appTokenHeader = req.headers.get("x-app-token") || "";
+  if (appTokenHeader) {
+    const appJwtSecret = Deno.env.get("APP_JWT_SECRET");
+    if (!appJwtSecret) {
+      throw new Error("APP_JWT_SECRET is not configured");
+    }
+    const verified = await jwtVerify(appTokenHeader, new TextEncoder().encode(appJwtSecret));
+    return verified.payload as { sub?: string; role?: string; member_id?: string; member_number?: string };
+  }
+
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!token) {
@@ -27,7 +82,7 @@ async function verifyToken(req: Request) {
   }
 
   const verified = await jwtVerify(token, new TextEncoder().encode(appJwtSecret));
-  return verified.payload as { sub?: string; role?: string; member_id?: string };
+  return verified.payload as { sub?: string; role?: string; member_id?: string; member_number?: string };
 }
 
 serve(async (req) => {
@@ -44,10 +99,18 @@ serve(async (req) => {
     const role = String(claims.role || "").toLowerCase();
     const url = new URL(req.url);
     const body: Record<string, unknown> = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    const requestedMemberId = url.searchParams.get("member_id") || String(body["member_id"] || "") || null;
-    const memberId = role === "member" ? claims.member_id : (requestedMemberId || claims.member_id);
+    const requestedMemberId = normalizeCandidate(url.searchParams.get("member_id") ?? body["member_id"]);
+    const selectors = Array.from(
+      new Set(
+        (role === "member"
+          ? [claims.member_id, claims.sub, claims.member_number, requestedMemberId]
+          : [requestedMemberId, claims.member_id, claims.sub])
+          .map(normalizeCandidate)
+          .filter((v): v is string => v != null),
+      ),
+    );
 
-    if (!memberId) {
+    if (selectors.length === 0) {
       return jsonResponse(400, { error: "member_id is required" });
     }
 
@@ -56,20 +119,17 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: member, error: memberError } = await supabase
-      .from("members")
-      .select("id, member_number, name, wallet_balance, is_active")
-      .eq("id", memberId)
-      .maybeSingle();
-
-    if (memberError || !member) {
+    const member = await resolveMember(supabase, selectors);
+    if (!member) {
       return jsonResponse(404, { error: "Member not found" });
     }
+
+    const resolvedMemberId = String(member.id);
 
     const { data: transactions, error: txError } = await supabase
       .from("transactions")
       .select("id, case_id, amount, transaction_type, description, created_at, status, mpesa_reference")
-      .eq("member_id", memberId)
+      .eq("member_id", resolvedMemberId)
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -94,7 +154,7 @@ serve(async (req) => {
       const { data: caseTx } = await supabase
         .from("transactions")
         .select("case_id, status")
-        .eq("member_id", memberId)
+        .eq("member_id", resolvedMemberId)
         .in("case_id", caseIds)
         .in("transaction_type", ["contribution", "case_wallet_deduction"]);
 

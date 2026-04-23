@@ -53,6 +53,10 @@ const MemberDashboard = () => {
       setWalletBalance(Number.isFinite(balanceFromMember) ? balanceFromMember : balanceFromTx);
     } catch (error) {
       console.error("Error fetching data:", error);
+      if (error instanceof Error && /session expired/i.test(error.message)) {
+        window.location.href = "/member/login";
+        return;
+      }
       toast({
         variant: "destructive",
         title: "Error",

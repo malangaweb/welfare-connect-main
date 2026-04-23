@@ -19,10 +19,50 @@ function normalizePhone(value: string): string {
   if (digits.startsWith("254")) {
     return digits;
   }
+  if (digits.length === 9 && digits.startsWith("7")) {
+    return `254${digits}`;
+  }
   if (digits.startsWith("0")) {
     return `254${digits.slice(1)}`;
   }
   return digits;
+}
+
+function memberNumberCandidates(value: unknown): string[] {
+  const raw = String(value ?? "").trim();
+  const upper = raw.toUpperCase();
+  const withoutPrefix = upper.startsWith("M") ? upper.slice(1).trim() : upper;
+  const digits = withoutPrefix.replace(/\D/g, "");
+  const digitsNoLeadingZero = digits.replace(/^0+/, "");
+
+  const candidates = [raw, upper, withoutPrefix, digits, digitsNoLeadingZero]
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+
+  return Array.from(new Set(candidates));
+}
+
+async function findMemberByNumber(
+  supabase: ReturnType<typeof createClient>,
+  input: unknown,
+) {
+  const candidates = memberNumberCandidates(input);
+  for (const candidate of candidates) {
+    const { data, error } = await supabase
+      .from("members")
+      .select("id, member_number, name, phone_number, is_active, wallet_balance")
+      .eq("member_number", candidate)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+    if (data) {
+      return data;
+    }
+  }
+
+  return null;
 }
 
 serve(async (req) => {
@@ -50,13 +90,8 @@ serve(async (req) => {
       return jsonResponse(400, { error: "member_number and phone_number are required" });
     }
 
-    const { data: member, error: memberError } = await supabase
-      .from("members")
-      .select("id, member_number, name, phone_number, is_active, wallet_balance")
-      .eq("member_number", String(member_number))
-      .maybeSingle();
-
-    if (memberError || !member) {
+    const member = await findMemberByNumber(supabase, member_number);
+    if (!member) {
       return jsonResponse(401, { error: "Invalid member credentials" });
     }
 
