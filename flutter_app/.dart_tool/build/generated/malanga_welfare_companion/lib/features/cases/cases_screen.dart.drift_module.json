@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter/material.dart",
-    "package:flutter_riverpod/flutter_riverpod.dart",
-    "package:malanga_welfare_companion/features/cases/case_details_screen.dart",
-    "package:malanga_welfare_companion/features/cases/cases_controller.dart"
-  ]
-}

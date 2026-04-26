@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "stitch": {
+      "serverUrl": "https://stitch.googleapis.com/mcp",
+      "headers": {
+        "X-Goog-Api-Key": "AQ.Ab8RN6JbiLfU2I0n6hG58AO9x4y-xekh7aCFp2BM1vKqWUvuPQ"
+      }
+    }
+  },
+  "antigravity": {
+    "dimension": "QuantumVacuum",
+    "frequency": "4.2GHz",
+    "massReduction": 0.72,
+    "stabilizationMode": "photonic"
+  },
+  "production": {
+    "foldThreshold": 15.2,
+    "collisionEnergy": 87.3,
+    "eventHorizon": {
+      "minRadius": 0.42,
+      "maxRadius": 1.28
+    }
+  }
+}

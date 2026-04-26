@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
+import { requireMemberManagementRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
 import { corsHeaders } from "../_shared/cors.ts";
 
@@ -21,7 +21,7 @@ serve(async (req) => {
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
-    requirePrivilegedRole(claims.role);
+    requireMemberManagementRole(claims.role);
 
     const mlgUrl = Deno.env.get("MLG_BULK_DEDUCT_URL");
     const internalKey = Deno.env.get("MLG_INTERNAL_BULK_KEY");

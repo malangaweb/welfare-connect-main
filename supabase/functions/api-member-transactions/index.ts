@@ -6,6 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-app-token",
 };
+const FINANCE_ROLES = new Set(["super_admin", "treasurer"]);
 
 function jsonResponse(status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
@@ -91,6 +92,9 @@ serve(async (req) => {
   try {
     const claims = await verifyToken(req);
     const role = String(claims.role || "").toLowerCase();
+    if (role !== "member" && !FINANCE_ROLES.has(role)) {
+      throw new Error("Forbidden");
+    }
     const url = new URL(req.url);
     const body: Record<string, unknown> = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const requestedMemberId = normalizeCandidate(url.searchParams.get("member_id") ?? body["member_id"]);
@@ -143,6 +147,8 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("api-member-transactions error:", error);
+    const msg = error instanceof Error ? error.message : "Unauthorized or invalid request";
+    if (msg === "Forbidden") return jsonResponse(403, { error: msg });
     return jsonResponse(401, { error: "Unauthorized or invalid request" });
   }
 });

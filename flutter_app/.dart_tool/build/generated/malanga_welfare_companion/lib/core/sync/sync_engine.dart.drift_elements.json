@@ -1,1 +1,0 @@
-{"valid_import":true,"imports":[{"uri":"package:drift/drift.dart","transitive":false},{"uri":"package:malanga_welfare_companion/core/db/app_database.dart","transitive":false},{"uri":"package:malanga_welfare_companion/core/network/app_api_client.dart","transitive":false}],"elements":[]}

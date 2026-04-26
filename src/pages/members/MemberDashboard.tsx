@@ -11,12 +11,22 @@ import { memberLinks, memberLogout } from "./memberLinks";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
 import { invokeWithAppToken } from "@/lib/appAuth";
+
+type ActiveCaseSummary = {
+  id: string;
+  case_number: string;
+  case_type: string;
+  contribution_per_member: number;
+  paid: boolean;
+};
 
 const MemberDashboard = () => {
   const [member, setMember] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [activeCasesSummary, setActiveCasesSummary] = useState<ActiveCaseSummary[]>([]);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -29,6 +39,9 @@ const MemberDashboard = () => {
   const [changePinOpen, setChangePinOpen] = useState(false);
   const [pinData, setPinData] = useState({ oldPin: "", newPin: "", confirmPin: "" });
   const [isChangingPin, setIsChangingPin] = useState(false);
+  const [payToCaseOpen, setPayToCaseOpen] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [isPayingCase, setIsPayingCase] = useState(false);
   const navigate = useNavigate();
 
   const fetchData = async () => {
@@ -47,6 +60,7 @@ const MemberDashboard = () => {
 
       setMember(memberData);
       setTransactions(allTransData || []);
+      setActiveCasesSummary(summary?.active_cases_summary || []);
       // Prefer stored wallet_balance maintained by DB triggers; fallback to calculated sum
       const balanceFromMember = Number(memberData?.wallet_balance) || 0;
       const balanceFromTx = (allTransData || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -221,6 +235,110 @@ const MemberDashboard = () => {
       });
     } finally {
       setIsChangingPin(false);
+    }
+  };
+
+  const handlePayToCase = async () => {
+    if (!member?.id) return;
+    if (!selectedCaseId) {
+      toast({
+        variant: "destructive",
+        title: "Select case",
+        description: "Choose a case to pay first.",
+      });
+      return;
+    }
+
+    const selectedCase = activeCasesSummary.find((c) => c.id === selectedCaseId);
+    if (!selectedCase) {
+      toast({
+        variant: "destructive",
+        title: "Case not found",
+        description: "Please reselect case and try again.",
+      });
+      return;
+    }
+
+    if (selectedCase.paid) {
+      toast({
+        title: "Already paid",
+        description: `You already paid case #${selectedCase.case_number}.`,
+      });
+      return;
+    }
+
+    const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
+    if (requiredAmount <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid case amount",
+        description: "This case has no valid contribution amount.",
+      });
+      return;
+    }
+
+    if (walletBalance < requiredAmount) {
+      toast({
+        variant: "destructive",
+        title: "Insufficient funds",
+        description: `Required KES ${requiredAmount.toLocaleString()}, but your wallet has KES ${walletBalance.toLocaleString()}.`,
+      });
+      return;
+    }
+
+    try {
+      setIsPayingCase(true);
+
+      const { data: existingPayment, error: checkError } = await supabase
+        .from("transactions")
+        .select("id, status")
+        .eq("member_id", member.id)
+        .eq("case_id", selectedCaseId)
+        .in("transaction_type", ["contribution", "case_wallet_deduction"])
+        .limit(1);
+
+      if (checkError) throw checkError;
+
+      const isAlreadyPaid = (existingPayment || []).some((tx) => !tx.status || tx.status === "completed");
+      if (isAlreadyPaid) {
+        toast({
+          title: "Already paid",
+          description: `You already paid case #${selectedCase.case_number}.`,
+        });
+        return;
+      }
+
+      const { error: insertError } = await supabase.from("transactions").insert({
+        member_id: member.id,
+        case_id: selectedCaseId,
+        amount: requiredAmount,
+        transaction_type: "contribution",
+        status: "completed",
+        description: `Case contribution for case #${selectedCase.case_number} (member portal)`,
+        metadata: {
+          source: "member_portal_pay_to_case",
+        },
+      } as any);
+
+      if (insertError) throw insertError;
+
+      toast({
+        title: "Payment successful",
+        description: `KES ${requiredAmount.toLocaleString()} paid to case #${selectedCase.case_number}.`,
+      });
+
+      setPayToCaseOpen(false);
+      setSelectedCaseId("");
+      await fetchData();
+    } catch (error) {
+      console.error("Pay to case error:", error);
+      toast({
+        variant: "destructive",
+        title: "Payment failed",
+        description: error instanceof Error ? error.message : "Could not pay to case.",
+      });
+    } finally {
+      setIsPayingCase(false);
     }
   };
 
@@ -492,6 +610,87 @@ const MemberDashboard = () => {
                       disabled={!selectedMember || !transferAmount || isSubmitting}
                     >
                       {isSubmitting ? 'Transferring...' : 'Transfer'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={payToCaseOpen} onOpenChange={setPayToCaseOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full mt-2">
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pay to Case
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Pay to Case</DialogTitle>
+                    <DialogDescription>
+                      Select a case and pay the required contribution from your wallet.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Select Case</Label>
+                      <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={activeCasesSummary.length > 0 ? "Choose case" : "No open cases"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeCasesSummary.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              #{c.case_number} - KES {Number(c.contribution_per_member || 0).toLocaleString()}
+                              {c.paid ? " (Already paid)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {selectedCaseId && (
+                      <div className="rounded-md border p-3 text-sm">
+                        {(() => {
+                          const selectedCase = activeCasesSummary.find((c) => c.id === selectedCaseId);
+                          if (!selectedCase) return null;
+
+                          const requiredAmount = Number(selectedCase.contribution_per_member || 0);
+                          const shortfall = Math.max(requiredAmount - walletBalance, 0);
+
+                          return (
+                            <div className="space-y-1">
+                              <p>Required amount: <strong>KES {requiredAmount.toLocaleString()}</strong></p>
+                              <p>Wallet balance: <strong>KES {walletBalance.toLocaleString()}</strong></p>
+                              {selectedCase.paid ? (
+                                <p className="text-amber-700">Already paid for this case.</p>
+                              ) : shortfall > 0 ? (
+                                <p className="text-red-600">Insufficient balance. Add KES {shortfall.toLocaleString()} more.</p>
+                              ) : (
+                                <p className="text-green-700">You have enough balance to pay this case.</p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setPayToCaseOpen(false);
+                        setSelectedCaseId("");
+                      }}
+                      disabled={isPayingCase}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handlePayToCase}
+                      disabled={!selectedCaseId || isPayingCase || activeCasesSummary.length === 0}
+                    >
+                      {isPayingCase ? "Paying..." : "Pay"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>

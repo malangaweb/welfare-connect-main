@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:dio/dio.dart",
-    "package:flutter_riverpod/flutter_riverpod.dart",
-    "package:malanga_welfare_companion/auth/session_controller.dart",
-    "package:malanga_welfare_companion/core/config/app_config.dart"
-  ]
-}

@@ -7,6 +7,14 @@ export type AppJwtPayload = {
   member_number?: string;
 };
 
+const ADMIN_ROLES = new Set(["super_admin", "chairperson", "treasurer", "secretary"]);
+const MEMBER_MANAGEMENT_ROLES = new Set(["super_admin", "chairperson", "secretary"]);
+const FINANCE_ROLES = new Set(["super_admin", "treasurer"]);
+
+export function normalizeRole(role: string | undefined): string {
+  return String(role || "").toLowerCase().trim();
+}
+
 export async function verifyAppJwtFromRequest(req: Request): Promise<AppJwtPayload> {
   const appTokenHeader = req.headers.get("x-app-token") || "";
   if (appTokenHeader) {
@@ -34,9 +42,19 @@ export async function verifyAppJwtFromRequest(req: Request): Promise<AppJwtPaylo
 }
 
 export function requirePrivilegedRole(role: string | undefined): void {
-  const r = String(role || "").toLowerCase();
-  const allowed = new Set(["super_admin", "chairperson", "treasurer", "secretary"]);
-  if (!allowed.has(r)) {
+  if (!ADMIN_ROLES.has(normalizeRole(role))) {
+    throw new Error("Forbidden");
+  }
+}
+
+export function requireMemberManagementRole(role: string | undefined): void {
+  if (!MEMBER_MANAGEMENT_ROLES.has(normalizeRole(role))) {
+    throw new Error("Forbidden");
+  }
+}
+
+export function requireFinanceRole(role: string | undefined): void {
+  if (!FINANCE_ROLES.has(normalizeRole(role))) {
     throw new Error("Forbidden");
   }
 }

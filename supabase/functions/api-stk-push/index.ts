@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/cors.ts";
-import { verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
+import { requireFinanceRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
 function jsonResponse(status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
@@ -18,7 +18,15 @@ serve(async (req) => {
   try {
     const claims = await verifyAppJwtFromRequest(req);
     const body = await req.json().catch(() => ({}));
-    const memberId = String(body?.memberId || claims.member_id || "");
+    const role = String(claims.role || "").toLowerCase();
+    if (role !== "member") {
+      requireFinanceRole(role);
+    }
+
+    const memberId =
+      role === "member"
+        ? String(claims.member_id || claims.sub || "")
+        : String(body?.memberId || claims.member_id || "");
     if (!memberId) return jsonResponse(400, { error: "memberId is required" });
 
     const supabase = createClient(

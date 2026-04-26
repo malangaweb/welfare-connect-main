@@ -1,8 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter_riverpod/flutter_riverpod.dart",
-    "package:supabase_flutter/supabase_flutter.dart",
-    "package:malanga_welfare_companion/auth/session_controller.dart"
-  ]
-}

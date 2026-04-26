@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/cors.ts";
-import { verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
+import { requireMemberManagementRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
 function jsonResponse(status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
@@ -18,6 +18,9 @@ serve(async (req) => {
   try {
     const claims = await verifyAppJwtFromRequest(req);
     const role = String(claims.role || "").toLowerCase();
+    if (role !== "member") {
+      requireMemberManagementRole(role);
+    }
     const url = new URL(req.url);
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const caseId = url.searchParams.get("case_id") || String((body as any).case_id || "");
