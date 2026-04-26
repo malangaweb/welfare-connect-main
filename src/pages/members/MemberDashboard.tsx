@@ -328,9 +328,9 @@ const MemberDashboard = () => {
         member_id: member.id,
         case_id: selectedCaseId,
         amount: requiredAmount,
-        transaction_type: "contribution",
+        transaction_type: "case_wallet_deduction",
         status: "completed",
-        description: `Case contribution for case #${selectedCase.case_number} (member portal)`,
+        description: `Case wallet deduction for case #${selectedCase.case_number} (member portal)`,
         metadata: {
           source: "member_portal_pay_to_case",
         },
