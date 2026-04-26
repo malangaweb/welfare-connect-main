@@ -291,15 +291,31 @@ const MemberDashboard = () => {
 
       const { data: existingPayment, error: checkError } = await supabase
         .from("transactions")
-        .select("id, status")
+        .select("status, amount, transaction_type")
         .eq("member_id", member.id)
         .eq("case_id", selectedCaseId)
-        .in("transaction_type", ["contribution", "case_wallet_deduction"])
-        .limit(1);
+        .in("transaction_type", [
+          "contribution",
+          "case_wallet_deduction",
+          "contribution_refund",
+          "case_wallet_refund",
+        ]);
 
       if (checkError) throw checkError;
 
-      const isAlreadyPaid = (existingPayment || []).some((tx) => !tx.status || tx.status === "completed");
+      const netPaid = (existingPayment || []).reduce((sum, tx) => {
+        if (tx.status && tx.status !== "completed") return sum;
+        const txType = String(tx.transaction_type || "");
+        const amount = Number(tx.amount) || 0;
+        if (txType === "contribution" || txType === "case_wallet_deduction") {
+          return sum + Math.abs(amount);
+        }
+        if (txType === "contribution_refund" || txType === "case_wallet_refund") {
+          return sum - Math.abs(amount);
+        }
+        return sum;
+      }, 0);
+      const isAlreadyPaid = netPaid > 0;
       if (isAlreadyPaid) {
         toast({
           title: "Already paid",

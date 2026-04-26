@@ -157,15 +157,38 @@ serve(async (req) => {
     if (caseIds.length > 0) {
       const { data: caseTx } = await supabase
         .from("transactions")
-        .select("case_id, status")
+        .select("case_id, status, amount, transaction_type")
         .eq("member_id", resolvedMemberId)
         .in("case_id", caseIds)
-        .in("transaction_type", ["contribution", "case_wallet_deduction"]);
+        .in("transaction_type", [
+          "contribution",
+          "case_wallet_deduction",
+          "contribution_refund",
+          "case_wallet_refund",
+        ]);
+
+      const netByCase = new Map<string, number>();
+      (caseTx || [])
+        .filter((r) => !r.status || r.status === "completed")
+        .forEach((r) => {
+          const caseId = String(r.case_id || "");
+          if (!caseId) return;
+          const txType = String(r.transaction_type || "");
+          const amount = Number(r.amount) || 0;
+          const current = netByCase.get(caseId) || 0;
+          if (txType === "contribution" || txType === "case_wallet_deduction") {
+            netByCase.set(caseId, current + Math.abs(amount));
+            return;
+          }
+          if (txType === "contribution_refund" || txType === "case_wallet_refund") {
+            netByCase.set(caseId, current - Math.abs(amount));
+          }
+        });
 
       paidCaseIds = new Set(
-        (caseTx || [])
-          .filter((r) => !r.status || r.status === "completed")
-          .map((r) => String(r.case_id)),
+        Array.from(netByCase.entries())
+          .filter(([, net]) => net > 0)
+          .map(([caseId]) => caseId),
       );
     }
 
