@@ -315,7 +315,11 @@ const MemberDashboard = () => {
         }
         return sum;
       }, 0);
-      const isAlreadyPaid = netPaid > 0;
+      const hasExistingWalletDeduction = (existingPayment || []).some((tx) => {
+        if (tx.status && tx.status !== "completed") return false;
+        return String(tx.transaction_type || "") === "case_wallet_deduction";
+      });
+      const isAlreadyPaid = netPaid > 0 || hasExistingWalletDeduction;
       if (isAlreadyPaid) {
         toast({
           title: "Already paid",
@@ -336,7 +340,18 @@ const MemberDashboard = () => {
         },
       } as any);
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        const maybeCode = (insertError as { code?: string }).code;
+        if (maybeCode === "23505") {
+          toast({
+            title: "Already paid",
+            description: `You already paid case #${selectedCase.case_number}.`,
+          });
+          await fetchData();
+          return;
+        }
+        throw insertError;
+      }
 
       toast({
         title: "Payment successful",
