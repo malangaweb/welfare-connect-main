@@ -315,11 +315,7 @@ const MemberDashboard = () => {
         }
         return sum;
       }, 0);
-      const hasExistingWalletDeduction = (existingPayment || []).some((tx) => {
-        if (tx.status && tx.status !== "completed") return false;
-        return String(tx.transaction_type || "") === "case_wallet_deduction";
-      });
-      const isAlreadyPaid = netPaid > 0 || hasExistingWalletDeduction;
+      const isAlreadyPaid = netPaid > 0;
       if (isAlreadyPaid) {
         toast({
           title: "Already paid",
@@ -344,8 +340,10 @@ const MemberDashboard = () => {
         const maybeCode = (insertError as { code?: string }).code;
         if (maybeCode === "23505") {
           toast({
-            title: "Already paid",
-            description: `You already paid case #${selectedCase.case_number}.`,
+            variant: "destructive",
+            title: "Payment blocked",
+            description:
+              "A prior case deduction record still exists for this case. Ask admin to reverse the original deduction record, then try again.",
           });
           await fetchData();
           return;
