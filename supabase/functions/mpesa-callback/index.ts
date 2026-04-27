@@ -83,6 +83,7 @@ serve(async (req) => {
         PhoneNumber,
         AccountReference,
       } = metadata
+      const normalizedReceipt = normalizeMpesaReference(String(MpesaReceiptNumber || ''))
 
       console.log('=== EXTRACTED METADATA ===')
       console.log('Amount:', Amount)
@@ -111,7 +112,7 @@ serve(async (req) => {
         })
       }
 
-      if (!MpesaReceiptNumber || MpesaReceiptNumber.trim() === '') {
+      if (!normalizedReceipt) {
         console.error('❌ VALIDATION FAILED: Missing MpesaReceiptNumber')
         
         await supabase.from('audit_logs').insert({
@@ -159,14 +160,14 @@ serve(async (req) => {
             amount: Number(Amount),
             transaction_type: 'wallet_funding',
             payment_method: 'mpesa',
-            mpesa_reference: MpesaReceiptNumber,
+            mpesa_reference: normalizedReceipt,
             reference: CheckoutRequestID,
             description: `M-Pesa STK Push - ${AccountReference || 'Payment'}`,
             status: 'completed',
             created_at: parsedTransactionDate.toISOString(),
             metadata: {
               webhook_source: 'stk_push',
-              mpesa_receipt: MpesaReceiptNumber,
+              mpesa_receipt: normalizedReceipt,
               phone_number: normalizedPhone,
               account_reference: AccountReference,
               checkout_request_id: CheckoutRequestID,
@@ -191,7 +192,7 @@ serve(async (req) => {
               status: 'success',
               new_values: {
                 amount: Amount,
-                mpesa_receipt: MpesaReceiptNumber,
+                mpesa_receipt: normalizedReceipt,
                 phone_number: normalizedPhone,
                 member_id: member.id,
               },
@@ -202,7 +203,7 @@ serve(async (req) => {
           console.log('⚠️ No member found - routing to suspense account')
 
           const suspenseData = {
-            mpesa_receipt_number: MpesaReceiptNumber,
+            mpesa_receipt_number: normalizedReceipt,
             phone_number: normalizedPhone || 'UNKNOWN',
             amount: Number(Amount),
             sender_name: AccountReference || 'Unknown',
@@ -252,6 +253,7 @@ serve(async (req) => {
               status: 'pending',
               new_values: {
                 mpesa_receipt: MpesaReceiptNumber,
+                mpesa_receipt_normalized: normalizedReceipt,
                 phone: normalizedPhone,
                 amount: Amount,
                 checkout_request_id: CheckoutRequestID,
@@ -274,11 +276,11 @@ serve(async (req) => {
         .update({
           status: 'completed',
           payment_method: 'mpesa',
-          mpesa_reference: MpesaReceiptNumber,
-          reference: MpesaReceiptNumber,
+          mpesa_reference: normalizedReceipt,
+          reference: normalizedReceipt,
           metadata: {
             webhook_source: 'stk_push',
-            mpesa_receipt: MpesaReceiptNumber,
+            mpesa_receipt: normalizedReceipt,
             mpesa_code: ResultCode,
             callback_time: new Date().toISOString(),
             transaction_date: parsedTransactionDate.toISOString(),
@@ -304,7 +306,7 @@ serve(async (req) => {
         status: 'success',
         new_values: {
           amount: Amount,
-          mpesa_receipt: MpesaReceiptNumber,
+          mpesa_receipt: normalizedReceipt,
           phone_number: PhoneNumber,
           member_id: transaction.member_id,
         },
@@ -315,7 +317,7 @@ serve(async (req) => {
         await supabase.functions.invoke('send-sms', {
           body: {
             phoneNumber: PhoneNumber,
-            message: `Payment received: KES ${Amount}. M-Pesa Ref: ${MpesaReceiptNumber}. Thank you!`,
+            message: `Payment received: KES ${Amount}. M-Pesa Ref: ${normalizedReceipt}. Thank you!`,
           },
         })
       } catch (smsError) {
@@ -409,6 +411,10 @@ function normalizePhoneNumber(phone: string): string {
   }
 
   return phone
+}
+
+function normalizeMpesaReference(value: string): string {
+  return String(value || '').trim().replace(/\s+/g, '').toUpperCase()
 }
 
 function parseMpesaTimestamp(value: string): Date {

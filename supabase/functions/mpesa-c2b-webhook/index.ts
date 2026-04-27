@@ -6,7 +6,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { parseBillReference, ParsedReference } from './reference-parser.ts'
+import { parseBillReference } from './reference-parser.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,9 +45,11 @@ serve(async (req: Request): Promise<Response> => {
       console.warn('⚠️ Received an empty callback. Storing for review.')
     }
 
-    // Lenient extraction: try multiple fields, use fallbacks
-    let transID = String(
+    // Lenient extraction: try multiple fields.
+    const rawTransID = String(
       callback.TransID ||
+      callback.TransId ||
+      callback.transId ||
       callback.transID ||
       callback.TransactionID ||
       callback.receipt_number ||
@@ -55,23 +57,33 @@ serve(async (req: Request): Promise<Response> => {
       callback.MpesaReceiptNumber ||
       callback.ThirdPartyTransID ||
       ""
-    ).trim()
+    )
     const transAmount = Number(callback.TransAmount || callback.transAmount || callback.Amount || callback.amount || 0)
     const msisdn = String(callback.MSISDN || callback.msisdn || callback.PhoneNumber || callback.phone_number || '').trim()
-    
-    if (!transID) {
-      transID = `SUSPENSE_${Date.now()}`
-      console.warn(`⚠️ No transaction ID found. Generated temporary ID: ${transID}`)
-    }
 
     const transTime = String(callback.TransTime || callback.transTime || callback.TransactionTime || callback.transaction_time || '')
     const firstName = String(callback.FirstName || callback.firstName || callback.SenderName || callback.sender_name || '')
     const middleName = String(callback.MiddleName || callback.middleName || '')
     const lastName = String(callback.LastName || callback.lastName || '')
-    const billRefNumber = String(callback.BillRefNumber || callback.billRefNumber || callback.AccountNumber || transID)
+    const normalizedPhone = normalizePhoneNumber(msisdn)
+    const normalizedTransID = normalizeMpesaReference(rawTransID)
+    const hasMpesaReceipt = normalizedTransID.length > 0
+    const suspenseReceipt = hasMpesaReceipt
+      ? normalizedTransID
+      : buildMissingReceiptKey({
+          amount: transAmount,
+          billReference: callback.BillRefNumber || callback.billRefNumber || callback.AccountNumber,
+          phoneNumber: normalizedPhone || msisdn,
+          transTime,
+        })
+
+    if (!hasMpesaReceipt) {
+      console.warn(`⚠️ Missing transaction ID in C2B callback. Using suspense key: ${suspenseReceipt}`)
+    }
+
+    const billRefNumber = String(callback.BillRefNumber || callback.billRefNumber || callback.AccountNumber || suspenseReceipt)
 
     const senderName = [firstName, middleName, lastName].filter(Boolean).join(' ').trim() || 'Unknown'
-    const normalizedPhone = normalizePhoneNumber(msisdn)
     const transactionDate = parseMpesaTimestamp(transTime)
 
     // === NEW: Parse compound reference ===
@@ -89,13 +101,13 @@ serve(async (req: Request): Promise<Response> => {
       status: 'success',
       new_values: {
         custom_action: 'C2B_WEBHOOK_RECEIVED',
-        mpesa_receipt_number: transID,
+        mpesa_receipt_number: hasMpesaReceipt ? normalizedTransID : null,
         amount: transAmount,
         phone_number: normalizedPhone || null,
         reference: billRefNumber || null,
         reference_format: parsed.format,
         trans_time_raw: transTime || null,
-        generated_receipt: String(transID).startsWith('SUSPENSE_'),
+        generated_receipt: !hasMpesaReceipt,
       },
     })
     
@@ -187,8 +199,8 @@ serve(async (req: Request): Promise<Response> => {
 
     // === Transaction Creation Phase ===
 
-    // SCENARIO 1: Member + Case → Credit member wallet AND link to case contribution
-    if (memberId && caseId && transAmount > 0) {
+    // SCENARIO 1: Member + Case + valid receipt -> create case contribution row.
+    if (memberId && caseId && transAmount > 0 && hasMpesaReceipt) {
       console.log('✅ Member + Case: Creating case contribution transaction')
       
       const { error: txError } = await supabase.from('transactions').insert({
@@ -197,7 +209,7 @@ serve(async (req: Request): Promise<Response> => {
         amount: transAmount,
         transaction_type: 'contribution',
         payment_method: 'mpesa',
-        mpesa_reference: transID,
+        mpesa_reference: normalizedTransID,
         reference: billRefNumber,
         description: `M-Pesa Case Payment - Case ${parsed.caseNumber} for Member ${parsed.memberNumber} - ${senderName}`,
         status: 'completed',
@@ -217,7 +229,7 @@ serve(async (req: Request): Promise<Response> => {
       console.log('✅ Case contribution created successfully for member:', memberId, 'case:', caseId)
 
     // SCENARIO 2: Member only → Regular wallet funding
-    } else if (memberId && !caseId && transAmount > 0) {
+    } else if (memberId && !caseId && transAmount > 0 && hasMpesaReceipt) {
       console.log('✅ Member only: Creating wallet funding transaction')
       
       const { error: txError } = await supabase.from('transactions').insert({
@@ -225,7 +237,7 @@ serve(async (req: Request): Promise<Response> => {
         amount: transAmount,
         transaction_type: 'wallet_funding',
         payment_method: 'mpesa',
-        mpesa_reference: transID,
+        mpesa_reference: normalizedTransID,
         reference: billRefNumber,
         description: `M-Pesa C2B - ${senderName}`,
         status: 'completed',
@@ -257,10 +269,12 @@ serve(async (req: Request): Promise<Response> => {
         fallbackReason = `Member number ${parsed.memberNumber} not found${phoneSuggestionNote}`
       } else if (parsed.caseNumber) {
         fallbackReason = `Case ${parsed.caseNumber} not found or inactive${phoneSuggestionNote}`
+      } else if (!hasMpesaReceipt) {
+        fallbackReason = `Missing M-Pesa receipt in callback; held in suspense to prevent duplicate wallet credit${phoneSuggestionNote}`
       }
 
       const suspenseData = {
-        mpesa_receipt_number: transID,
+        mpesa_receipt_number: suspenseReceipt,
         phone_number: normalizedPhone || 'MISSING',
         amount: transAmount,
         sender_name: senderName,
@@ -278,6 +292,8 @@ serve(async (req: Request): Promise<Response> => {
           raw_payload: callback,
           raw_body: rawBody,
           reason: fallbackReason,
+          missing_mpesa_receipt: !hasMpesaReceipt,
+          extracted_mpesa_receipt: hasMpesaReceipt ? normalizedTransID : null,
           match_type: matchType,
           phone_matched_member_id: phoneMatchedMemberId,
           parsed_reference: {
@@ -349,6 +365,33 @@ function normalizePhoneNumber(phone: string): string {
   if (cleaned.startsWith('0')) return '+254' + cleaned.substring(1)
   if (!cleaned.startsWith('+')) return '+' + cleaned
   return phone
+}
+
+function normalizeMpesaReference(value: string): string {
+  return String(value || '').trim().replace(/\s+/g, '').toUpperCase()
+}
+
+function sanitizeReferencePart(value: string): string {
+  const cleaned = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+  return cleaned.length > 0 ? cleaned : 'NA'
+}
+
+function buildMissingReceiptKey(input: {
+  amount: number
+  billReference: unknown
+  phoneNumber: string
+  transTime: string
+}): string {
+  const parts = [
+    sanitizeReferencePart(String(input.amount || 0)),
+    sanitizeReferencePart(String(input.billReference || '')),
+    sanitizeReferencePart(input.phoneNumber || ''),
+    sanitizeReferencePart(input.transTime || ''),
+  ]
+  return `MISSING-${parts.join('-')}`.slice(0, 100)
 }
 
 function parseMpesaTimestamp(value: string): Date {

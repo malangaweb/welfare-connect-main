@@ -40,6 +40,10 @@ serve(async (req) => {
 
     const targetCaseId = caseId || suspense.intended_case_id || null;
     const txType = targetCaseId ? "contribution" : "wallet_funding";
+    const normalizedReceipt = String(suspense.mpesa_receipt_number || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toUpperCase();
 
     const { error: txErr } = await supabase.from("transactions").insert({
       member_id: memberId,
@@ -47,7 +51,7 @@ serve(async (req) => {
       amount: suspense.amount,
       transaction_type: txType,
       payment_method: "mpesa",
-      mpesa_reference: suspense.mpesa_receipt_number,
+      mpesa_reference: normalizedReceipt || null,
       reference: suspense.reference,
       description: targetCaseId
         ? `M-Pesa Case Payment matched from suspense - Ref: ${suspense.reference || "N/A"}`
