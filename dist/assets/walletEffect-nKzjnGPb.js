@@ -1,0 +1,1 @@
+const o=new Set(["registration","renewal","penalty","arrears","case_wallet_deduction"]),l=new Set(["reversal_memo","contribution"]);function i(r,a,e){if(e&&e!=="completed")return null;const t=String(r||""),n=Number(a)||0;return l.has(t)?0:o.has(t)?-Math.abs(n):n}export{i as w};

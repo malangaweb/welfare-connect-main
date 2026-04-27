@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
 import { invokeWithAppToken } from "@/lib/appAuth";
+import { walletRowDelta } from "@/lib/walletEffect";
 
 type ActiveCaseSummary = {
   id: string;
@@ -844,9 +845,17 @@ const MemberDashboard = () => {
                     {transactions.slice(0, 5).map((t) => (
                       <tr key={t.id} className="border-b border-border/30 hover:bg-muted/30">
                         <td className="py-3 px-2">{new Date(t.created_at).toLocaleDateString()}</td>
-                        <td className={`py-3 px-2 font-medium ${t.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          {t.amount < 0 ? '-' : '+'} KES {Math.abs(Number(t.amount))?.toLocaleString()}
-                        </td>
+                        {(() => {
+                          const delta = walletRowDelta(t.transaction_type, t.amount, t.status);
+                          const pending = delta === null;
+                          const pos = delta !== null && delta > 0;
+                          const neg = delta !== null && delta < 0;
+                          return (
+                            <td className={`py-3 px-2 font-medium ${pending ? 'text-muted-foreground' : pos ? 'text-green-600' : neg ? 'text-red-600' : 'text-muted-foreground'}`}>
+                              {pending ? "Pending" : `${pos ? '+' : neg ? '-' : ''} KES ${Math.abs(delta ?? 0).toLocaleString()}`}
+                            </td>
+                          );
+                        })()}
                         <td className="py-3 px-2">{t.transaction_type}</td>
                         <td className="py-3 px-2">{t.description || "-"}</td>
                       </tr>

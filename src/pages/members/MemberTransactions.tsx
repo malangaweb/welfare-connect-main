@@ -21,29 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { invokeWithAppToken } from "@/lib/appAuth";
-
-const WALLET_DEBIT_TYPES = new Set([
-  "registration",
-  "renewal",
-  "contribution",
-  "penalty",
-  "arrears",
-  "case_wallet_deduction",
-]);
-
-/** Signed effect on wallet; null if row does not affect balance yet (e.g. pending). Matches DB trigger. */
-function walletRowDelta(
-  transactionType: string | null | undefined,
-  amount: number | null | undefined,
-  status: string | null | undefined
-): number | null {
-  if (status && status !== "completed") return null;
-  const t = transactionType || "";
-  const a = Number(amount) || 0;
-  if (t === "reversal_memo") return 0;
-  if (WALLET_DEBIT_TYPES.has(t)) return -Math.abs(a);
-  return a;
-}
+import { walletRowDelta } from "@/lib/walletEffect";
 
 const MemberTransactions = () => {
   const [transactions, setTransactions] = useState<DbTransaction[]>([]);

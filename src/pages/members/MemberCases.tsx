@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { walletRowDelta } from "@/lib/walletEffect";
 
 const MemberCases = () => {
   const [cases, setCases] = useState<any[]>([]);
@@ -374,9 +375,17 @@ const MemberCases = () => {
                                 </div>
                               )}
                               
-                              <div className={`${(Number(t.amount) || 0) < 0 ? 'text-red-600' : 'text-green-600'} font-semibold whitespace-nowrap`}>
-                                {(Number(t.amount) || 0) < 0 ? '-' : '+'} KES {Math.abs(Number(t.amount) || 0).toLocaleString()}
-                              </div>
+                              {(() => {
+                                const delta = walletRowDelta(t.transaction_type, t.amount, t.status);
+                                const pending = delta === null;
+                                const pos = delta !== null && delta > 0;
+                                const neg = delta !== null && delta < 0;
+                                return (
+                                  <div className={`${pending ? 'text-muted-foreground' : pos ? 'text-green-600' : neg ? 'text-red-600' : 'text-muted-foreground'} font-semibold whitespace-nowrap`}>
+                                    {pending ? "Pending" : `${pos ? '+' : neg ? '-' : ''} KES ${Math.abs(delta ?? 0).toLocaleString()}`}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         );
