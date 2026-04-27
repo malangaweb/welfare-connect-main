@@ -134,6 +134,44 @@ serve(async (req) => {
       const normalizedPhone = normalizePhoneNumber(PhoneNumber || '')
       const parsedTransactionDate = parseMpesaTimestamp(String(TransactionDate || ''))
 
+      // Guard idempotency by receipt first. If this receipt already exists, do not insert a new row.
+      const { data: existingByReceipt } = await supabase
+        .from('transactions')
+        .select('id, status, member_id')
+        .eq('mpesa_reference', normalizedReceipt)
+        .limit(1)
+        .maybeSingle()
+
+      if (existingByReceipt) {
+        console.warn('⚠️ Duplicate STK callback skipped by receipt:', normalizedReceipt, 'existing tx:', existingByReceipt.id)
+
+        if (existingByReceipt.status !== 'completed') {
+          await supabase
+            .from('transactions')
+            .update({
+              status: 'completed',
+              payment_method: 'mpesa',
+            })
+            .eq('id', existingByReceipt.id)
+        }
+
+        await supabase.from('audit_logs').insert({
+          action: 'PAYMENT_RECEIVED',
+          table_name: 'transactions',
+          record_id: existingByReceipt.id,
+          status: 'ignored',
+          new_values: {
+            custom_action: 'STK_DUPLICATE_RECEIPT_SKIPPED',
+            mpesa_receipt: normalizedReceipt,
+            checkout_request_id: CheckoutRequestID,
+          },
+        })
+
+        return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: 'Accepted' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
       // STEP 2: Find the transaction by CheckoutRequestID
       const { data: transaction, error: txError } = await supabase
         .from('transactions')

@@ -198,9 +198,34 @@ serve(async (req: Request): Promise<Response> => {
     console.log('===========================')
 
     // === Transaction Creation Phase ===
+    let existingTxByReceipt: { id: string } | null = null
+    if (hasMpesaReceipt) {
+      const { data: existingTx } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('mpesa_reference', normalizedTransID)
+        .limit(1)
+        .maybeSingle()
+
+      if (existingTx) {
+        existingTxByReceipt = existingTx as { id: string }
+        console.warn(`⚠️ Duplicate C2B callback skipped: mpesa_reference=${normalizedTransID}, existing_tx_id=${existingTxByReceipt.id}`)
+        await supabase.from('audit_logs').insert({
+          action: 'INSERT',
+          table_name: 'transactions',
+          status: 'ignored',
+          new_values: {
+            custom_action: 'C2B_DUPLICATE_RECEIPT_SKIPPED',
+            mpesa_receipt_number: normalizedTransID,
+            existing_transaction_id: existingTxByReceipt.id,
+            reference: billRefNumber || null,
+          },
+        })
+      }
+    }
 
     // SCENARIO 1: Member + Case + valid receipt -> create case contribution row.
-    if (memberId && caseId && transAmount > 0 && hasMpesaReceipt) {
+    if (!existingTxByReceipt && memberId && caseId && transAmount > 0 && hasMpesaReceipt) {
       console.log('✅ Member + Case: Creating case contribution transaction')
       
       const { error: txError } = await supabase.from('transactions').insert({
@@ -229,7 +254,7 @@ serve(async (req: Request): Promise<Response> => {
       console.log('✅ Case contribution created successfully for member:', memberId, 'case:', caseId)
 
     // SCENARIO 2: Member only → Regular wallet funding
-    } else if (memberId && !caseId && transAmount > 0 && hasMpesaReceipt) {
+    } else if (!existingTxByReceipt && memberId && !caseId && transAmount > 0 && hasMpesaReceipt) {
       console.log('✅ Member only: Creating wallet funding transaction')
       
       const { error: txError } = await supabase.from('transactions').insert({
@@ -250,7 +275,7 @@ serve(async (req: Request): Promise<Response> => {
       console.log('✅ Wallet funding created successfully for member:', memberId)
 
     // SCENARIO 3: No member resolved → Save to suspense for manual review
-    } else {
+    } else if (!existingTxByReceipt) {
       console.log('⚠️ Payment could not be mapped safely. Saving to suspense.')
 
       const phoneSuggestionNote = phoneMatchedMemberId ? ' (phone match suggestion recorded)' : ''
@@ -334,6 +359,8 @@ serve(async (req: Request): Promise<Response> => {
       } else {
         console.log('✅ SUCCESS: Inserted to suspense for manual review.', result.id)
       }
+    } else {
+      console.log('ℹ️ Duplicate callback already recorded in transactions; no new row inserted.')
     }
 
     // Always accept the webhook to prevent M-Pesa from resending

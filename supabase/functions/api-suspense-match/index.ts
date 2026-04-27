@@ -45,6 +45,32 @@ serve(async (req) => {
       .replace(/\s+/g, "")
       .toUpperCase();
 
+    if (normalizedReceipt) {
+      const { data: existingTx, error: existingTxErr } = await supabase
+        .from("transactions")
+        .select("id")
+        .eq("mpesa_reference", normalizedReceipt)
+        .limit(1)
+        .maybeSingle();
+      if (existingTxErr) throw existingTxErr;
+
+      if (existingTx) {
+        const { error: updateErr } = await supabase
+          .from("wrong_mpesa_transactions")
+          .update({
+            status: "matched",
+            matched_member_id: memberId,
+            intended_case_id: targetCaseId,
+            matched_at: new Date().toISOString(),
+            notes: `${suspense.notes || ""}\nDuplicate receipt already in transactions (${existingTx.id}); skipped insert.`.trim(),
+          })
+          .eq("id", suspenseId);
+        if (updateErr) throw updateErr;
+
+        return jsonResponse(200, { success: true, deduplicated: true, existing_transaction_id: existingTx.id });
+      }
+    }
+
     const { error: txErr } = await supabase.from("transactions").insert({
       member_id: memberId,
       case_id: targetCaseId,
