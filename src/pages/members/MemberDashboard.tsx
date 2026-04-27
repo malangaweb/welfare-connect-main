@@ -339,11 +339,13 @@ const MemberDashboard = () => {
       if (insertError) {
         const maybeCode = (insertError as { code?: string }).code;
         if (maybeCode === "23505") {
+          const conflictMessage =
+            (insertError as { message?: string }).message ||
+            "Active case payment already exists for this member and case.";
           toast({
             variant: "destructive",
             title: "Payment blocked",
-            description:
-              "A prior case deduction record still exists for this case. Ask admin to reverse the original deduction record, then try again.",
+            description: conflictMessage,
           });
           await fetchData();
           return;
