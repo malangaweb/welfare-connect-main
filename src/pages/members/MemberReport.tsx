@@ -58,6 +58,7 @@ import html2canvas from "html2canvas";
 import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { walletRowDelta } from "@/lib/walletEffect";
 
 interface Member {
   id: string;
@@ -896,9 +897,18 @@ const MemberReport = () => {
                             </TableCell>
                             <TableCell className="truncate max-w-[200px]">{transaction.description || "N/A"}</TableCell>
                             <TableCell className="text-right font-medium">
-                              <span className={transaction.transaction_type === "contribution" ? "text-green-600" : "text-blue-600"}>
-                                KES {transaction.amount?.toLocaleString()}
-                              </span>
+                              {(() => {
+                                const delta = walletRowDelta(transaction.transaction_type, transaction.amount, (transaction as any).status);
+                                const pending = delta === null;
+                                const reversed = String((transaction as any).status || "").toLowerCase() === "reversed";
+                                const pos = delta !== null && delta > 0;
+                                const neg = delta !== null && delta < 0;
+                                return (
+                                  <span className={pending ? "text-muted-foreground" : pos ? "text-green-600" : neg ? "text-red-600" : "text-muted-foreground"}>
+                                    {pending ? (reversed ? "Reversed" : "Pending") : `${pos ? "+" : neg ? "-" : ""}KES ${Math.abs(delta ?? 0).toLocaleString()}`}
+                                  </span>
+                                );
+                              })()}
                             </TableCell>
                           </TableRow>
                         ))}

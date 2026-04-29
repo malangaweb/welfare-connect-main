@@ -52,7 +52,7 @@ serve(async (req) => {
     const refunds = completed
       .filter((t: any) => ["contribution_refund", "case_wallet_refund"].includes(t.transaction_type))
       .reduce((sum: number, t: any) => sum + Math.max(Number(t.amount) || 0, 0), 0);
-    const net = contributions - refunds;
+    const net = Math.max(0, contributions - refunds);
 
     let paid: boolean | null = null;
     if (role === "member" && claims.member_id) {

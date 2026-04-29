@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/integrations/supabase/client'
+import { invokeWithAppToken } from '@/lib/appAuth'
 import { toast } from 'sonner'
 import { Search, CheckCircle, XCircle, User, RefreshCw, AlertTriangle, Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -276,45 +277,20 @@ export function SuspenseManagement() {
 
     setIsMatching(true)
     try {
-      // Update suspense record
-      const { error: updateError } = await (supabase
-        .from('wrong_mpesa_transactions') as any)
-        .update({
-          status: 'matched',
-          matched_member_id: memberId,
-          intended_case_id: caseId || selectedTransaction.intended_case_id,
-          matched_at: new Date().toISOString(),
-        })
-        .eq('id', selectedTransaction.id)
-
-      if (updateError) throw updateError
-
-      // Determine transaction type based on whether there's a case
-      const targetCaseId = caseId || selectedTransaction.intended_case_id
+      const targetCaseId = caseId || selectedTransaction.intended_case_id || null
       const isCasePayment = !!targetCaseId
 
-      const { error: txError } = await (supabase.from('transactions') as any).insert({
+      const result = await invokeWithAppToken<any>('api-suspense-match', {
+        suspense_id: selectedTransaction.id,
         member_id: memberId,
-        case_id: targetCaseId || null,
-        amount: selectedTransaction.amount,
-        transaction_type: isCasePayment ? 'contribution' : 'wallet_funding',
-        mpesa_reference: selectedTransaction.mpesa_receipt_number,
-        reference: selectedTransaction.reference,
-        description: isCasePayment
-          ? `M-Pesa Case Payment matched from suspense - Case ${selectedTransaction.reference}`
-          : `M-Pesa payment matched from suspense (${selectedTransaction.phone_number})`,
-        status: 'completed',
-        created_at: selectedTransaction.transaction_date,
-        metadata: {
-          matched_from_suspense: true,
-          original_reference_type: selectedTransaction.reference_type,
-        },
+        case_id: targetCaseId,
       })
-
-      if (txError) throw txError
+      const deduplicated = !!result?.deduplicated
 
       toast.success('Transaction matched successfully', {
-        description: isCasePayment
+        description: deduplicated
+          ? 'Duplicate receipt detected; existing transaction kept and suspense marked matched.'
+          : isCasePayment
           ? `Payment allocated to member account and linked to case`
           : `Payment allocated to member account`,
       })

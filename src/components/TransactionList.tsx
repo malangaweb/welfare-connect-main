@@ -12,6 +12,7 @@ import {
 import { Transaction } from '@/lib/types';
 import TransactionDetailModal from './TransactionDetailModal';
 import { Skeleton } from '@/components/ui/skeleton';
+import { walletRowDelta } from '@/lib/walletEffect';
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -24,10 +25,11 @@ const TransactionItem = ({ transaction, onClick, renderAction }: {
   onClick: (t: Transaction) => void,
   renderAction?: (t: Transaction) => React.ReactNode 
 }) => {
-  const getTransactionIcon = (type: string, amount: number) => {
+  const getTransactionIcon = (type: string, amount: number, status?: string | null) => {
+    const delta = walletRowDelta(type, amount, status);
     switch (type) {
       case 'contribution':
-        return amount < 0
+        return (delta ?? 0) < 0
           ? <ArrowDownLeft className="h-4 w-4 text-red-500" />
           : <ArrowUpRight className="h-4 w-4 text-green-500" />;
       case 'disbursement':
@@ -63,7 +65,7 @@ const TransactionItem = ({ transaction, onClick, renderAction }: {
     >
       <div className="flex items-center space-x-3 sm:space-x-5 flex-1 cursor-pointer" onClick={() => onClick(transaction)}>
         <div className="h-10 sm:h-12 w-10 sm:w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm flex-shrink-0">
-          {getTransactionIcon(transaction.transactionType, transaction.amount)}
+          {getTransactionIcon(transaction.transactionType, transaction.amount, transaction.status)}
         </div>
         <div className="min-w-0">
           <p className="font-semibold text-sm sm:text-base text-foreground truncate">{getTransactionTitle(transaction.transactionType)}</p>
@@ -74,10 +76,18 @@ const TransactionItem = ({ transaction, onClick, renderAction }: {
         </div>
       </div>
       <div className="flex flex-col items-end min-w-[70px] sm:min-w-[140px] h-full ml-2 flex-shrink-0">
-        <p className={`text-sm sm:text-lg font-bold tracking-tight ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-          {transaction.amount < 0 ? '-' : '+'}
-          KES {Math.abs(transaction.amount).toLocaleString()}
-        </p>
+        {(() => {
+          const delta = walletRowDelta(transaction.transactionType, transaction.amount, transaction.status);
+          const pending = delta === null;
+          const reversed = String(transaction.status || "").toLowerCase() === "reversed";
+          const pos = delta !== null && delta > 0;
+          const neg = delta !== null && delta < 0;
+          return (
+            <p className={`text-sm sm:text-lg font-bold tracking-tight ${pending ? 'text-muted-foreground' : pos ? 'text-green-600' : neg ? 'text-red-600' : 'text-muted-foreground'}`}>
+              {pending ? (reversed ? 'Reversed' : 'Pending') : `${pos ? '+' : neg ? '-' : ''}KES ${Math.abs(delta ?? 0).toLocaleString()}`}
+            </p>
+          );
+        })()}
         <div className="flex flex-col items-end mt-2 space-y-0.5">
           <span className="text-xs text-muted-foreground">
             {format(transaction.createdAt, 'MMM d, yyyy HH:mm')}

@@ -264,6 +264,7 @@ const MemberTransactions = () => {
                         {filteredTransactions.map((t) => {
                           const d = walletRowDelta(t.transaction_type, t.amount, t.status);
                           const pending = d === null;
+                          const reversed = String(t.status || "").toLowerCase() === "reversed";
                           const pos = d !== null && d > 0;
                           const neg = d !== null && d < 0;
                           return (
@@ -296,7 +297,7 @@ const MemberTransactions = () => {
                                 "text-muted-foreground font-semibold"
                               }>
                               {pending ? "" : pos ? "+" : neg ? "-" : ""}
-                              {pending ? "Pending" : `KES ${Math.abs(d ?? 0).toLocaleString()}`}
+                              {pending ? (reversed ? "Reversed" : "Pending") : `KES ${Math.abs(d ?? 0).toLocaleString()}`}
                               </div>
                               <Badge variant="outline" className={getTransactionTypeColor(t.transaction_type)}>
                                 {t.transaction_type}
@@ -342,6 +343,7 @@ const MemberTransactions = () => {
                                   {(() => {
                                     const d = walletRowDelta(t.transaction_type, t.amount, t.status);
                                     const pending = d === null;
+                                    const reversed = String(t.status || "").toLowerCase() === "reversed";
                                     const pos = d !== null && d > 0;
                                     const neg = d !== null && d < 0;
                                     return (
@@ -351,7 +353,7 @@ const MemberTransactions = () => {
                                     neg ? "text-red-600 font-semibold" :
                                     "text-muted-foreground font-semibold"
                                   }>
-                                    {pending ? "Pending" : `${pos ? "+" : neg ? "-" : ""}KES ${Math.abs(d ?? 0).toLocaleString()}`}
+                                    {pending ? (reversed ? "Reversed" : "Pending") : `${pos ? "+" : neg ? "-" : ""}KES ${Math.abs(d ?? 0).toLocaleString()}`}
                                   </div>
                                     );
                                   })()}

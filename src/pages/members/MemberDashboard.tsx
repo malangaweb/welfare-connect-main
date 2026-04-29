@@ -848,11 +848,12 @@ const MemberDashboard = () => {
                         {(() => {
                           const delta = walletRowDelta(t.transaction_type, t.amount, t.status);
                           const pending = delta === null;
+                          const reversed = String(t.status || "").toLowerCase() === "reversed";
                           const pos = delta !== null && delta > 0;
                           const neg = delta !== null && delta < 0;
                           return (
                             <td className={`py-3 px-2 font-medium ${pending ? 'text-muted-foreground' : pos ? 'text-green-600' : neg ? 'text-red-600' : 'text-muted-foreground'}`}>
-                              {pending ? "Pending" : `${pos ? '+' : neg ? '-' : ''} KES ${Math.abs(delta ?? 0).toLocaleString()}`}
+                              {pending ? (reversed ? "Reversed" : "Pending") : `${pos ? '+' : neg ? '-' : ''} KES ${Math.abs(delta ?? 0).toLocaleString()}`}
                             </td>
                           );
                         })()}

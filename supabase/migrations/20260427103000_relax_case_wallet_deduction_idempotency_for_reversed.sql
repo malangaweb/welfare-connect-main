@@ -23,6 +23,35 @@ END $$;
 
 DROP INDEX IF EXISTS idx_transactions_case_wallet_deduction_idempotent;
 
+-- Backfill safety: if duplicates already exist, keep earliest active row and mark the rest reversed.
+WITH ranked AS (
+  SELECT
+    t.id,
+    ROW_NUMBER() OVER (
+      PARTITION BY t.member_id, t.case_id
+      ORDER BY t.created_at ASC, t.id ASC
+    ) AS rn
+  FROM public.transactions t
+  WHERE t.transaction_type = 'case_wallet_deduction'
+    AND COALESCE(t.status, 'completed') <> 'reversed'
+    AND t.member_id IS NOT NULL
+    AND t.case_id IS NOT NULL
+),
+to_reverse AS (
+  SELECT id
+  FROM ranked
+  WHERE rn > 1
+)
+UPDATE public.transactions t
+SET
+  status = 'reversed',
+  metadata = COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object(
+    'dedupe_reversed_at', to_jsonb(NOW()),
+    'dedupe_reason', 'duplicate case_wallet_deduction before partial unique index'
+  )
+FROM to_reverse d
+WHERE t.id = d.id;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_case_wallet_deduction_idempotent
 ON transactions (member_id, case_id)
 WHERE transaction_type = 'case_wallet_deduction'

@@ -74,7 +74,7 @@ const MemberCases = () => {
           }
           return {
             ...c,
-            actual_amount: collected,
+            actual_amount: Math.max(0, collected),
             expected_amount: c.contribution_per_member * (membersData ? membersData.length : 0),
           };
         });
@@ -378,11 +378,12 @@ const MemberCases = () => {
                               {(() => {
                                 const delta = walletRowDelta(t.transaction_type, t.amount, t.status);
                                 const pending = delta === null;
+                                const reversed = String(t.status || "").toLowerCase() === "reversed";
                                 const pos = delta !== null && delta > 0;
                                 const neg = delta !== null && delta < 0;
                                 return (
                                   <div className={`${pending ? 'text-muted-foreground' : pos ? 'text-green-600' : neg ? 'text-red-600' : 'text-muted-foreground'} font-semibold whitespace-nowrap`}>
-                                    {pending ? "Pending" : `${pos ? '+' : neg ? '-' : ''} KES ${Math.abs(delta ?? 0).toLocaleString()}`}
+                                    {pending ? (reversed ? "Reversed" : "Pending") : `${pos ? '+' : neg ? '-' : ''} KES ${Math.abs(delta ?? 0).toLocaleString()}`}
                                   </div>
                                 );
                               })()}

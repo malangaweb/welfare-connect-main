@@ -252,7 +252,7 @@ const recalculateMemberWalletBalances = async (memberIds: string[]) => {
 const syncCaseActualAmount = async (caseId: string, caseNumber: string) => {
   const transactions = await fetchCaseContributionTransactions(caseId, caseNumber);
   const { totalContributions, totalRefunds } = calculateContributionTotals(transactions);
-  const netCollected = totalContributions - totalRefunds;
+  const netCollected = Math.max(0, totalContributions - totalRefunds);
 
   const { error } = await (supabase as any)
     .from('cases')
@@ -297,7 +297,7 @@ const fetchCasePageData = async (caseId: string) => {
   return {
     mappedCase,
     memberCount: memberCount || 0,
-    collectedAmount: totalContributions - totalRefunds,
+    collectedAmount: Math.max(0, totalContributions - totalRefunds),
   };
 };
 

@@ -247,7 +247,7 @@ const Cases = () => {
           }
 
           // NET collected = contributions - refunds
-          totals[c.caseNumber] = totalContributions - totalRefunds;
+          totals[c.caseNumber] = Math.max(0, totalContributions - totalRefunds);
         }
 
         setMpesaCollectedByCase(totals);
