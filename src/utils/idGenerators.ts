@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchSafeSettings } from "@/lib/settingsClient";
 
 export async function generateMemberId(): Promise<string> {
   try {
@@ -47,15 +48,7 @@ export async function generateMemberId(): Promise<string> {
 
 export async function generateCaseId(): Promise<string> {
   try {
-    // Get the starting number from settings
-    const { data: settingsData, error: settingsError } = await supabase
-      .from('settings')
-      .select('case_id_start')
-      .limit(1)
-      .maybeSingle();
-      
-    if (settingsError) throw settingsError;
-    
+    const settingsData = await fetchSafeSettings();
     const startFrom = settingsData?.case_id_start || 1;
     
     let nextNumber = startFrom;

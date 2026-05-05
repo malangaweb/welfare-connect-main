@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Gender, Member } from '@/lib/types';
-import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { persistentCache } from '@/lib/cache';
 import { mapDbMemberToMember } from '@/lib/db-types';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
 import { MemberActionsDialog } from '@/components/members/MemberActionsDialog';
+import { normalizeMemberNumber } from '@/lib/memberNumber';
 import {
   Table,
   TableBody,
@@ -862,8 +863,14 @@ const Members = () => {
         }
         
         // Prepare valid member data
+        const normalizedMemberNumber = normalizeMemberNumber(row.MemberNumber);
+        if (!normalizedMemberNumber) {
+          errors.push(`Row ${rowNum}: MemberNumber is required`);
+          continue;
+        }
+
         validMembers.push({
-          member_number: String(row.MemberNumber).trim(),
+          member_number: normalizedMemberNumber,
           name: String(row.Name).trim(),
           gender: String(row.Gender).toLowerCase(),
           date_of_birth: dateOfBirth,
@@ -891,7 +898,7 @@ const Members = () => {
         }
       }
       
-      // Check for duplicate member numbers in the file
+      // Check for duplicate member numbers in the file (after normalization)
       const memberNumbers = validMembers.map(m => m.member_number);
       const duplicates = memberNumbers.filter((num, index) => memberNumbers.indexOf(num) !== index);
       if (duplicates.length > 0) {
@@ -899,6 +906,33 @@ const Members = () => {
           variant: 'destructive', 
           title: 'Duplicate member numbers', 
           description: `Found duplicate member numbers: ${[...new Set(duplicates)].join(', ')}` 
+        });
+        return;
+      }
+
+      // Check for duplicates against existing members in DB
+      const uniqueMemberNumbers = [...new Set(memberNumbers)];
+      const existingMemberNumbers = new Set<string>();
+      const chunkSizeLookup = 200;
+      for (let i = 0; i < uniqueMemberNumbers.length; i += chunkSizeLookup) {
+        const chunk = uniqueMemberNumbers.slice(i, i + chunkSizeLookup);
+        const { data: existingRows, error: existingErr } = await supabase
+          .from('members')
+          .select('member_number')
+          .in('member_number', chunk);
+
+        if (existingErr) throw existingErr;
+        (existingRows || []).forEach((row: any) => {
+          const normalized = normalizeMemberNumber(row.member_number);
+          if (normalized) existingMemberNumbers.add(normalized);
+        });
+      }
+
+      if (existingMemberNumbers.size > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Duplicate member numbers found in system',
+          description: `These member numbers already exist: ${[...existingMemberNumbers].slice(0, 12).join(', ')}${existingMemberNumbers.size > 12 ? '...' : ''}`,
         });
         return;
       }
@@ -991,7 +1025,7 @@ const Members = () => {
       }
 
       // Try using admin client for update
-      const { data: result, error } = await supabaseAdmin
+      const { data: result, error } = await supabase
         .from('members')
         // @ts-ignore
         .update(updateData)

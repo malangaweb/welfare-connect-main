@@ -2,15 +2,14 @@ import { useState } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import bcryptjs from 'bcryptjs';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
-import type { Database } from '@/integrations/supabase/types';
 import { toast } from '@/components/ui/use-toast';
 import { UserRole } from '@/lib/types';
+import { createManagedUser } from '@/lib/adminUsersApi';
 
 const formSchema = z.object({
   memberNumber: z.string().min(1, 'Member number is required'),
@@ -58,37 +57,15 @@ const UserSetupForm = ({ onSuccess }: UserSetupFormProps) => {
         throw new Error('That member record is inactive');
       }
 
-      // Check if user already exists
-      const { data: existingUsers, error: checkError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('username', values.username);
-        
-      if (checkError) throw checkError;
-      
-      if (existingUsers && existingUsers.length > 0) {
-        throw new Error('Username already exists');
-      }
-      
-      // Hash password securely using bcrypt (12 salt rounds)
-      const hashedPassword = await bcryptjs.hash(values.password, 12);
-
-      // Create new user with hashed password
-      const { data, error } = await (supabase as any)
-        .from('users')
-        .insert({
-          username: values.username,
-          name: values.name,
-          email: values.email,
-          password: hashedPassword,
-          role: values.role,
-          is_active: true,
-          member_id: memberRow.id,
-        })
-        .select()
-        .single();
-        
-      if (error) throw error;
+      await createManagedUser({
+        username: values.username,
+        password: values.password,
+        name: values.name,
+        email: values.email,
+        role: values.role,
+        is_active: true,
+        member_id: memberRow.id,
+      });
       
       form.reset();
       onSuccess();

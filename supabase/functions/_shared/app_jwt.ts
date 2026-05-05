@@ -10,6 +10,7 @@ export type AppJwtPayload = {
 const ADMIN_ROLES = new Set(["super_admin", "chairperson", "treasurer", "secretary"]);
 const MEMBER_MANAGEMENT_ROLES = new Set(["super_admin", "chairperson", "secretary"]);
 const FINANCE_ROLES = new Set(["super_admin", "treasurer"]);
+const SUPER_ADMIN_ROLE = "super_admin";
 
 export function normalizeRole(role: string | undefined): string {
   return String(role || "").toLowerCase().trim();
@@ -55,6 +56,12 @@ export function requireMemberManagementRole(role: string | undefined): void {
 
 export function requireFinanceRole(role: string | undefined): void {
   if (!FINANCE_ROLES.has(normalizeRole(role))) {
+    throw new Error("Forbidden");
+  }
+}
+
+export function requireSuperAdminRole(role: string | undefined): void {
+  if (normalizeRole(role) !== SUPER_ADMIN_ROLE) {
     throw new Error("Forbidden");
   }
 }

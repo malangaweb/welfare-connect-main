@@ -4,7 +4,7 @@ import AccountSummaryCard from './AccountSummaryCard';
 import AccountTransactionsList from './AccountTransactionsList';
 import FeeCollectionDialog from './FeeCollectionDialog';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/components/ui/use-toast';
+import { fetchSafeSettings } from '@/lib/settingsClient';
 
 const RegistrationAccount = () => {
   const [defaultFee, setDefaultFee] = useState(1000); // Default registration fee amount
@@ -12,12 +12,13 @@ const RegistrationAccount = () => {
 
   useEffect(() => {
     const fetchDefaultFee = async () => {
-      const { data: settingsData } = await supabase
-        .from('settings')
-        .select('registration_fee')
-        .single();
-      if (settingsData?.registration_fee) {
-        setDefaultFee(settingsData.registration_fee);
+      try {
+        const settingsData = await fetchSafeSettings();
+        if (settingsData?.registration_fee) {
+          setDefaultFee(settingsData.registration_fee);
+        }
+      } catch (error) {
+        console.error('Failed to fetch registration fee setting:', error);
       }
     };
     fetchDefaultFee();

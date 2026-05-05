@@ -41,6 +41,10 @@ serve(async (req) => {
       { count: defaulters, error: defaultersErr },
       { data: monthTx, error: monthTxErr },
       { data: suspenseRows, error: suspenseErr },
+      { data: statusRows, error: statusRowsErr },
+      { data: disciplineMetrics, error: disciplineMetricsErr },
+      { count: monthlyAutoInactive, error: monthlyAutoInactiveErr },
+      { count: monthlyReinstatements, error: monthlyReinstatementsErr },
     ] = await Promise.all([
       supabase.from("members").select("id", { count: "exact", head: true }),
       supabase.from("members").select("id", { count: "exact", head: true }).eq("is_active", true),
@@ -56,6 +60,23 @@ serve(async (req) => {
         .from("wrong_mpesa_transactions")
         .select("amount")
         .in("status", ["pending", "PENDING_REVIEW"]),
+      supabase
+        .from("v_member_status_distribution")
+        .select("status, member_count"),
+      supabase
+        .from("v_member_discipline_metrics")
+        .select("*")
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("member_status_transitions")
+        .select("id", { count: "exact", head: true })
+        .eq("reason", "auto_inactive_two_consecutive_defaults")
+        .gte("created_at", startOfMonth),
+      supabase
+        .from("member_reinstatement_events")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", startOfMonth),
     ]);
 
     if (membersCountErr) throw membersCountErr;
@@ -66,6 +87,10 @@ serve(async (req) => {
     if (defaultersErr) throw defaultersErr;
     if (monthTxErr) throw monthTxErr;
     if (suspenseErr) throw suspenseErr;
+    if (statusRowsErr) throw statusRowsErr;
+    if (disciplineMetricsErr) throw disciplineMetricsErr;
+    if (monthlyAutoInactiveErr) throw monthlyAutoInactiveErr;
+    if (monthlyReinstatementsErr) throw monthlyReinstatementsErr;
 
     const inflowTypes = new Set(["wallet_funding", "contribution", "case_wallet_deduction"]);
     const monthlyCollection = (monthTx || []).reduce((sum: number, row: any) => {
@@ -80,6 +105,12 @@ serve(async (req) => {
       0,
     );
 
+    const statusDistribution = (statusRows || []).reduce((acc: Record<string, number>, row: any) => {
+      const key = String(row?.status || "unknown");
+      acc[key] = toNum(row?.member_count);
+      return acc;
+    }, {});
+
     return jsonResponse(200, {
       report: {
         total_members: totalMembers || 0,
@@ -91,6 +122,18 @@ serve(async (req) => {
         monthly_collection: monthlyCollection,
         suspense_pending_count: (suspenseRows || []).length,
         suspense_pending_amount: suspensePendingAmount,
+        status_distribution: statusDistribution,
+        discipline: {
+          active_count: toNum((disciplineMetrics as any)?.active_count),
+          inactive_count: toNum((disciplineMetrics as any)?.inactive_count),
+          probation_count: toNum((disciplineMetrics as any)?.probation_count),
+          deceased_count: toNum((disciplineMetrics as any)?.deceased_count),
+          auto_inactive_total: toNum((disciplineMetrics as any)?.auto_inactive_total),
+          reinstatement_total: toNum((disciplineMetrics as any)?.reinstatement_total),
+          reinstatement_penalty_total: toNum((disciplineMetrics as any)?.reinstatement_penalty_total),
+          monthly_auto_inactive: monthlyAutoInactive || 0,
+          monthly_reinstatements: monthlyReinstatements || 0,
+        },
       },
     });
   } catch (e) {

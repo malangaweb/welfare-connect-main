@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { authorizeQuery } from './queryAuthorization';
 import { getCurrentUser } from './authorization';
 import { User, Member } from './types';
+import { listAdminUsers } from './adminUsersApi';
 
 /**
  * Authorization context for data operations
@@ -364,16 +365,7 @@ export const usersService = {
       throw new Error('Unauthorized: Cannot read users');
     }
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, username, name, email, role, member_id, is_active, created_at, updated_at')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      throw error;
-    }
-
-    return data;
+    return await listAdminUsers();
   },
 
   /**
@@ -389,17 +381,12 @@ export const usersService = {
       throw new Error('Unauthorized: Cannot read users');
     }
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, username, name, email, role, member_id, is_active, created_at, updated_at')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      throw error;
+    const users = await listAdminUsers();
+    const user = users.find((u) => u.id === userId);
+    if (!user) {
+      throw new Error('User not found');
     }
-
-    return data;
+    return user;
   },
 };
 

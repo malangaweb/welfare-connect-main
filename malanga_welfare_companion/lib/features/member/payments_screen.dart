@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/supabase_service.dart';
+import '../auth/auth_controller.dart';
 
-class PaymentsScreen extends StatefulWidget {
+class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
 
   @override
-  State<PaymentsScreen> createState() => _PaymentsScreenState();
+  ConsumerState<PaymentsScreen> createState() => _PaymentsScreenState();
 }
 
-class _PaymentsScreenState extends State<PaymentsScreen> {
+class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
   final _amountController = TextEditingController();
@@ -30,12 +32,29 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
+        final appToken = ref.read(authControllerProvider).appToken;
+        if (appToken == null || appToken.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Session expired. Please log in again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
         final response = await SupabaseService().invokeFunction(
-          'stk-push',
+          'api-stk-push',
           body: {
-            'phone_number': _phoneController.text.trim(),
+            'phone': _phoneController.text.trim(),
             'amount': double.tryParse(_amountController.text.trim()) ?? 0,
-            'reference': _referenceController.text.trim(),
+            'accountReference': _referenceController.text.trim(),
+            'transactionDesc': 'Member wallet funding',
+          },
+          headers: {
+            'x-app-token': appToken,
           },
         );
 

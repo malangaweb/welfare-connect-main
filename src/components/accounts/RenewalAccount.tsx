@@ -6,6 +6,7 @@ import FeeCollectionDialog from './FeeCollectionDialog';
 import BulkRenewalFeeDialog from './BulkRenewalFeeDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { fetchSafeSettings } from '@/lib/settingsClient';
 
 const RenewalAccount = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -18,14 +19,13 @@ const RenewalAccount = () => {
   const fetchTransactions = async () => {
     setIsLoading(true);
     try {
-      // First, try to get the default renewal fee from settings if available
-      const { data: settingsData } = await supabase
-        .from('settings')
-        .select('renewal_fee')
-        .single();
-        
-      if (settingsData?.renewal_fee) {
-        setDefaultFee(settingsData.renewal_fee);
+      try {
+        const settingsData = await fetchSafeSettings();
+        if (settingsData?.renewal_fee) {
+          setDefaultFee(settingsData.renewal_fee);
+        }
+      } catch (settingsError) {
+        console.error('Failed to fetch renewal fee setting:', settingsError);
       }
       
       // Then get the transactions

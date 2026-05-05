@@ -94,10 +94,12 @@ class SupabaseService {
   Future<FunctionResponse> invokeFunction(
     String functionName, {
     Map<String, dynamic>? body,
+    Map<String, String>? headers,
   }) async {
     return await client.functions.invoke(
       functionName,
       body: body,
+      headers: headers,
     );
   }
 }

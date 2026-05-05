@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Control } from 'react-hook-form';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchSafeSettings } from '@/lib/settingsClient';
 
 interface RegistrationFeeSectionProps {
   control: Control<any>;
@@ -18,13 +18,7 @@ const RegistrationFeeSection = ({ control }: RegistrationFeeSectionProps) => {
     const fetchDefaultFee = async () => {
       try {
         setIsLoading(true);
-        const { data, error } = await supabase
-          .from('settings')
-          .select('registration_fee')
-          .limit(1)
-          .single();
-          
-        if (error) throw error;
+        const data = await fetchSafeSettings();
         
         if (data && data.registration_fee) {
           setDefaultFee(Number(data.registration_fee));

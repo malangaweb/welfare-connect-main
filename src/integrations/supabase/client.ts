@@ -30,15 +30,4 @@ export const supabase = createClient<Database>(
   }
 );
 
-// Service role client for admin operations (bypasses RLS)
-export const supabaseAdmin = createClient<Database>(
-  supabaseUrl,
-  supabaseAnonKey,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      storageKey: 'wssf-admin-token'
-    }
-  }
-);
+// Keep all browser access on anon key; privileged operations must go through trusted edge functions.

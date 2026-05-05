@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { User, UserRole } from '@/lib/types';
-import { supabase } from '@/integrations/supabase/client';
-import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -20,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { RefreshCw } from 'lucide-react';
+import { updateAdminUserRole } from '@/lib/adminUsersApi';
 
 interface EditUserRoleDialogProps {
   user: User | null;
@@ -27,8 +26,6 @@ interface EditUserRoleDialogProps {
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
-
-type UserUpdate = Database["public"]["Tables"]["users"]["Update"];
 
 const EditUserRoleDialog = ({ user, open, onOpenChange, onSuccess }: EditUserRoleDialogProps) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(user?.role || UserRole.CHAIRPERSON);
@@ -46,12 +43,7 @@ const EditUserRoleDialog = ({ user, open, onOpenChange, onSuccess }: EditUserRol
 
     setIsSubmitting(true);
     try {
-      const userUpdate: UserUpdate = { role: selectedRole };
-      const { error } = await (supabase.from('users') as any)
-        .update(userUpdate)
-        .eq('id', user.id);
-
-      if (error) throw error;
+      await updateAdminUserRole(user.id, selectedRole);
 
       toast.success("Role Updated", {
         description: `${user.name}'s role has been updated to ${getRoleLabel(selectedRole)}.`,

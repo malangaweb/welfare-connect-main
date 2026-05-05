@@ -1,0 +1,144 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+import { corsHeaders } from "../_shared/cors.ts";
+import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
+
+function jsonResponse(status: number, payload: Record<string, unknown>) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+const toNum = (value: unknown) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (!['GET', 'POST'].includes(req.method)) return jsonResponse(405, { error: "Method not allowed" });
+
+  try {
+    const claims = await verifyAppJwtFromRequest(req);
+    requirePrivilegedRole(claims.role);
+
+    const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
+    const days = Math.min(Math.max(Number(body?.days || 90), 7), 3650);
+    const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+
+    const [
+      { data: statusRows, error: statusErr },
+      { data: metricsRow, error: metricsErr },
+      { data: transitions, error: transitionsErr },
+      { data: reinstatements, error: reinstatementsErr },
+      { data: unpaidRows, error: unpaidErr },
+    ] = await Promise.all([
+      supabase.from('v_member_status_distribution').select('status, member_count'),
+      supabase.from('v_member_discipline_metrics').select('*').limit(1).maybeSingle(),
+      supabase
+        .from('member_status_transitions')
+        .select('id, member_id, from_status, to_status, reason, performed_by_role, created_at, details')
+        .gte('created_at', fromDate)
+        .order('created_at', { ascending: false })
+        .limit(500),
+      supabase
+        .from('member_reinstatement_events')
+        .select('id, member_id, penalty_transaction_id, unpaid_case_count_at_check, unpaid_total_at_check, probation_end_date, performed_by_role, created_at')
+        .gte('created_at', fromDate)
+        .order('created_at', { ascending: false })
+        .limit(500),
+      supabase
+        .from('v_member_unpaid_obligations_summary')
+        .select('*')
+        .order('unpaid_total', { ascending: false })
+        .limit(500),
+    ]);
+
+    if (statusErr) throw statusErr;
+    if (metricsErr) throw metricsErr;
+    if (transitionsErr) throw transitionsErr;
+    if (reinstatementsErr) throw reinstatementsErr;
+    if (unpaidErr) throw unpaidErr;
+
+    const memberIds = Array.from(new Set([
+      ...(transitions || []).map((row: any) => row.member_id).filter(Boolean),
+      ...(reinstatements || []).map((row: any) => row.member_id).filter(Boolean),
+      ...(unpaidRows || []).map((row: any) => row.member_id).filter(Boolean),
+    ]));
+
+    const memberLookup = new Map<string, { member_number: string; name: string; status: string }>();
+    if (memberIds.length > 0) {
+      const chunkSize = 120;
+      for (let i = 0; i < memberIds.length; i += chunkSize) {
+        const chunk = memberIds.slice(i, i + chunkSize);
+        const { data: members, error: membersErr } = await supabase
+          .from('members')
+          .select('id, member_number, name, status')
+          .in('id', chunk);
+        if (membersErr) throw membersErr;
+        for (const m of members || []) {
+          memberLookup.set(m.id, {
+            member_number: m.member_number,
+            name: m.name,
+            status: m.status,
+          });
+        }
+      }
+    }
+
+    const status_distribution = (statusRows || []).reduce((acc: Record<string, number>, row: any) => {
+      acc[String(row.status || 'unknown')] = toNum(row.member_count);
+      return acc;
+    }, {});
+
+    const transitionsWithMember = (transitions || []).map((row: any) => ({
+      ...row,
+      member_number: memberLookup.get(row.member_id)?.member_number || null,
+      member_name: memberLookup.get(row.member_id)?.name || null,
+    }));
+
+    const reinstatementsWithMember = (reinstatements || []).map((row: any) => ({
+      ...row,
+      member_number: memberLookup.get(row.member_id)?.member_number || null,
+      member_name: memberLookup.get(row.member_id)?.name || null,
+    }));
+
+    return jsonResponse(200, {
+      days,
+      status_distribution,
+      metrics: {
+        active_count: toNum((metricsRow as any)?.active_count),
+        inactive_count: toNum((metricsRow as any)?.inactive_count),
+        probation_count: toNum((metricsRow as any)?.probation_count),
+        deceased_count: toNum((metricsRow as any)?.deceased_count),
+        auto_inactive_total: toNum((metricsRow as any)?.auto_inactive_total),
+        reinstatement_total: toNum((metricsRow as any)?.reinstatement_total),
+        reinstatement_penalty_total: toNum((metricsRow as any)?.reinstatement_penalty_total),
+      },
+      transitions: transitionsWithMember,
+      reinstatements: reinstatementsWithMember,
+      unpaid_obligations: unpaidRows || [],
+    });
+  } catch (e) {
+    console.error("api-discipline-report error:", e);
+    let msg = "Error";
+    if (e instanceof Error && e.message) {
+      msg = e.message;
+    } else if (typeof e === "object" && e !== null) {
+      try {
+        msg = JSON.stringify(e);
+      } catch {
+        msg = "Error";
+      }
+    }
+    const status = msg === "Forbidden" ? 403 : msg.toLowerCase().includes("token") ? 401 : 500;
+    return jsonResponse(status, { error: msg });
+  }
+});

@@ -1,10 +1,8 @@
 
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
 import { User as LucideUser, RefreshCw, UserCog, Key } from 'lucide-react';
 import { User, UserRole } from '@/lib/types';
-import { DbUser } from '@/lib/db-types';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import EditUserRoleDialog from './EditUserRoleDialog';
+import { listAdminUsers, resetAdminUserPassword, updateAdminUserStatus } from '@/lib/adminUsersApi';
 
 const UsersList = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -56,15 +55,10 @@ const UsersList = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, username, name, email, role, member_id, is_active, created_at, updated_at')
-        .order('created_at', { ascending: false });
-          
-      if (error) throw error;
+      const data = await listAdminUsers();
       
       // Map the database fields to the User interface
-      const mappedUsers: User[] = (data || []).map((user: DbUser) => ({
+      const mappedUsers: User[] = (data || []).map((user) => ({
         id: user.id,
         username: user.username,
         name: user.name,
@@ -120,13 +114,7 @@ const UsersList = () => {
     setProcessingAction(true);
     try {
       const newStatus = !selectedUser.isActive;
-
-      const { error } = await (supabase as any)
-        .from('users')
-        .eq('id', selectedUser.id)
-        .update({ is_active: newStatus });
-        
-      if (error) throw error;
+      await updateAdminUserStatus(selectedUser.id, newStatus);
       
       // Update local state
       setUsers(users.map(user => 
@@ -155,43 +143,12 @@ const UsersList = () => {
     
     setProcessingAction(true);
     try {
-      // Generate a secure random password
-      const generateSecurePassword = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-        let password = '';
-        const array = new Uint32Array(12);
-        crypto.getRandomValues(array);
-        for (let i = 0; i < 12; i++) {
-          password += chars[array[i] % chars.length];
-        }
-        return password;
-      };
-      
-      const tempPassword = generateSecurePassword();
-      
-      // Hash the password before storing (using simple hash for demo - in production use bcrypt)
-      const hashPassword = (password: string): string => {
-        // Simple hash function - in production, use bcrypt or similar
-        let hash = 0;
-        for (let i = 0; i < password.length; i++) {
-          const char = password.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash;
-        }
-        return hash.toString(16);
-      };
-      
-      const hashedPassword = hashPassword(tempPassword);
-
-      const { error } = await (supabase as any)
-        .from('users')
-        .eq('id', selectedUser.id)
-        .update({ password: hashedPassword });
-        
-      if (error) throw error;
+      const temporaryPassword = await resetAdminUserPassword(selectedUser.id);
       
       toast.success("Password Reset", {
-        description: `Password has been reset for ${selectedUser.name}. The user should change their password on next login.`,
+        description: temporaryPassword
+          ? `Temporary password for ${selectedUser.name}: ${temporaryPassword}`
+          : `Password has been reset for ${selectedUser.name}.`,
       });
       
     } catch (error: any) {

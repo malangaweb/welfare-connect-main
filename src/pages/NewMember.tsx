@@ -5,8 +5,10 @@ import { ChevronLeft } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MemberForm from '@/components/forms/MemberForm';
 import { Button } from '@/components/ui/button';
-import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/lib/types';
+import { normalizeMemberNumber } from '@/lib/memberNumber';
+import { createManagedUser } from '@/lib/adminUsersApi';
 
 // Function to send SMS
 const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) => {
@@ -65,8 +67,23 @@ const NewMember = () => {
     setIsSubmitting(true);
 
     try {
-      // Get the residence name for this ID using service role client
-      const residenceResult = await (supabaseAdmin
+      const normalizedMemberNumber = normalizeMemberNumber(data.memberNumber);
+      if (!normalizedMemberNumber) {
+        throw new Error('Member number is required');
+      }
+
+      const { data: memberNumberTaken, error: memberNumberCheckError } = await (supabase as any).rpc('member_number_exists', {
+        p_member_number: normalizedMemberNumber,
+        p_exclude_member_id: null,
+      });
+
+      if (memberNumberCheckError) throw memberNumberCheckError;
+      if (memberNumberTaken === true) {
+        throw new Error(`Member number ${normalizedMemberNumber} already exists.`);
+      }
+
+      // Get the residence name for this ID
+      const residenceResult = await (supabase
         .from('residences')
         .select('name')
         .eq('id', data.residence)
@@ -83,7 +100,7 @@ const NewMember = () => {
       // Create the member record using the database function
       const memberResult = await ((supabase as any)
         .rpc('insert_member', {
-          p_member_number: data.memberNumber,
+          p_member_number: normalizedMemberNumber,
           p_name: data.name,
           p_gender: data.gender,
           p_date_of_birth: data.dateOfBirth.toISOString().split('T')[0],
@@ -126,7 +143,7 @@ const NewMember = () => {
       if (data.phoneNumber && data.name) {
         const name = String(data.name).trim();
         const phoneNumber = String(data.phoneNumber).trim();
-        const memberNumber = String(data.memberNumber).trim();
+        const memberNumber = normalizedMemberNumber;
         if (name && phoneNumber && memberNumber) {
           await sendSMS(name, phoneNumber, memberNumber);
         }
@@ -135,38 +152,14 @@ const NewMember = () => {
       // Create login credentials if provided
       if (data.credentials && data.credentials.username && data.credentials.password) {
         try {
-          const bcryptjs = await import('bcryptjs');
-          const hashedPassword = await bcryptjs.hash(data.credentials.password, 12);
-
-          // First check if username already exists using service role client
-          const existingUserResult = await (supabaseAdmin
-            .from('users')
-            .select('id')
-            .eq('username', data.credentials.username) as unknown as { data: { id: string }[] | null; error: Error | null });
-          const existingUser = existingUserResult.data;
-          const checkError = existingUserResult.error;
-            
-          if (checkError) throw checkError;
-          
-          if (existingUser && existingUser.length > 0) {
-            throw new Error('Username already exists. Please choose a different username.');
-          }
-          
-          // Create user record in users table with password using service role client
-          const userInsert = (supabaseAdmin as any)
-            .from('users')
-            .insert({
-              username: data.credentials.username,
-              name: data.name,
-              password: hashedPassword,
-              role: 'member',
-              is_active: true,
-              member_id: memberData.id
-            });
-          const userResult = await userInsert;
-          const userError = userResult.error;
-            
-          if (userError) throw userError;
+          await createManagedUser({
+            username: String(data.credentials.username),
+            password: String(data.credentials.password),
+            name: String(data.name),
+            role: UserRole.MEMBER,
+            is_active: true,
+            member_id: String(memberData.id),
+          });
           
         } catch (error) {
           console.error('Error creating user account:', error);
@@ -175,7 +168,7 @@ const NewMember = () => {
       }
       
       toast.success("Member registered successfully", {
-        description: `${data.name} has been registered with member number ${data.memberNumber}`,
+        description: `${data.name} has been registered with member number ${normalizedMemberNumber}`,
       });
       
       navigate('/members');

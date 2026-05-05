@@ -1,0 +1,1 @@
+function i(t){let e=String(t??"").trim().toUpperCase();if(!e)return"";e.startsWith("M")&&(e=e.slice(1).trim());const r=e.replace(/[^0-9]/g,"");return r.length>0?r.replace(/^0+/,"")||"0":e}export{i as n};

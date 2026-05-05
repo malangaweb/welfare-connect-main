@@ -42,6 +42,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { persistentCache } from '@/lib/cache';
 import ReportsSubnav from '@/components/reports/ReportsSubnav';
 import { createReportFilename, exportRowsToCSV, exportRowsToXLSX } from '@/lib/reportExport';
+import { invokeWithAppToken } from '@/lib/appAuth';
 
 import {
   ContributionTrendChart,
@@ -73,6 +74,59 @@ interface ReportSummary {
   total_contributions?: number | string;
   total_registration_fees?: number | string;
   [key: string]: unknown;
+}
+
+interface DisciplineMetrics {
+  active_count: number;
+  inactive_count: number;
+  probation_count: number;
+  deceased_count: number;
+  auto_inactive_total: number;
+  reinstatement_total: number;
+  reinstatement_penalty_total: number;
+}
+
+interface DisciplineTransition {
+  id: string;
+  member_id: string;
+  member_number: string | null;
+  member_name: string | null;
+  from_status: string | null;
+  to_status: string;
+  reason: string;
+  performed_by_role: string | null;
+  created_at: string;
+}
+
+interface DisciplineReinstatement {
+  id: string;
+  member_id: string;
+  member_number: string | null;
+  member_name: string | null;
+  penalty_transaction_id: string | null;
+  unpaid_case_count_at_check: number;
+  unpaid_total_at_check: number;
+  probation_end_date: string;
+  performed_by_role: string | null;
+  created_at: string;
+}
+
+interface DisciplineUnpaidObligation {
+  member_id: string;
+  member_number: string;
+  name: string;
+  status: string;
+  unpaid_case_count: number;
+  unpaid_total: number;
+}
+
+interface DisciplineReportResponse {
+  days: number;
+  status_distribution: Record<string, number>;
+  metrics: DisciplineMetrics;
+  transitions: DisciplineTransition[];
+  reinstatements: DisciplineReinstatement[];
+  unpaid_obligations: DisciplineUnpaidObligation[];
 }
 
 interface HeaderMap {
@@ -146,6 +200,34 @@ const transactionHeaders: HeaderMap[] = [
   { key: 'description', label: 'Description' },
 ];
 
+const disciplineTransitionHeaders: HeaderMap[] = [
+  { key: 'created_at', label: 'Date' },
+  { key: 'member_number', label: 'Member #' },
+  { key: 'member_name', label: 'Name' },
+  { key: 'from_status', label: 'From' },
+  { key: 'to_status', label: 'To' },
+  { key: 'reason', label: 'Reason' },
+  { key: 'performed_by_role', label: 'Role' },
+];
+
+const disciplineReinstatementHeaders: HeaderMap[] = [
+  { key: 'created_at', label: 'Date' },
+  { key: 'member_number', label: 'Member #' },
+  { key: 'member_name', label: 'Name' },
+  { key: 'unpaid_case_count_at_check', label: 'Unpaid Cases at Check' },
+  { key: 'unpaid_total_at_check', label: 'Unpaid Total at Check (KES)' },
+  { key: 'probation_end_date', label: 'Probation End' },
+  { key: 'performed_by_role', label: 'Role' },
+];
+
+const disciplineUnpaidHeaders: HeaderMap[] = [
+  { key: 'member_number', label: 'Member #' },
+  { key: 'name', label: 'Name' },
+  { key: 'status', label: 'Status' },
+  { key: 'unpaid_case_count', label: 'Unpaid Cases' },
+  { key: 'unpaid_total', label: 'Unpaid Total (KES)' },
+];
+
 const Reports = () => {
   const navigate = useNavigate();
   const { toast: showToast } = useToast();
@@ -174,6 +256,9 @@ const Reports = () => {
   const [cases, setCases] = useState<Case[]>(() => persistentCache.get<Case[]>('reports-cases') || []);
   const [transactions, setTransactions] = useState<Transaction[]>(() => persistentCache.get<Transaction[]>('reports-tx') || []);
   const [summary, setSummary] = useState<ReportSummary | null>(() => persistentCache.get<ReportSummary>('reports-summary') || null);
+  const [disciplineReport, setDisciplineReport] = useState<DisciplineReportResponse | null>(
+    () => persistentCache.get<DisciplineReportResponse>('reports-discipline') || null
+  );
 
   useEffect(() => {
     setCurrentPage(1);
@@ -263,6 +348,14 @@ const Reports = () => {
       const txs: Transaction[] = txRes.data || [];
       setTransactions(txs);
       persistentCache.set('reports-tx', txs, 10 * 60 * 1000);
+
+      try {
+        const discipline = await invokeWithAppToken<DisciplineReportResponse>('api-discipline-report', { days: 180 });
+        setDisciplineReport(discipline);
+        persistentCache.set('reports-discipline', discipline, 10 * 60 * 1000);
+      } catch (disciplineError) {
+        console.error('Error fetching discipline report data:', disciplineError);
+      }
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -404,19 +497,39 @@ const Reports = () => {
   }, [members]);
 
   const statusDistribution: MemberDemographic[] = useMemo(() => {
-    const counts: Record<string, number> = {};
-    members.forEach(m => {
-      const status = m.isActive ? 'Active' : 'Inactive';
+    const counts: Record<string, number> = {
+      Active: 0,
+      Inactive: 0,
+      Probation: 0,
+      Deceased: 0,
+    };
+    members.forEach((m) => {
+      const raw = String((m as any).status || '').toLowerCase();
+      const status = raw === 'probation' ? 'Probation' : raw === 'deceased' ? 'Deceased' : raw === 'inactive' ? 'Inactive' : 'Active';
       counts[status] = (counts[status] || 0) + 1;
     });
+    const colors: Record<string, string> = {
+      Active: '#10b981',
+      Inactive: '#6b7280',
+      Probation: '#f59e0b',
+      Deceased: '#dc2626',
+    };
     return Object.entries(counts)
-      .map(([label, value]) => ({ 
-        label, 
-        value, 
-        color: label === 'Active' ? '#10b981' : '#6b7280' 
+      .map(([label, value]) => ({
+        label,
+        value,
+        color: colors[label] || '#64748b',
       }))
       .sort((a, b) => b.value - a.value);
   }, [members]);
+
+  const disciplineStatusDistributionData = useMemo(() => {
+    if (!disciplineReport?.status_distribution) return [];
+    return Object.entries(disciplineReport.status_distribution).map(([status, count]) => ({
+      status,
+      count: Number(count || 0),
+    }));
+  }, [disciplineReport]);
 
   const defaulterByLocation: DefaulterByLocation[] = useMemo(() => {
     const grouped: Record<string, DefaulterByLocation> = {};
@@ -844,6 +957,7 @@ const Reports = () => {
             <TabsTrigger value="transactions" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Transactions</TabsTrigger>
             <TabsTrigger value="defaulters" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Defaulters</TabsTrigger>
             <TabsTrigger value="members" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Member List</TabsTrigger>
+            <TabsTrigger value="discipline" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Discipline</TabsTrigger>
           </TabsList>
 
           <TabsContent value="contributions" className="space-y-6">
@@ -1358,6 +1472,193 @@ const Reports = () => {
                 </Table>
 
                 {renderPagination(paginatedMembers.totalPages)}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="discipline" className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Auto-Inactive Total</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.metrics?.auto_inactive_total || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Reinstatements</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.metrics?.reinstatement_total || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Reinstatement Penalties</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">KES {Number(disciplineReport?.metrics?.reinstatement_penalty_total || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Inactive Members</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.metrics?.inactive_count || 0).toLocaleString()}</div></CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Status Distribution (Rule-Aware)</CardTitle>
+                <CardDescription>Directly sourced from discipline reporting API.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {disciplineStatusDistributionData.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No status distribution data available.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Members</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {disciplineStatusDistributionData.map((row) => (
+                        <TableRow key={row.status}>
+                          <TableCell className="capitalize">{row.status.replace(/_/g, ' ')}</TableCell>
+                          <TableCell className="text-right font-semibold">{row.count.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Status Transition Audit</CardTitle>
+                  <CardDescription>Recent transition events used for discipline reporting and audits.</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleExportXlsx('discipline_transitions', (disciplineReport?.transitions || []) as unknown as Record<string, unknown>[], disciplineTransitionHeaders)}>
+                    <Download className="h-4 w-4 mr-2" />Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleExportCsv('discipline_transitions', (disciplineReport?.transitions || []) as unknown as Record<string, unknown>[], disciplineTransitionHeaders)}>
+                    <FileText className="h-4 w-4 mr-2" />CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Member</TableHead>
+                      <TableHead>From</TableHead>
+                      <TableHead>To</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Role</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(disciplineReport?.transitions || []).length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No transitions found.</TableCell></TableRow>
+                    ) : (
+                      (disciplineReport?.transitions || []).slice(0, 120).map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{format(new Date(row.created_at), 'MMM dd, yyyy HH:mm')}</TableCell>
+                          <TableCell>#{row.member_number || '-'} {row.member_name || '-'}</TableCell>
+                          <TableCell className="capitalize">{(row.from_status || '-').replace(/_/g, ' ')}</TableCell>
+                          <TableCell className="capitalize font-semibold">{(row.to_status || '-').replace(/_/g, ' ')}</TableCell>
+                          <TableCell>{(row.reason || '').replace(/_/g, ' ')}</TableCell>
+                          <TableCell>{row.performed_by_role || '-'}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Reinstatement Timeline</CardTitle>
+                  <CardDescription>Reinstatement events with pre-check obligations snapshot.</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleExportXlsx('discipline_reinstatements', (disciplineReport?.reinstatements || []) as unknown as Record<string, unknown>[], disciplineReinstatementHeaders)}>
+                    <Download className="h-4 w-4 mr-2" />Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleExportCsv('discipline_reinstatements', (disciplineReport?.reinstatements || []) as unknown as Record<string, unknown>[], disciplineReinstatementHeaders)}>
+                    <FileText className="h-4 w-4 mr-2" />CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Unpaid Cases at Check</TableHead>
+                      <TableHead>Unpaid Total at Check</TableHead>
+                      <TableHead>Probation End</TableHead>
+                      <TableHead>Role</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(disciplineReport?.reinstatements || []).length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No reinstatement events found.</TableCell></TableRow>
+                    ) : (
+                      (disciplineReport?.reinstatements || []).slice(0, 120).map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{format(new Date(row.created_at), 'MMM dd, yyyy HH:mm')}</TableCell>
+                          <TableCell>#{row.member_number || '-'} {row.member_name || '-'}</TableCell>
+                          <TableCell>{Number(row.unpaid_case_count_at_check || 0).toLocaleString()}</TableCell>
+                          <TableCell>KES {Number(row.unpaid_total_at_check || 0).toLocaleString()}</TableCell>
+                          <TableCell>{row.probation_end_date}</TableCell>
+                          <TableCell>{row.performed_by_role || '-'}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Unpaid Obligation Reconciliation</CardTitle>
+                  <CardDescription>Members with unpaid active/closed-case obligations.</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleExportXlsx('discipline_unpaid_obligations', (disciplineReport?.unpaid_obligations || []) as unknown as Record<string, unknown>[], disciplineUnpaidHeaders)}>
+                    <Download className="h-4 w-4 mr-2" />Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleExportCsv('discipline_unpaid_obligations', (disciplineReport?.unpaid_obligations || []) as unknown as Record<string, unknown>[], disciplineUnpaidHeaders)}>
+                    <FileText className="h-4 w-4 mr-2" />CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Unpaid Cases</TableHead>
+                      <TableHead>Unpaid Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(disciplineReport?.unpaid_obligations || []).length === 0 ? (
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No unpaid obligations found.</TableCell></TableRow>
+                    ) : (
+                      (disciplineReport?.unpaid_obligations || []).slice(0, 200).map((row) => (
+                        <TableRow key={row.member_id}>
+                          <TableCell>#{row.member_number} {row.name}</TableCell>
+                          <TableCell className="capitalize">{String(row.status || '').replace(/_/g, ' ')}</TableCell>
+                          <TableCell>{Number(row.unpaid_case_count || 0).toLocaleString()}</TableCell>
+                          <TableCell className="font-semibold">KES {Number(row.unpaid_total || 0).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>

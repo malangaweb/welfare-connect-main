@@ -6,7 +6,7 @@ import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Member } from '@/lib/types';
-import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { DbMember, DbDependant, mapDbMemberToMember } from '@/lib/db-types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import CasesTab from '@/components/member/CasesTab';
 import MemberDetailsLoading from '@/components/member/MemberDetailsLoading';
 import MemberDetailsError from '@/components/member/MemberDetailsError';
 import MemberForm from '@/components/forms/MemberForm';
+import { deleteMemberUserLinks } from '@/lib/adminUsersApi';
 
 const MemberDetails = () => {
   const navigate = useNavigate();
@@ -239,48 +240,29 @@ const MemberDetails = () => {
     
     setIsDeleting(true);
     try {
-      // Delete all related records in order (cascade delete)
-      // 1. Delete user credentials (via users table)
-      const { data: usersData } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('member_id', id);
-      
-      if (usersData && usersData.length > 0) {
-        const userIds = usersData.map((u: any) => u.id);
-        // Delete credentials
-        await supabaseAdmin
-          .from('user_credentials')
-          .delete()
-          .in('user_id', userIds);
-        
-        // Delete users
-        await supabaseAdmin
-          .from('users')
-          .delete()
-          .in('id', userIds);
-      }
-      
-      // 2. Delete transactions
-      await supabaseAdmin
+      // Delete linked user credentials through trusted API
+      await deleteMemberUserLinks(id);
+
+      // Delete transactions
+      await supabase
         .from('transactions')
         .delete()
         .eq('member_id', id);
       
-      // 3. Delete cases where member is affected
-      await supabaseAdmin
+      // Delete cases where member is affected
+      await supabase
         .from('cases')
         .delete()
         .eq('affected_member_id', id);
       
-      // 4. Delete dependants
-      await supabaseAdmin
+      // Delete dependants
+      await supabase
         .from('dependants')
         .delete()
         .eq('member_id', id);
       
-      // 5. Finally, delete the member
-      const { error: deleteError } = await supabaseAdmin
+      // Finally, delete the member
+      const { error: deleteError } = await supabase
         .from('members')
         .delete()
         .eq('id', id);
@@ -345,8 +327,7 @@ const MemberDetails = () => {
         next_of_kin: data.nextOfKin,
       };
 
-      // Try using admin client for update
-      const { data: result, error } = await supabaseAdmin
+      const { data: result, error } = await supabase
         .from('members')
         // @ts-ignore
         .update(updateData)

@@ -197,29 +197,21 @@ const NewCase = () => {
       // Send SMS notification for new case
       try {
         const affectedMember = members.find(m => m.id === caseResult.affected_member_id);
-        if (affectedMember) {
-          const payload = {
-            case_number: caseResult.case_number,
-            affected_member: affectedMember.name,
-            residence: affectedMember.residence,
-            member_number: affectedMember.memberNumber,
-            amount: caseResult.expected_amount,
-            end_date: caseResult.end_date,
-          };
-          if (
-            payload.case_number &&
-            payload.affected_member &&
-            payload.residence &&
-            payload.member_number &&
-            payload.amount &&
-            payload.end_date
-          ) {
-            await fetch('https://siha.javanet.co.ke/send_case_sms.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-          }
+        if (affectedMember?.phoneNumber) {
+          const deadline = caseResult.end_date ? new Date(caseResult.end_date).toLocaleDateString() : 'N/A';
+          const message = [
+            `Malanga Welfare: Case ${caseResult.case_number} has been opened.`,
+            `Member: ${affectedMember.name}.`,
+            `Expected amount: KES ${Number(caseResult.expected_amount || 0).toLocaleString()}.`,
+            `Deadline: ${deadline}.`,
+          ].join(' ');
+
+          await supabase.functions.invoke('send-sms', {
+            body: {
+              phoneNumber: affectedMember.phoneNumber,
+              message,
+            },
+          });
         }
       } catch (smsError) {
         console.error('Error sending case SMS:', smsError);

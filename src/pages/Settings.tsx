@@ -14,6 +14,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus } from 'lucide-react';
+import { invokeWithAppToken } from '@/lib/appAuth';
 
 interface Residence {
   id: string;
@@ -39,6 +40,10 @@ interface SettingsData {
   mpesa_initiator_name: string | null;
   mpesa_initiator_password: string | null;
   mpesa_env: 'sandbox' | 'production';
+  has_mpesa_consumer_key?: boolean;
+  has_mpesa_consumer_secret?: boolean;
+  has_mpesa_passkey?: boolean;
+  has_mpesa_initiator_password?: boolean;
 }
 
 const settingsFormSchema = z.object({
@@ -66,7 +71,10 @@ const Settings = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [editingField, setEditingField] = useState<string | null>(null);
-  const [settingsId, setSettingsId] = useState<string | null>(null);
+  const [settingsMeta, setSettingsMeta] = useState<Pick<
+    SettingsData,
+    'has_mpesa_consumer_key' | 'has_mpesa_consumer_secret' | 'has_mpesa_passkey' | 'has_mpesa_initiator_password'
+  >>({});
 
   const form = useForm<z.infer<typeof settingsFormSchema>>({
     resolver: zodResolver(settingsFormSchema),
@@ -116,37 +124,35 @@ const Settings = () => {
 
     const fetchSettings = async () => {
       try {
-        const { data, error } = await supabase
-          .from('settings')
-          .select('*')
-          .order('id', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-          
-        if (error) {
-          console.error('Error fetching settings:', error);
-          return;
-        }
-        
-        if (data) {
-          setSettingsId(data.id);
+        const data = await invokeWithAppToken<{ settings: SettingsData | null }>('api-settings', {
+          action: 'get',
+        });
+
+        if (data?.settings) {
+          const settings = data.settings;
+          setSettingsMeta({
+            has_mpesa_consumer_key: settings.has_mpesa_consumer_key,
+            has_mpesa_consumer_secret: settings.has_mpesa_consumer_secret,
+            has_mpesa_passkey: settings.has_mpesa_passkey,
+            has_mpesa_initiator_password: settings.has_mpesa_initiator_password,
+          });
           form.reset({
-            registration_fee: data.registration_fee,
-            renewal_fee: data.renewal_fee,
-            penalty_amount: data.penalty_amount,
-            paybill_number: data.paybill_number || '',
-            organization_name: data.organization_name,
-            organization_email: data.organization_email || '',
-            organization_phone: data.organization_phone || '',
-            member_id_start: data.member_id_start || 1,
-            case_id_start: data.case_id_start || 1,
-            mpesa_consumer_key: data.mpesa_consumer_key || '',
-            mpesa_consumer_secret: data.mpesa_consumer_secret || '',
-            mpesa_passkey: data.mpesa_passkey || '',
-            mpesa_shortcode: data.mpesa_shortcode || '',
-            mpesa_initiator_name: data.mpesa_initiator_name || '',
-            mpesa_initiator_password: data.mpesa_initiator_password || '',
-            mpesa_env: (data.mpesa_env as 'sandbox' | 'production') || 'sandbox',
+            registration_fee: settings.registration_fee,
+            renewal_fee: settings.renewal_fee,
+            penalty_amount: settings.penalty_amount,
+            paybill_number: settings.paybill_number || '',
+            organization_name: settings.organization_name,
+            organization_email: settings.organization_email || '',
+            organization_phone: settings.organization_phone || '',
+            member_id_start: settings.member_id_start || 1,
+            case_id_start: settings.case_id_start || 1,
+            mpesa_consumer_key: '',
+            mpesa_consumer_secret: '',
+            mpesa_passkey: '',
+            mpesa_shortcode: settings.mpesa_shortcode || '',
+            mpesa_initiator_name: settings.mpesa_initiator_name || '',
+            mpesa_initiator_password: '',
+            mpesa_env: (settings.mpesa_env as 'sandbox' | 'production') || 'sandbox',
           });
         }
       } catch (error) {
@@ -169,56 +175,18 @@ const Settings = () => {
   const onSubmitSettings = async (values: z.infer<typeof settingsFormSchema>) => {
     setSavingSettings(true);
     try {
-      if (settingsId) {
-        const { error } = await supabase
-          .from('settings')
-          .update({
-            registration_fee: values.registration_fee,
-            renewal_fee: values.renewal_fee,
-            penalty_amount: values.penalty_amount,
-            paybill_number: values.paybill_number || null,
-            organization_name: values.organization_name,
-            organization_email: values.organization_email || null,
-            organization_phone: values.organization_phone || null,
-            member_id_start: values.member_id_start || 1,
-            case_id_start: values.case_id_start || 1,
-            mpesa_consumer_key: values.mpesa_consumer_key || null,
-            mpesa_consumer_secret: values.mpesa_consumer_secret || null,
-            mpesa_passkey: values.mpesa_passkey || null,
-            mpesa_shortcode: values.mpesa_shortcode || null,
-            mpesa_initiator_name: values.mpesa_initiator_name || null,
-            mpesa_initiator_password: values.mpesa_initiator_password || null,
-            mpesa_env: values.mpesa_env,
-          })
-          .eq('id', settingsId);
+      const result = await invokeWithAppToken<{ success: boolean; settings: SettingsData | null }>('api-settings', {
+        action: 'update',
+        settings: values,
+      });
 
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase
-          .from('settings')
-          .insert({
-            registration_fee: values.registration_fee,
-            renewal_fee: values.renewal_fee,
-            penalty_amount: values.penalty_amount,
-            paybill_number: values.paybill_number || null,
-            organization_name: values.organization_name,
-            organization_email: values.organization_email || null,
-            organization_phone: values.organization_phone || null,
-            member_id_start: values.member_id_start || 1,
-            case_id_start: values.case_id_start || 1,
-            mpesa_consumer_key: values.mpesa_consumer_key || null,
-            mpesa_consumer_secret: values.mpesa_consumer_secret || null,
-            mpesa_passkey: values.mpesa_passkey || null,
-            mpesa_shortcode: values.mpesa_shortcode || null,
-            mpesa_initiator_name: values.mpesa_initiator_name || null,
-            mpesa_initiator_password: values.mpesa_initiator_password || null,
-            mpesa_env: values.mpesa_env,
-          })
-          .select('id')
-          .single();
-
-        if (error) throw error;
-        if (data?.id) setSettingsId(data.id);
+      if (result?.settings) {
+        setSettingsMeta({
+          has_mpesa_consumer_key: result.settings.has_mpesa_consumer_key,
+          has_mpesa_consumer_secret: result.settings.has_mpesa_consumer_secret,
+          has_mpesa_passkey: result.settings.has_mpesa_passkey,
+          has_mpesa_initiator_password: result.settings.has_mpesa_initiator_password,
+        });
       }
         
       toast({
@@ -305,6 +273,9 @@ const Settings = () => {
                               )}
                             </div>
                             <FormMessage />
+                            {settingsMeta.has_mpesa_consumer_key && (
+                              <p className="text-xs text-muted-foreground">A key is already configured. Leave blank to keep it unchanged.</p>
+                            )}
                           </FormItem>
                         )}
                       />
@@ -345,6 +316,9 @@ const Settings = () => {
                               )}
                             </div>
                             <FormMessage />
+                            {settingsMeta.has_mpesa_consumer_secret && (
+                              <p className="text-xs text-muted-foreground">A secret is already configured. Leave blank to keep it unchanged.</p>
+                            )}
                           </FormItem>
                         )}
                       />
@@ -385,6 +359,9 @@ const Settings = () => {
                               )}
                             </div>
                             <FormMessage />
+                            {settingsMeta.has_mpesa_passkey && (
+                              <p className="text-xs text-muted-foreground">A passkey is already configured. Leave blank to keep it unchanged.</p>
+                            )}
                           </FormItem>
                         )}
                       />
@@ -938,6 +915,9 @@ const Settings = () => {
                             </div>
                             <p className="text-xs text-muted-foreground">Must be encrypted with M-Pesa public key for production</p>
                             <FormMessage />
+                            {settingsMeta.has_mpesa_initiator_password && (
+                              <p className="text-xs text-muted-foreground">A security credential is already configured. Leave blank to keep it unchanged.</p>
+                            )}
                           </FormItem>
                         )}
                       />

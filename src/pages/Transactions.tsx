@@ -13,7 +13,7 @@ import TransactionList from '@/components/TransactionList';
 import { TransactionReversalDialog } from '@/components/transactions/TransactionReversalDialog';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Transaction } from '@/lib/types';
-import { supabase, supabaseAdmin } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { persistentCache } from '@/lib/cache';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -176,9 +176,7 @@ const Transactions = () => {
       }
     }
     try {
-      // Using type assertion to work around Supabase type inference issues
-      const supabaseAny = supabaseAdmin as any;
-      const { error } = await supabaseAny
+      const { error } = await (supabase as any)
         .from('transactions')
         .update({
           description,
