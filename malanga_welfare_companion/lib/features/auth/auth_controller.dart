@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthState {
   final User? user;
   final String? appToken;
+  final String? memberId;
+  final String? memberName;
   final bool isAdmin;
   final bool isLoading;
   final String? error;
@@ -12,6 +14,8 @@ class AuthState {
   const AuthState({
     this.user,
     this.appToken,
+    this.memberId,
+    this.memberName,
     this.isAdmin = false,
     this.isLoading = false,
     this.error,
@@ -23,6 +27,8 @@ class AuthState {
   AuthState copyWith({
     User? user,
     String? appToken,
+    String? memberId,
+    String? memberName,
     bool? isAdmin,
     bool? isLoading,
     String? error,
@@ -30,6 +36,8 @@ class AuthState {
     return AuthState(
       user: user ?? this.user,
       appToken: appToken ?? this.appToken,
+      memberId: memberId ?? this.memberId,
+      memberName: memberName ?? this.memberName,
       isAdmin: isAdmin ?? this.isAdmin,
       isLoading: isLoading ?? this.isLoading,
       error: error,
@@ -88,12 +96,21 @@ class AuthController extends Notifier<AuthState> {
 
       final payload = response.data;
       String? appToken;
+      String? memberId;
+      String? memberName;
       if (payload is Map<String, dynamic>) {
         appToken = payload['app_token']?.toString();
+        final member = payload['member'];
+        if (member is Map<String, dynamic>) {
+          memberId = member['id']?.toString();
+          memberName = member['name']?.toString();
+        }
       }
 
       state = state.copyWith(
         appToken: appToken,
+        memberId: memberId,
+        memberName: memberName,
         user: Supabase.instance.client.auth.currentUser,
         isAdmin: isAdmin,
         isLoading: false,
