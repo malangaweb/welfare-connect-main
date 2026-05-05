@@ -4,10 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/login_screen.dart';
 import '../../features/admin/admin_dashboard_screen.dart';
+import '../../features/admin/admin_members_screen.dart';
+import '../../features/admin/admin_cases_screen.dart';
+import '../../features/admin/admin_transactions_screen.dart';
+import '../../features/admin/admin_settings_screen.dart';
 import '../../features/admin/suspense_queue_screen.dart';
 import '../../features/member/wallet_screen.dart';
+import '../../features/member/summary_screen.dart';
 import '../../features/member/cases_screen.dart';
 import '../../features/member/payments_screen.dart';
+import '../../features/member/transactions_screen.dart';
+import '../../features/member/report_screen.dart';
 import '../../features/auth/auth_controller.dart';
 
 /// Router configuration with auth state awareness
@@ -17,7 +24,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
     debugLogDiagnostics: true,
-    
+
     redirect: (context, state) {
       final isLoggedIn = authState.isAuthenticated;
       final isLoginRoute = state.matchedLocation == '/login';
@@ -56,6 +63,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/admin/suspense-queue',
         builder: (context, state) => const SuspenseQueueScreen(),
       ),
+      GoRoute(
+        path: '/admin/members',
+        builder: (context, state) => const AdminMembersScreen(),
+      ),
+      GoRoute(
+        path: '/admin/cases',
+        builder: (context, state) => const AdminCasesScreen(),
+      ),
+      GoRoute(
+        path: '/admin/transactions',
+        builder: (context, state) => const AdminTransactionsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/settings',
+        builder: (context, state) => const AdminSettingsScreen(),
+      ),
 
       // Member Routes
       GoRoute(
@@ -69,6 +92,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/member/payments',
         builder: (context, state) => const PaymentsScreen(),
+      ),
+      GoRoute(
+        path: '/member/transactions',
+        builder: (context, state) => const MemberTransactionsScreen(),
+      ),
+      GoRoute(
+        path: '/member/summary',
+        builder: (context, state) => const MemberSummaryScreen(),
+      ),
+      GoRoute(
+        path: '/member/report',
+        builder: (context, state) => const MemberReportScreen(),
+      ),
+      // Aliases to avoid "page not found" from legacy/deep links
+      GoRoute(
+        path: '/transactions',
+        redirect: (_, __) => '/member/transactions',
+      ),
+      GoRoute(
+        path: '/member/transaction',
+        redirect: (_, __) => '/member/transactions',
       ),
     ],
 
@@ -88,7 +132,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             Text(state.error?.toString() ?? 'Unknown error'),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => context.go('/'),
+              onPressed: () => context.go(
+                authState.isAuthenticated
+                    ? (authState.isAdmin
+                        ? '/admin/dashboard'
+                        : '/member/wallet')
+                    : '/login',
+              ),
               child: const Text('Go Home'),
             ),
           ],

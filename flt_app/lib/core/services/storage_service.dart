@@ -11,6 +11,9 @@ class StorageService {
   static const String _keyAuthToken = 'auth_token';
   static const String _keyUserEmail = 'user_email';
   static const String _keyUserRole = 'user_role';
+  static const String _keyIsAdmin = 'is_admin';
+  static const String _keyMemberId = 'member_id';
+  static const String _keyMemberName = 'member_name';
 
   Future<void> saveAuthToken(String token) async {
     await _storage.write(key: _keyAuthToken, value: token);
@@ -34,6 +37,31 @@ class StorageService {
 
   Future<String?> getUserRole() async {
     return await _storage.read(key: _keyUserRole);
+  }
+
+  Future<void> saveIsAdmin(bool isAdmin) async {
+    await _storage.write(key: _keyIsAdmin, value: isAdmin ? 'true' : 'false');
+  }
+
+  Future<bool> getIsAdmin() async {
+    final value = await _storage.read(key: _keyIsAdmin);
+    return value == 'true';
+  }
+
+  Future<void> saveMemberId(String memberId) async {
+    await _storage.write(key: _keyMemberId, value: memberId);
+  }
+
+  Future<String?> getMemberId() async {
+    return await _storage.read(key: _keyMemberId);
+  }
+
+  Future<void> saveMemberName(String memberName) async {
+    await _storage.write(key: _keyMemberName, value: memberName);
+  }
+
+  Future<String?> getMemberName() async {
+    return await _storage.read(key: _keyMemberName);
   }
 
   Future<void> clearAll() async {

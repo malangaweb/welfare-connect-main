@@ -12,19 +12,19 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _memberNumberController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _memberNumberFocusNode = FocusNode();
-  final _phoneFocusNode = FocusNode();
+  final _identifierController = TextEditingController();
+  final _secretController = TextEditingController();
+  final _identifierFocusNode = FocusNode();
+  final _secretFocusNode = FocusNode();
   bool _isMemberPortal = true;
   bool _rememberMe = false;
 
   @override
   void dispose() {
-    _memberNumberController.dispose();
-    _phoneController.dispose();
-    _memberNumberFocusNode.dispose();
-    _phoneFocusNode.dispose();
+    _identifierController.dispose();
+    _secretController.dispose();
+    _identifierFocusNode.dispose();
+    _secretFocusNode.dispose();
     super.dispose();
   }
 
@@ -32,8 +32,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     FocusScope.of(context).unfocus();
     if (_formKey.currentState!.validate()) {
       await ref.read(authControllerProvider.notifier).login(
-            memberNumber: _memberNumberController.text.trim(),
-            phoneNumber: _phoneController.text.trim(),
+            memberNumber: _identifierController.text.trim(),
+            phoneNumber: _secretController.text.trim(),
             isAdmin: !_isMemberPortal,
           );
     }
@@ -170,19 +170,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
             const SizedBox(height: 24),
 
-            // Member Number Field
+            // Identifier Field
             _buildTextField(
               key: const ValueKey('login_member_field'),
-              controller: _memberNumberController,
-              focusNode: _memberNumberFocusNode,
-              label: 'Member Number',
-              hint: 'Enter your member ID',
-              icon: Icons.badge,
+              controller: _identifierController,
+              focusNode: _identifierFocusNode,
+              label: _isMemberPortal ? 'Member Number' : 'Admin Username',
+              hint: _isMemberPortal ? 'Enter your member ID' : 'Enter admin username',
+              icon: _isMemberPortal ? Icons.badge : Icons.admin_panel_settings,
               textInputAction: TextInputAction.next,
-              onFieldSubmitted: (_) => _phoneFocusNode.requestFocus(),
+              onFieldSubmitted: (_) => _secretFocusNode.requestFocus(),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your member number';
+                  return _isMemberPortal
+                      ? 'Please enter your member number'
+                      : 'Please enter admin username';
                 }
                 return null;
               },
@@ -191,20 +193,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
             const SizedBox(height: 16),
 
-            // Phone Number Field
+            // Secret Field
             _buildTextField(
               key: const ValueKey('login_phone_field'),
-              controller: _phoneController,
-              focusNode: _phoneFocusNode,
-              label: 'Phone Number',
-              hint: '+1 (555) 000-0000',
-              icon: Icons.phone,
-              keyboardType: TextInputType.phone,
+              controller: _secretController,
+              focusNode: _secretFocusNode,
+              label: _isMemberPortal ? 'Phone Number' : 'Password',
+              hint: _isMemberPortal ? '+2547XXXXXXXX' : 'Enter admin password',
+              icon: _isMemberPortal ? Icons.phone : Icons.lock_outline,
+              keyboardType:
+                  _isMemberPortal ? TextInputType.phone : TextInputType.visiblePassword,
               textInputAction: TextInputAction.done,
+              obscureText: !_isMemberPortal,
               onFieldSubmitted: (_) => _handleLogin(),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your phone number';
+                  return _isMemberPortal
+                      ? 'Please enter your phone number'
+                      : 'Please enter password';
                 }
                 return null;
               },
@@ -244,7 +250,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextButton(
                     onPressed: () {},
                     child: Text(
-                      'Forgot ID?',
+                      _isMemberPortal ? 'Forgot ID?' : 'Forgot Password?',
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: AppColors.primaryContainer,
                         fontWeight: FontWeight.w600,
@@ -414,6 +420,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     TextInputAction? textInputAction,
     void Function(String)? onFieldSubmitted,
     String? Function(String?)? validator,
+    bool obscureText = false,
     required ThemeData theme,
     Key? key,
   }) {
@@ -436,6 +443,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           focusNode: focusNode,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
+          obscureText: obscureText,
           onFieldSubmitted: onFieldSubmitted,
           validator: validator,
           style: theme.textTheme.bodyMedium,

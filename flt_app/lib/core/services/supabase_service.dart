@@ -6,10 +6,11 @@ class SupabaseService {
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
-  late final SupabaseClient client;
+  SupabaseClient get client => Supabase.instance.client;
 
   Future<void> initialize() async {
-    client = Supabase.instance.client;
+    // Kept for backward compatibility with existing startup calls.
+    // Client access is now lazy via the getter above.
   }
 
   // Auth operations
