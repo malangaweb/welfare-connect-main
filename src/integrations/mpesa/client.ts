@@ -129,7 +129,7 @@ export class MpesaClient {
     };
 
     const response = await fetch(
-      `${this.getBaseUrl()}/stkpush/v1/processrequest`,
+      `${this.getBaseUrl()}/mpesa/stkpush/v1/processrequest`,
       {
         method: 'POST',
         headers: {
@@ -162,7 +162,7 @@ export class MpesaClient {
     };
 
     const response = await fetch(
-      `${this.getBaseUrl()}/stkpushquery/v1/query`,
+      `${this.getBaseUrl()}/mpesa/stkpushquery/v1/query`,
       {
         method: 'POST',
         headers: {

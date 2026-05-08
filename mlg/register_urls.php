@@ -12,14 +12,26 @@ if (!$access_token) {
 // Debug
 error_log("Access Token: $access_token");
 
-$shortcode = '4164179';
-$url = 'https://api.safaricom.co.ke/mpesa/c2b/v2/registerurl';
+$mpesaEnv = strtolower(getenv('MPESA_ENV') ?: 'production');
+$shortcode = getenv('MPESA_SHORTCODE') ?: '';
+$url = $mpesaEnv === 'sandbox'
+    ? (getenv('MPESA_REGISTER_URL_SANDBOX') ?: 'https://sandbox.safaricom.co.ke/mpesa/c2b/v2/registerurl')
+    : (getenv('MPESA_REGISTER_URL_PRODUCTION') ?: 'https://api.safaricom.co.ke/mpesa/c2b/v2/registerurl');
+$confirmationUrl = getenv('MPESA_CONFIRMATION_URL') ?: '';
+$validationUrl = getenv('MPESA_VALIDATION_URL') ?: '';
+
+if ($shortcode === '' || $confirmationUrl === '' || $validationUrl === '') {
+    die(json_encode([
+        'success' => false,
+        'message' => 'Missing env config: MPESA_SHORTCODE / MPESA_CONFIRMATION_URL / MPESA_VALIDATION_URL',
+    ]));
+}
 
 $payload = [
     'ShortCode' => $shortcode,
     'ResponseType' => 'Completed',
-    'ConfirmationURL' => 'https://javanet.co.ke/mlg/mpesa_confirmation.php',
-    'ValidationURL' => 'https://javanet.co.ke/mlg/mpesa_validation.php'
+    'ConfirmationURL' => $confirmationUrl,
+    'ValidationURL' => $validationUrl
 ];
 
 $ch = curl_init($url);

@@ -62,6 +62,30 @@ export function normalizePhone(phone: string): string {
   return digits;
 }
 
+async function readFunctionErrorMessage(context: unknown): Promise<string> {
+  if (!context || typeof context !== "object") return "";
+  const cloneFn = (context as { clone?: unknown }).clone;
+  if (typeof cloneFn !== "function") return "";
+
+  try {
+    const cloned = (context as { clone: () => Response }).clone();
+    const rawText = (await cloned.text().catch(() => "")).trim();
+    if (!rawText) return "";
+
+    try {
+      const payload = JSON.parse(rawText) as Record<string, unknown>;
+      const message = String(payload?.error || payload?.message || "").trim();
+      if (message) return message;
+    } catch {
+      // Non-JSON payloads can still carry useful text (e.g. gateway/internal errors).
+    }
+
+    return rawText;
+  } catch {
+    return "";
+  }
+}
+
 export async function invokeWithAppToken<T = unknown>(
   functionName: string,
   body?: Record<string, unknown>,
@@ -81,11 +105,42 @@ export async function invokeWithAppToken<T = unknown>(
   if (error) {
     const message = String(error.message || "");
     const status = Number((error as any).context?.status || 0);
-    if (status === 401 || /401|unauthor|jwt|token/i.test(message)) {
+    const ctx = (error as any).context;
+    const backendMessage = await readFunctionErrorMessage(ctx);
+
+    const combinedAuthMessage = `${message} ${backendMessage}`.toLowerCase();
+    const isSessionExpired =
+      status === 401 &&
+      /session expired|jwt expired|invalid token|missing bearer token|unauthorized or invalid request|signature verification|verification failed/.test(combinedAuthMessage);
+    if (isSessionExpired) {
       clearMemberSession();
       throw new Error("Session expired. Please login again.");
     }
-    throw new Error(error.message || "Request failed");
+
+    if (
+      status === 401 &&
+      !backendMessage &&
+      /unexpected end of json input/i.test(message)
+    ) {
+      throw new Error("Unauthorized request to function. Please log in again and retry.");
+    }
+
+    if (
+      status >= 500 &&
+      !backendMessage &&
+      /unexpected end of json input/i.test(message)
+    ) {
+      throw new Error(`Server error in ${functionName}. Please try again shortly.`);
+    }
+
+    if (
+      /unexpected end of json input/i.test(message) ||
+      /unexpected end of json input/i.test(backendMessage)
+    ) {
+      throw new Error(`Server error in ${functionName}. The function returned an empty or invalid response.`);
+    }
+
+    throw new Error(backendMessage || error.message || "Request failed");
   }
 
   return data as T;

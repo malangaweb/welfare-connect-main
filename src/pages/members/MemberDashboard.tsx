@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
-import { invokeWithAppToken } from "@/lib/appAuth";
+import { getAppToken, invokeWithAppToken } from "@/lib/appAuth";
 import { walletRowDelta } from "@/lib/walletEffect";
 
 type ActiveCaseSummary = {
@@ -37,6 +37,11 @@ const MemberDashboard = () => {
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fundWalletOpen, setFundWalletOpen] = useState(false);
+  const [stkPhone, setStkPhone] = useState("");
+  const [stkAmount, setStkAmount] = useState("");
+  const [stkReference, setStkReference] = useState("");
+  const [isInitiatingStk, setIsInitiatingStk] = useState(false);
   const [changePinOpen, setChangePinOpen] = useState(false);
   const [pinData, setPinData] = useState({ oldPin: "", newPin: "", confirmPin: "" });
   const [isChangingPin, setIsChangingPin] = useState(false);
@@ -85,6 +90,14 @@ const MemberDashboard = () => {
   useEffect(() => {
     fetchData();
   }, [navigate]);
+
+  useEffect(() => {
+    if (!member) return;
+    const memberPhone = String(member.phone_number || "").trim();
+    const memberRef = String(member.member_number || "").trim();
+    setStkPhone(memberPhone);
+    setStkReference(memberRef);
+  }, [member]);
 
   const handleSearch = async (query: string) => {
     if (!query.trim()) {
@@ -374,6 +387,84 @@ const MemberDashboard = () => {
     }
   };
 
+  const handleFundWalletStk = async () => {
+    if (!member?.id) return;
+    const parsedAmount = Number(stkAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid amount",
+        description: "Enter a valid amount greater than zero.",
+      });
+      return;
+    }
+
+    const phone = String(stkPhone || "").replace(/\D/g, "");
+    if (phone.length < 10) {
+      toast({
+        variant: "destructive",
+        title: "Invalid phone number",
+        description: "Enter a valid M-Pesa phone number.",
+      });
+      return;
+    }
+
+    try {
+      setIsInitiatingStk(true);
+      const appToken = getAppToken();
+      if (!appToken) {
+        throw new Error("Session expired. Please login again.");
+      }
+
+      const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
+      const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
+      const endpoint = normalizedBaseUrl
+        ? `${normalizedBaseUrl}/stk_push.php`
+        : "/mlg/stk_push.php";
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-app-token": appToken,
+        },
+        body: JSON.stringify({
+          memberId: member.id,
+          phone,
+          amount: parsedAmount,
+          accountReference: stkReference || member.member_number || member.id,
+          transactionDesc: `Wallet top-up for ${member.member_number || member.id}`,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          String((result as { error?: unknown }).error || "").trim() ||
+          `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      toast({
+        title: "STK Push sent",
+        description: "Check your phone and complete payment with your M-Pesa PIN.",
+      });
+
+      setFundWalletOpen(false);
+      setStkAmount("");
+      await fetchData();
+    } catch (error) {
+      console.error("STK initiation failed:", error);
+      toast({
+        variant: "destructive",
+        title: "STK Push failed",
+        description: error instanceof Error ? error.message : "Could not initiate STK Push.",
+      });
+    } finally {
+      setIsInitiatingStk(false);
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout customLinks={memberLinks} customLogout={() => memberLogout(navigate)}>
@@ -532,7 +623,73 @@ const MemberDashboard = () => {
               <div className="text-sm text-muted-foreground mt-1 mb-4">
                 Last updated: {new Date().toLocaleDateString()}
               </div>
-              
+
+              <Dialog open={fundWalletOpen} onOpenChange={setFundWalletOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="w-full">
+                    <Wallet className="h-4 w-4 mr-2" />
+                    Fund Wallet (M-Pesa)
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Fund Wallet via STK Push</DialogTitle>
+                    <DialogDescription>
+                      Enter amount and confirm the M-Pesa prompt on your phone.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="stk-phone">Phone Number</Label>
+                      <Input
+                        id="stk-phone"
+                        placeholder="07xx xxx xxx or 2547xxxxxxxx"
+                        value={stkPhone}
+                        onChange={(e) => setStkPhone(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="stk-amount">Amount (KES)</Label>
+                      <Input
+                        id="stk-amount"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Enter amount"
+                        value={stkAmount}
+                        onChange={(e) => setStkAmount(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="stk-reference">Account Reference</Label>
+                      <Input
+                        id="stk-reference"
+                        placeholder="e.g. member number"
+                        value={stkReference}
+                        onChange={(e) => setStkReference(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setFundWalletOpen(false)}
+                      disabled={isInitiatingStk}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleFundWalletStk}
+                      disabled={isInitiatingStk || !stkAmount || !stkPhone}
+                    >
+                      {isInitiatingStk ? "Sending STK..." : "Send STK Push"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
               <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm" className="w-full">

@@ -11,6 +11,40 @@ function jsonResponse(status: number, payload: Record<string, unknown>) {
   });
 }
 
+function firstNonEmpty(...values: Array<unknown>): string {
+  for (const value of values) {
+    const v = String(value ?? "").trim();
+    if (v.length > 0) return v;
+  }
+  return "";
+}
+
+async function parseResponseBody(response: Response): Promise<Record<string, unknown> | null> {
+  const rawText = (await response.text().catch(() => "")).trim();
+  if (!rawText) return null;
+
+  try {
+    return JSON.parse(rawText) as Record<string, unknown>;
+  } catch {
+    return { raw: rawText };
+  }
+}
+
+function mpesaErrorMessage(
+  fallback: string,
+  response: Response,
+  payload: Record<string, unknown> | null,
+): string {
+  const message = firstNonEmpty(
+    payload?.errorMessage,
+    payload?.error_description,
+    payload?.ResponseDescription,
+    payload?.raw,
+    response.statusText,
+  );
+  return `${fallback} (${response.status}${message ? `: ${message}` : ""})`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" });
@@ -38,15 +72,39 @@ serve(async (req) => {
       .from("settings")
       .select("mpesa_consumer_key, mpesa_consumer_secret, mpesa_passkey, mpesa_shortcode, mpesa_env")
       .single();
-    if (settingsError || !settings) return jsonResponse(500, { error: "M-Pesa configuration missing" });
 
-    const consumerKey = settings.mpesa_consumer_key;
-    const consumerSecret = settings.mpesa_consumer_secret;
-    const passkey = settings.mpesa_passkey;
-    const shortcode = settings.mpesa_shortcode || "174379";
-    const env = (settings.mpesa_env || "sandbox") as "sandbox" | "production";
+    if (settingsError) {
+      console.warn("settings lookup warning:", settingsError.message);
+    }
+
+    // Primary source: settings table. Fallback: Edge secrets.
+    const consumerKey = firstNonEmpty(
+      settings?.mpesa_consumer_key,
+      Deno.env.get("MPESA_CONSUMER_KEY"),
+    );
+    const consumerSecret = firstNonEmpty(
+      settings?.mpesa_consumer_secret,
+      Deno.env.get("MPESA_CONSUMER_SECRET"),
+    );
+    const passkey = firstNonEmpty(
+      settings?.mpesa_passkey,
+      Deno.env.get("MPESA_PASSKEY"),
+    );
+    const shortcode = firstNonEmpty(
+      settings?.mpesa_shortcode,
+      Deno.env.get("MPESA_SHORTCODE"),
+      "174379",
+    );
+    const env = firstNonEmpty(
+      settings?.mpesa_env,
+      Deno.env.get("MPESA_ENV"),
+      "sandbox",
+    ).toLowerCase() === "production" ? "production" : "sandbox";
+
     if (!consumerKey || !consumerSecret || !passkey) {
-      return jsonResponse(500, { error: "M-Pesa credentials are incomplete" });
+      return jsonResponse(500, {
+        error: "M-Pesa credentials are incomplete (need consumer key, consumer secret, and passkey in settings or Edge secrets)",
+      });
     }
 
     const phone = String(body?.phone || "");
@@ -56,13 +114,24 @@ serve(async (req) => {
     if (!phone || amount <= 0) return jsonResponse(400, { error: "phone and positive amount required" });
 
     const auth = btoa(`${consumerKey}:${consumerSecret}`);
+    const tokenUrl = `${env === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke"}/oauth/v1/generate?grant_type=client_credentials&_=${Date.now()}`;
     const tokenResp = await fetch(
-      `${env === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke"}/oauth/v1/generate?grant_type=client_credentials`,
-      { headers: { Authorization: `Basic ${auth}` } },
+      tokenUrl,
+      { 
+        headers: { Authorization: `Basic ${auth}`, "Cache-Control": "no-cache" },
+        cache: "no-store"
+      },
     );
-    if (!tokenResp.ok) return jsonResponse(502, { error: "Failed to get M-Pesa access token" });
-    const tokenJson = await tokenResp.json();
-    const accessToken = tokenJson.access_token as string;
+    const tokenJson = await parseResponseBody(tokenResp);
+    if (!tokenResp.ok) {
+      return jsonResponse(502, {
+        error: mpesaErrorMessage("Failed to get M-Pesa access token", tokenResp, tokenJson),
+      });
+    }
+    const accessToken = String(tokenJson?.access_token || "");
+    if (!accessToken) {
+      return jsonResponse(502, { error: "M-Pesa access token response did not include an access token" });
+    }
 
     const ts = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
     const password = btoa(`${shortcode}${passkey}${ts}`);
@@ -88,16 +157,21 @@ serve(async (req) => {
     };
 
     const stkResp = await fetch(
-      `${env === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke"}/stkpush/v1/processrequest`,
+      `${env === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke"}/mpesa/stkpush/v1/processrequest`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       },
     );
-    const stkJson = await stkResp.json();
+    const stkJson = await parseResponseBody(stkResp);
     if (!stkResp.ok) {
-      return jsonResponse(502, { error: stkJson?.errorMessage || "STK push failed" });
+      return jsonResponse(502, {
+        error: mpesaErrorMessage("STK push failed", stkResp, stkJson),
+      });
+    }
+    if (!stkJson?.CheckoutRequestID) {
+      return jsonResponse(502, { error: "M-Pesa STK response did not include a checkout request ID" });
     }
 
     await supabase.from("transactions").insert({
@@ -120,7 +194,23 @@ serve(async (req) => {
 
     return jsonResponse(200, stkJson);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unauthorized";
-    return jsonResponse(401, { error: msg });
+    const msg = e instanceof Error ? e.message : "Request failed";
+    const lower = msg.toLowerCase();
+
+    if (lower.includes("forbidden")) {
+      return jsonResponse(403, { error: msg });
+    }
+
+    if (
+      lower.includes("missing bearer token") ||
+      lower.includes("jwt") ||
+      lower.includes("unauthorized") ||
+      lower.includes("signature verification") ||
+      lower.includes("verification failed")
+    ) {
+      return jsonResponse(401, { error: msg });
+    }
+
+    return jsonResponse(500, { error: msg });
   }
 });

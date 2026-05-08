@@ -6,15 +6,79 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Default/fallback config (used when bulk_deduct_config.php is absent)
-$supabaseUrl = getenv('SUPABASE_URL') ?: 'https://hfojxbfcjozguobwtcgt.supabase.co';
-$supabaseServiceRoleKey = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhmb2p4YmZjam96Z3VvYnd0Y2d0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MjQxMDQzMiwiZXhwIjoyMDU3OTg2NDMyfQ.wqm4HmM2zPM1h3Eb17sELQz40Zsjp2ruAwBBroQaA1c';
-$MLG_INTERNAL_BULK_KEY = getenv('MLG_INTERNAL_BULK_KEY') ?: '6edee798ad1c408712db4e6e88c937edf39c027f2534e3f34ec33d94ea0b9a96';
+if (!function_exists('mlg_load_local_env_files')) {
+    function mlg_load_local_env_files(): void
+    {
+        static $loaded = false;
+        if ($loaded) {
+            return;
+        }
+        $loaded = true;
+
+        $envFiles = [
+            __DIR__ . '/.env',
+            dirname(__DIR__) . '/.env',
+        ];
+
+        foreach ($envFiles as $file) {
+            if (!is_file($file)) {
+                continue;
+            }
+            $lines = @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (!is_array($lines)) {
+                continue;
+            }
+            foreach ($lines as $line) {
+                $line = trim((string)$line);
+                if ($line === '' || str_starts_with($line, '#')) {
+                    continue;
+                }
+                if (str_starts_with($line, 'export ')) {
+                    $line = trim(substr($line, 7));
+                }
+                $eqPos = strpos($line, '=');
+                if ($eqPos === false) {
+                    continue;
+                }
+                $key = trim(substr($line, 0, $eqPos));
+                $value = trim(substr($line, $eqPos + 1));
+                if ($key === '') {
+                    continue;
+                }
+                if (strlen($value) >= 2) {
+                    $first = $value[0];
+                    $last = $value[strlen($value) - 1];
+                    if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                        $value = substr($value, 1, -1);
+                    }
+                }
+                if (getenv($key) === false) {
+                    putenv("{$key}={$value}");
+                    $_ENV[$key] = $value;
+                }
+            }
+        }
+    }
+}
+mlg_load_local_env_files();
+
+$supabaseUrl = rtrim((string)(getenv('SUPABASE_URL') ?: ''), '/');
+$supabaseServiceRoleKey = (string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_KEY') ?: '');
+$MLG_INTERNAL_BULK_KEY = (string)(getenv('MLG_INTERNAL_BULK_KEY') ?: '');
 
 // Optional override file (recommended for cPanel)
 $configPath = __DIR__ . '/bulk_deduct_config.php';
 if (file_exists($configPath)) {
     require_once $configPath;
+}
+
+if ($supabaseUrl === '' || $supabaseServiceRoleKey === '' || $MLG_INTERNAL_BULK_KEY === '') {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Server misconfigured: missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or MLG_INTERNAL_BULK_KEY',
+    ]);
+    exit;
 }
 
 $internal = $_SERVER['HTTP_X_MLG_INTERNAL_KEY'] ?? '';

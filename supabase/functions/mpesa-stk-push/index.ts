@@ -92,7 +92,7 @@ serve(async (req) => {
       `${mpesaConfig.environment === 'production' 
         ? 'https://api.safaricom.co.ke' 
         : 'https://sandbox.safaricom.co.ke'
-      }/stkpush/v1/processrequest`,
+      }/mpesa/stkpush/v1/processrequest`,
       {
         method: 'POST',
         headers: {

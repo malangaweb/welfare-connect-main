@@ -4,11 +4,76 @@ define('MPESA_ENDPOINT_LABEL', 'mpesa_confirmation');
 define('MPESA_RAW_LOG_FILE', 'mpesa_confirmation_raw.log');
 define('MPESA_DEBUG_LOG_FILE', 'confirmation_log.json');
 
+if (!function_exists('mlg_load_local_env_files')) {
+    function mlg_load_local_env_files(): void
+    {
+        static $loaded = false;
+        if ($loaded) {
+            return;
+        }
+        $loaded = true;
+
+        $envFiles = [
+            __DIR__ . '/.env',
+            dirname(__DIR__) . '/.env',
+        ];
+
+        foreach ($envFiles as $file) {
+            if (!is_file($file)) {
+                continue;
+            }
+            $lines = @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (!is_array($lines)) {
+                continue;
+            }
+            foreach ($lines as $line) {
+                $line = trim((string)$line);
+                if ($line === '' || str_starts_with($line, '#')) {
+                    continue;
+                }
+                if (str_starts_with($line, 'export ')) {
+                    $line = trim(substr($line, 7));
+                }
+                $eqPos = strpos($line, '=');
+                if ($eqPos === false) {
+                    continue;
+                }
+                $key = trim(substr($line, 0, $eqPos));
+                $value = trim(substr($line, $eqPos + 1));
+                if ($key === '') {
+                    continue;
+                }
+                if (strlen($value) >= 2) {
+                    $first = $value[0];
+                    $last = $value[strlen($value) - 1];
+                    if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                        $value = substr($value, 1, -1);
+                    }
+                }
+                if (getenv($key) === false) {
+                    putenv("{$key}={$value}");
+                    $_ENV[$key] = $value;
+                }
+            }
+        }
+    }
+}
+mlg_load_local_env_files();
+
 // ==================================================
 // SUPABASE CONFIG (SERVICE ROLE KEY ONLY)
 // ==================================================
-$supabaseUrl = 'https://hfojxbfcjozguobwtcgt.supabase.co';
-$supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhmb2p4YmZjam96Z3VvYnd0Y2d0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MjQxMDQzMiwiZXhwIjoyMDU3OTg2NDMyfQ.wqm4HmM2zPM1h3Eb17sELQz40Zsjp2ruAwBBroQaA1c';
+$supabaseUrl = rtrim((string)(getenv('SUPABASE_URL') ?: ''), '/');
+$supabaseKey = (string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_KEY') ?: '');
+if ($supabaseUrl === '' || $supabaseKey === '') {
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'ResultCode' => '1',
+        'ResultDesc' => 'Server misconfigured: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY',
+    ]);
+    exit;
+}
 
 // ==================================================
 // RECEIVE SAFARICOM CALLBACK

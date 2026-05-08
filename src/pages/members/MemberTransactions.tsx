@@ -31,6 +31,7 @@ const MemberTransactions = () => {
   const [totalDebit, setTotalDebit] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -90,9 +91,13 @@ const MemberTransactions = () => {
     if (typeFilter !== "all") {
       filtered = filtered.filter(t => t.transaction_type === typeFilter);
     }
+
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(t => String(t.status || "").toLowerCase() === statusFilter);
+    }
     
     setFilteredTransactions(filtered);
-  }, [searchQuery, typeFilter, transactions]);
+  }, [searchQuery, typeFilter, statusFilter, transactions]);
 
   const getTransactionTypeIcon = (t: DbTransaction) => {
     const d = walletRowDelta(t.transaction_type, t.amount, t.status);
@@ -138,6 +143,24 @@ const MemberTransactions = () => {
 
   const formatCurrency = (amount: number) => {
     return `KES ${amount?.toLocaleString() || "0"}`;
+  };
+
+  const getStatusBadgeClass = (status?: string | null) => {
+    switch (String(status || "").toLowerCase()) {
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "pending":
+        return "bg-amber-100 text-amber-800";
+      case "reversed":
+        return "bg-slate-100 text-slate-800";
+      case "failed":
+      case "cancelled":
+      case "canceled":
+      case "error":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
   };
 
   return (
@@ -238,6 +261,18 @@ const MemberTransactions = () => {
                       <SelectItem value="disbursement">Disbursements</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full md:w-[180px]">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="reversed">Reversed</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardHeader>
               
@@ -302,6 +337,11 @@ const MemberTransactions = () => {
                               <Badge variant="outline" className={getTransactionTypeColor(t.transaction_type)}>
                                 {t.transaction_type}
                               </Badge>
+                              <div className="mt-1">
+                                <Badge variant="outline" className={getStatusBadgeClass(t.status)}>
+                                  {String(t.status || "unknown")}
+                                </Badge>
+                              </div>
                             </div>
                           </div>
                         );})}
@@ -358,6 +398,12 @@ const MemberTransactions = () => {
                                     );
                                   })()}
                                 </div>
+                                <div className="flex justify-between items-center mt-2">
+                                  <div className="text-sm text-muted-foreground">Status</div>
+                                  <Badge variant="outline" className={getStatusBadgeClass(t.status)}>
+                                    {String(t.status || "unknown")}
+                                  </Badge>
+                                </div>
                               </CardContent>
                             </Card>
                           </div>
@@ -375,6 +421,7 @@ const MemberTransactions = () => {
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => {
                   setSearchQuery("");
                   setTypeFilter("all");
+                  setStatusFilter("all");
                 }}>
                   Reset Filters
                 </Button>
