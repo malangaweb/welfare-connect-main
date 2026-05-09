@@ -97,7 +97,7 @@ serve(async (req) => {
 
     const { data: member, error: memberErr } = await supabase
       .from("members")
-      .select("id, member_number, name, phone_number, email, wallet_balance, is_active, created_at")
+      .select("id, member_number, name, phone_number, email_address, wallet_balance, is_active, status, probation_end_date, created_at")
       .eq("id", memberId)
       .maybeSingle();
 

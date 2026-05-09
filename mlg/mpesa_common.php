@@ -327,7 +327,7 @@ function mlg_http_json(string $method, string $url, ?array $payload = null, arra
 function mlg_mpesa_base_url(): string
 {
     mlg_load_env_files();
-    $env = strtolower((string)(getenv('MPESA_ENV') ?: 'production'));
+    $env = strtolower(trim((string)(getenv('MPESA_ENV') ?: 'production')));
     return $env === 'sandbox' ? 'https://sandbox.safaricom.co.ke' : 'https://api.safaricom.co.ke';
 }
 

@@ -31,11 +31,16 @@ export function MemberStatusBadge({ member }: MemberStatusBadgeProps) {
     )
   }
 
-  // Calculate probation status
-  if (member.status === 'probation' || !member.status || member.status === 'active') {
-    const registrationDate = new Date(member.registrationDate)
-    const probationEnd = new Date(registrationDate)
-    probationEnd.setDate(probationEnd.getDate() + 90)
+  // Probation status badge with remaining days
+  if (member.status === 'probation') {
+    const probationEnd = member.probationEndDate
+      ? new Date(member.probationEndDate)
+      : (() => {
+          const registrationDate = new Date(member.registrationDate)
+          const fallback = new Date(registrationDate)
+          fallback.setDate(fallback.getDate() + 90)
+          return fallback
+        })()
 
     const now = new Date()
     const daysRemaining = Math.ceil((probationEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -48,11 +53,7 @@ export function MemberStatusBadge({ member }: MemberStatusBadgeProps) {
       )
     }
 
-    return (
-      <Badge variant="default" className="text-xs bg-green-600">
-        Active
-      </Badge>
-    )
+    return <Badge variant="secondary" className="text-xs bg-amber-500 text-white">Probation</Badge>
   }
 
   // Fallback

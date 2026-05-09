@@ -54,6 +54,7 @@ export interface Member {
   nextOfKin: NextOfKin;
   dependants: Dependant[];
   registrationDate: Date;
+  probationEndDate?: Date;
   walletBalance: number;
   isActive: boolean;
   status: 'probation' | 'active' | 'inactive' | 'deceased';

@@ -29,6 +29,7 @@ export interface DbMember {
   residence: string;
   next_of_kin: any;
   registration_date: string;
+  probation_end_date?: string | null;
   wallet_balance: number;
   is_active: boolean;
   status: string;
@@ -116,6 +117,7 @@ export function mapDbMemberToMember(dbMember: DbMember, dependants: any[] = []):
         isEligible: dep.is_eligible || dep.isEligible || true,
       })),
       registrationDate: new Date(dbMember.registration_date),
+      probationEndDate: dbMember.probation_end_date ? new Date(dbMember.probation_end_date) : undefined,
       walletBalance: Number(dbMember.wallet_balance || 0),
       isActive: dbMember.is_active,
       status: (dbMember.status as any) || 'probation',

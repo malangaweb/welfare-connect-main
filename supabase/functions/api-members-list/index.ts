@@ -34,7 +34,7 @@ serve(async (req) => {
 
     let query = supabase
       .from("members")
-      .select("id, member_number, name, phone_number, wallet_balance, is_active, created_at", { count: "exact" })
+      .select("id, member_number, name, phone_number, wallet_balance, is_active, status, probation_end_date, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -44,10 +44,8 @@ serve(async (req) => {
       );
     }
 
-    if (status === "active") {
-      query = query.eq("is_active", true);
-    } else if (status === "inactive") {
-      query = query.eq("is_active", false);
+    if (status !== "all") {
+      query = query.eq("status", status);
     }
 
     const { data, error, count } = await query;

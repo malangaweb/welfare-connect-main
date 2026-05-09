@@ -88,6 +88,18 @@ try {
     );
 
     if (($stkResp['status'] ?? 0) < 200 || ($stkResp['status'] ?? 0) >= 300) {
+        mlg_log_json_line('stk_push_errors.log', [
+            'where' => 'daraja_stk_push',
+            'http_status' => $stkResp['status'] ?? 0,
+            'mpesa_env' => strtolower(trim((string)(getenv('MPESA_ENV') ?: 'production'))),
+            'mpesa_base_url' => mlg_mpesa_base_url(),
+            'shortcode' => $shortcode,
+            'account_reference' => $accountReference,
+            'phone' => $phone,
+            'daraja_json' => $stkResp['json'] ?? null,
+            'daraja_raw' => $stkResp['raw'] ?? null,
+        ]);
+
         $message = mlg_first_non_empty([
             $stkResp['json']['errorMessage'] ?? null,
             $stkResp['json']['error_description'] ?? null,
