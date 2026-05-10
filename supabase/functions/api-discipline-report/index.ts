@@ -26,6 +26,7 @@ serve(async (req) => {
 
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     const days = Math.min(Math.max(Number(body?.days || 90), 7), 3650);
+    const latePaymentRowLimit = Math.min(Math.max(Number(body?.late_payment_limit || 1000), 100), 5000);
     const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     const supabase = createClient(
@@ -40,6 +41,8 @@ serve(async (req) => {
       { data: reinstatements, error: reinstatementsErr },
       { data: unpaidRows, error: unpaidErr },
       { data: defaultStreakRows, error: defaultStreakErr },
+      { data: latePaymentRows, error: latePaymentErr },
+      { data: latePaymentAggregateRow, error: latePaymentAggregateErr },
     ] = await Promise.all([
       supabase.from('v_member_status_distribution').select('status, member_count'),
       supabase.from('v_member_discipline_metrics').select('*').limit(1).maybeSingle(),
@@ -65,6 +68,15 @@ serve(async (req) => {
         .select('member_id, current_streak, last_defaulted, updated_at, last_case_id')
         .order('updated_at', { ascending: false })
         .limit(1000),
+      supabase
+        .from('transactions')
+        .select('id, member_id, case_id, amount, transaction_type, status, description, created_at, metadata')
+        .eq('transaction_type', 'arrears')
+        .gte('created_at', fromDate)
+        .in('status', ['completed', 'success'])
+        .order('created_at', { ascending: false })
+        .limit(latePaymentRowLimit),
+      supabase.rpc('get_late_payment_aggregate', { p_from_date: fromDate }),
     ]);
 
     if (statusErr) throw statusErr;
@@ -73,12 +85,15 @@ serve(async (req) => {
     if (reinstatementsErr) throw reinstatementsErr;
     if (unpaidErr) throw unpaidErr;
     if (defaultStreakErr) throw defaultStreakErr;
+    if (latePaymentErr) throw latePaymentErr;
+    if (latePaymentAggregateErr) throw latePaymentAggregateErr;
 
     const memberIds = Array.from(new Set([
       ...(transitions || []).map((row: any) => row.member_id).filter(Boolean),
       ...(reinstatements || []).map((row: any) => row.member_id).filter(Boolean),
       ...(unpaidRows || []).map((row: any) => row.member_id).filter(Boolean),
       ...(defaultStreakRows || []).map((row: any) => row.member_id).filter(Boolean),
+      ...(latePaymentRows || []).map((row: any) => row.member_id).filter(Boolean),
     ]));
 
     const memberLookup = new Map<string, { member_number: string; name: string; status: string }>();
@@ -132,10 +147,42 @@ serve(async (req) => {
       members_tracked: defaultStreaksWithMember.length,
     };
 
+    const late_payments = (latePaymentRows || []).map((row: any) => ({
+      ...row,
+      member_number: memberLookup.get(row.member_id)?.member_number || null,
+      member_name: memberLookup.get(row.member_id)?.name || null,
+      member_status: memberLookup.get(row.member_id)?.status || null,
+      case_number: String(row?.metadata?.paid_case_number || ''),
+    }));
+
+    const sampledTotal = late_payments.reduce((sum: number, row: any) => sum + Math.abs(toNum(row.amount)), 0);
+    const aggregateRow = Array.isArray(latePaymentAggregateRow) ? latePaymentAggregateRow[0] : latePaymentAggregateRow;
+    const fullTotal = toNum((aggregateRow as any)?.late_payment_total);
+    const fullCount = toNum((aggregateRow as any)?.late_payment_count);
+
+    const late_payment_metrics = {
+      late_payment_count: fullCount,
+      late_payment_total: fullTotal,
+    };
+    const late_payment_sample_metrics = {
+      late_payment_count: late_payments.length,
+      late_payment_total: sampledTotal,
+    };
+    const late_payment_scope = {
+      from_date: fromDate,
+      row_limit: latePaymentRowLimit,
+      sampled_row_count: late_payments.length,
+      full_row_count: fullCount,
+      sample_truncated: fullCount > late_payments.length,
+    };
+
     return jsonResponse(200, {
       days,
       status_distribution,
       default_outcomes,
+      late_payment_metrics,
+      late_payment_sample_metrics,
+      late_payment_scope,
       metrics: {
         active_count: toNum((metricsRow as any)?.active_count),
         inactive_count: toNum((metricsRow as any)?.inactive_count),
@@ -149,6 +196,7 @@ serve(async (req) => {
       reinstatements: reinstatementsWithMember,
       unpaid_obligations: unpaidRows || [],
       default_streaks: defaultStreaksWithMember,
+      late_payments,
     });
   } catch (e) {
     console.error("api-discipline-report error:", e);

@@ -69,6 +69,7 @@ interface Member {
   residence?: string;
   national_id_number?: string;
   created_at?: string;
+  wallet_balance?: number;
   is_active: boolean;
 }
 
@@ -94,6 +95,7 @@ interface CaseItem {
 }
 
 interface MonthlyGrouped {
+  monthKey: string;
   month: string;
   contributions: number;
   disbursements: number;
@@ -117,10 +119,12 @@ const groupByMonth = (transactions: Transaction[]): MonthlyGrouped[] => {
   
   transactions.forEach(transaction => {
     const date = new Date(transaction.created_at);
+    const monthKey = format(date, "yyyy-MM");
     const month = format(date, "MMM yyyy");
     
-    if (!grouped[month]) {
-      grouped[month] = {
+    if (!grouped[monthKey]) {
+      grouped[monthKey] = {
+        monthKey,
         month,
         contributions: 0,
         disbursements: 0,
@@ -129,17 +133,15 @@ const groupByMonth = (transactions: Transaction[]): MonthlyGrouped[] => {
     }
     
     if (transaction.transaction_type === "contribution") {
-      grouped[month].contributions += Math.abs(transaction.amount || 0);
+      grouped[monthKey].contributions += Math.abs(transaction.amount || 0);
     } else if (transaction.transaction_type === "disbursement") {
-      grouped[month].disbursements += transaction.amount || 0;
+      grouped[monthKey].disbursements += transaction.amount || 0;
     }
     
-    grouped[month].count += 1;
+    grouped[monthKey].count += 1;
   });
   
-  return Object.values(grouped).sort((a, b) => {
-    return new Date(a.month).getTime() - new Date(b.month).getTime();
-  });
+  return Object.values(grouped).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
 };
 
 const groupCasesByType = (cases: CaseItem[]): CaseTypeGrouped[] => {
@@ -253,10 +255,11 @@ const MemberReport = () => {
     [caseContributionTransactions]
   );
 
-  const walletBalance = useMemo(
-    () => transactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0),
-    [transactions]
-  );
+  const walletBalance = useMemo(() => {
+    const persisted = Number(member?.wallet_balance);
+    if (Number.isFinite(persisted)) return persisted;
+    return transactions.reduce((sum, t) => sum + walletRowDelta(t as any), 0);
+  }, [member?.wallet_balance, transactions]);
 
   const netImpact = useMemo(
     () => stats.totalContributions - stats.totalDisbursements,

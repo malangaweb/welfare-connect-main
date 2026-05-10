@@ -60,6 +60,7 @@ interface ReversalEntry {
 
 const ITEMS_PER_PAGE = 15
 const MAX_EXPORT_ENTRIES = 200
+const FAILED_TRANSACTION_STATUSES = ['failed', 'error', 'cancelled', 'canceled', 'reversed', 'voided']
 
 const severityColorMap: Record<string, string> = {
   critical: 'bg-destructive',
@@ -152,7 +153,7 @@ const ComplianceReports = () => {
         supabase
           .from('transactions')
           .select('id, member_id, amount, mpesa_reference, created_at', { count: 'exact' })
-          .eq('status', 'failed'),
+          .in('status', FAILED_TRANSACTION_STATUSES),
       ])
 
       if (noPhone && noPhone.length > 0) {

@@ -85,6 +85,14 @@ interface ContributionTransaction {
   case_number: string | null
 }
 
+interface DisciplineCollectionTransaction {
+  id: string
+  created_at: string
+  transaction_type: 'arrears' | 'penalty'
+  amount: number
+  status: string | null
+}
+
 interface DashboardSummary {
   total_contributions?: number
   active_members?: number
@@ -110,6 +118,7 @@ const MONTHS = [
 ]
 
 const ITEMS_PER_PAGE = 15
+const CONTRIBUTION_TX_FETCH_LIMIT = 2000
 
 const formatCellValue = (col: string, value: unknown): string => {
   if (value === null || value === undefined) return ''
@@ -139,7 +148,9 @@ const FiscalReports = () => {
   const [caseData, setCaseData] = useState<CaseFunding[]>([])
   const [memberContributions, setMemberContributions] = useState<MemberContribution[]>([])
   const [contributionTransactions, setContributionTransactions] = useState<ContributionTransaction[]>([])
+  const [disciplineCollectionTransactions, setDisciplineCollectionTransactions] = useState<DisciplineCollectionTransaction[]>([])
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [contributionTxTotalCount, setContributionTxTotalCount] = useState(0)
 
   const [contributionsSearch, setContributionsSearch] = useState('')
   const [contributionTransactionsSearch, setContributionTransactionsSearch] = useState('')
@@ -157,16 +168,23 @@ const FiscalReports = () => {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [{ data: monthly }, { data: caseFunding }, { data: memberTx }, { data: txRows }, { data: dashSummary }] = await Promise.all([
+        const [{ data: monthly }, { data: caseFunding }, { data: memberTx }, { data: txRows, count: txCount }, { data: disciplineRows }, { data: dashSummary }] = await Promise.all([
           supabase.from('monthly_contributions_summary').select('*').order('month', { ascending: false }),
           supabase.from('case_funding_summary').select('*'),
           supabase.from('member_transaction_summary').select('*').order('member_number'),
           supabase
             .from('transactions')
-            .select('id, created_at, transaction_type, amount, status, mpesa_reference, description, case_id, members(member_number, name), cases(case_number)')
+            .select('id, created_at, transaction_type, amount, status, mpesa_reference, description, case_id, members(member_number, name), cases(case_number)', { count: 'exact' })
             .in('transaction_type', ['contribution', 'contribution_refund'])
             .order('created_at', { ascending: false })
-            .limit(2000),
+            .limit(CONTRIBUTION_TX_FETCH_LIMIT),
+          supabase
+            .from('transactions')
+            .select('id, created_at, transaction_type, amount, status')
+            .in('transaction_type', ['arrears', 'penalty'])
+            .in('status', ['success', 'completed'])
+            .order('created_at', { ascending: false })
+            .limit(5000),
           supabase.rpc('get_enhanced_dashboard_summary'),
         ])
 
@@ -192,6 +210,16 @@ const FiscalReports = () => {
           })
         )
         setSummary(((dashSummary as any)?.[0] || {}) as DashboardSummary)
+        setContributionTxTotalCount(Number(txCount || 0))
+        setDisciplineCollectionTransactions(
+          ((disciplineRows || []) as any[]).map((tx) => ({
+            id: tx.id,
+            created_at: tx.created_at,
+            transaction_type: tx.transaction_type,
+            amount: Number(tx.amount || 0),
+            status: tx.status || null,
+          }))
+        )
       } catch (error: any) {
         console.error('Fiscal reports load error:', error)
         toast({ title: 'Error', description: 'Failed to load fiscal reports.', variant: 'destructive' })
@@ -333,6 +361,25 @@ const FiscalReports = () => {
       return term === '' || String(item.case_number || '').toLowerCase().includes(term) || String(item.case_type || '').toLowerCase().includes(term)
     })
   }, [caseData, casesSearch])
+
+  const filteredDisciplineCollections = useMemo(() => {
+    const grouped = new Map<string, { transaction_type: 'arrears' | 'penalty'; transaction_count: number; total_amount: number }>()
+
+    disciplineCollectionTransactions.forEach((tx) => {
+      const date = new Date(tx.created_at)
+      const monthMatch = selectedMonth === 'all' || date.getMonth() === Number(selectedMonth)
+      const yearMatch = selectedYear === 'all' || date.getFullYear().toString() === selectedYear
+      if (!monthMatch || !yearMatch) return
+
+      const key = tx.transaction_type
+      const existing = grouped.get(key) || { transaction_type: tx.transaction_type, transaction_count: 0, total_amount: 0 }
+      existing.transaction_count += 1
+      existing.total_amount += Math.abs(Number(tx.amount || 0))
+      grouped.set(key, existing)
+    })
+
+    return Array.from(grouped.values()).sort((a, b) => a.transaction_type.localeCompare(b.transaction_type))
+  }, [disciplineCollectionTransactions, selectedMonth, selectedYear])
 
   const filteredMemberData = useMemo(() => {
     return memberContributions.filter((item) => {
@@ -504,10 +551,57 @@ const FiscalReports = () => {
 
             <Card>
               <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Default/Discipline Collections Split</CardTitle>
+                    <CardDescription>Arrears and reinstatement penalties for selected period</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => exportToPDF('Default Discipline Collections', filteredDisciplineCollections, ['transaction_type', 'transaction_count', 'total_amount'])}><Download className="mr-2 h-4 w-4" />PDF</Button>
+                    <Button variant="outline" size="sm" onClick={() => exportToExcel('Default Discipline Collections', filteredDisciplineCollections)}><FileSpreadsheet className="mr-2 h-4 w-4" />Excel</Button>
+                    <Button variant="outline" size="sm" onClick={() => exportToCSV('Default Discipline Collections', filteredDisciplineCollections)}><FileSpreadsheet className="mr-2 h-4 w-4" />CSV</Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Transactions</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? renderSkeletonRows(3) : filteredDisciplineCollections.length === 0 ? (
+                        <TableRow><TableCell colSpan={3} className="py-8 text-center text-muted-foreground">No arrears/penalty data for selected period</TableCell></TableRow>
+                      ) : (
+                        filteredDisciplineCollections.map((row) => (
+                          <TableRow key={row.transaction_type}>
+                            <TableCell className="capitalize">{row.transaction_type.replace(/_/g, ' ')}</TableCell>
+                            <TableCell className="text-right">{row.transaction_count.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-medium">KES {row.total_amount.toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <CardTitle>Contribution Transactions</CardTitle>
                     <CardDescription>Raw contribution transaction records for the selected period</CardDescription>
+                    {contributionTxTotalCount > contributionTransactions.length && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        Showing latest {contributionTransactions.length.toLocaleString()} of {contributionTxTotalCount.toLocaleString()} rows.
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <Select value={contributionTypeFilter} onValueChange={(value: 'all' | 'contribution' | 'contribution_refund') => setContributionTypeFilter(value)}>

@@ -143,6 +143,34 @@ interface DisciplineReportResponse {
     updated_at: string;
     last_case_id: string | null;
   }>;
+  late_payment_metrics?: {
+    late_payment_count: number;
+    late_payment_total: number;
+  };
+  late_payment_sample_metrics?: {
+    late_payment_count: number;
+    late_payment_total: number;
+  };
+  late_payment_scope?: {
+    from_date: string;
+    row_limit: number;
+    sampled_row_count: number;
+    full_row_count: number;
+    sample_truncated: boolean;
+  };
+  late_payments?: Array<{
+    id: string;
+    member_id: string;
+    member_number: string | null;
+    member_name: string | null;
+    member_status: string | null;
+    case_id: string | null;
+    case_number: string;
+    amount: number;
+    status: string;
+    description: string | null;
+    created_at: string;
+  }>;
 }
 
 interface HeaderMap {
@@ -165,6 +193,8 @@ const getContributionSignedAmount = (tx: Transaction) => {
   const amount = Math.abs(Number(tx.amount || 0));
   return normalizeType(tx.transaction_type) === 'contribution_refund' ? -amount : amount;
 };
+const isArrearsTransaction = (tx: Transaction) => normalizeType(tx.transaction_type) === 'arrears';
+const isPenaltyTransaction = (tx: Transaction) => normalizeType(tx.transaction_type) === 'penalty';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -253,6 +283,17 @@ const disciplineDefaultStreakHeaders: HeaderMap[] = [
   { key: 'updated_at', label: 'Last Evaluated At' },
 ];
 
+const disciplineLatePaymentHeaders: HeaderMap[] = [
+  { key: 'created_at', label: 'Date' },
+  { key: 'member_number', label: 'Member #' },
+  { key: 'member_name', label: 'Name' },
+  { key: 'member_status', label: 'Current Status' },
+  { key: 'case_number', label: 'Case #' },
+  { key: 'amount', label: 'Amount (KES)' },
+  { key: 'status', label: 'Status' },
+  { key: 'description', label: 'Description' },
+];
+
 const Reports = () => {
   const navigate = useNavigate();
   const { toast: showToast } = useToast();
@@ -326,7 +367,10 @@ const Reports = () => {
         (supabase.rpc as any)('get_dashboard_summary'),
         supabase.from('members').select('*'),
         supabase.from('cases').select('*'),
-        supabase.from('transactions').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('transactions')
+          .select('id, amount, mpesa_reference, description, created_at, transaction_type, status, member_id, case_id')
+          .order('created_at', { ascending: false }),
       ]);
 
       if (summaryRes.data) {
@@ -556,6 +600,33 @@ const Reports = () => {
     }));
   }, [disciplineReport]);
 
+  const latePaymentReconciliation = useMemo(() => {
+    const metricsCount = Number(disciplineReport?.late_payment_sample_metrics?.late_payment_count || 0);
+    const metricsTotal = Number(disciplineReport?.late_payment_sample_metrics?.late_payment_total || 0);
+    const rowCount = (disciplineReport?.late_payments || []).length;
+    const rowTotal = (disciplineReport?.late_payments || []).reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0);
+
+    const countDiff = metricsCount - rowCount;
+    const totalDiff = metricsTotal - rowTotal;
+    const countMatch = countDiff === 0;
+    const totalMatch = Math.abs(totalDiff) < 0.0001;
+
+    return {
+      metricsCount,
+      metricsTotal,
+      rowCount,
+      rowTotal,
+      countDiff,
+      totalDiff,
+      countMatch,
+      totalMatch,
+      isMatch: countMatch && totalMatch,
+      fullCount: Number(disciplineReport?.late_payment_metrics?.late_payment_count || 0),
+      fullTotal: Number(disciplineReport?.late_payment_metrics?.late_payment_total || 0),
+      scope: disciplineReport?.late_payment_scope || null,
+    };
+  }, [disciplineReport]);
+
   const defaulterByLocation: DefaulterByLocation[] = useMemo(() => {
     const grouped: Record<string, DefaulterByLocation> = {};
     defaulters.forEach(d => {
@@ -657,6 +728,31 @@ const Reports = () => {
     const growthRate = previousTotal > 0 ? ((totalAmount - previousTotal) / previousTotal) * 100 : null;
     return { totalAmount, count, uniqueContributors, growthRate };
   }, [contributionsData, dateRange.endDate, dateRange.startDate, transactions, selectedCaseIds]);
+
+  const arrearsAnalytics = useMemo(() => {
+    const filtered = transactions.filter((tx) => {
+      if (!isCountableTransaction(tx) || !isArrearsTransaction(tx)) return false;
+      if (selectedCaseIds.length > 0 && (!tx.case_id || !selectedCaseIds.includes(tx.case_id))) return false;
+      const txDate = new Date(String(tx.created_at));
+      return txDate >= dateRange.startDate && txDate <= dateRange.endDate;
+    });
+    return {
+      count: filtered.length,
+      total: filtered.reduce((sum, tx) => sum + Math.abs(Number(tx.amount || 0)), 0),
+    };
+  }, [transactions, selectedCaseIds, dateRange.startDate, dateRange.endDate]);
+
+  const penaltyAnalytics = useMemo(() => {
+    const filtered = transactions.filter((tx) => {
+      if (!isCountableTransaction(tx) || !isPenaltyTransaction(tx)) return false;
+      const txDate = new Date(String(tx.created_at));
+      return txDate >= dateRange.startDate && txDate <= dateRange.endDate;
+    });
+    return {
+      count: filtered.length,
+      total: filtered.reduce((sum, tx) => sum + Math.abs(Number(tx.amount || 0)), 0),
+    };
+  }, [transactions, dateRange.startDate, dateRange.endDate]);
 
   const transactionTypeOptions = useMemo(() => {
     return Array.from(new Set(transactions.map((tx) => tx.transaction_type).filter(Boolean))).sort();
@@ -1023,6 +1119,88 @@ const Reports = () => {
                 </CardContent>
               </Card>
             </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Arrears Collected (Default Account)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">KES {arrearsAnalytics.total.toLocaleString()}</div>
+                  <p className="text-xs text-muted-foreground">{arrearsAnalytics.count.toLocaleString()} arrears transactions in range</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Reinstatement Penalties Collected</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">KES {penaltyAnalytics.total.toLocaleString()}</div>
+                  <p className="text-xs text-muted-foreground">{penaltyAnalytics.count.toLocaleString()} penalty transactions in range</p>
+                </CardContent>
+              </Card>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Transaction Category Legend</CardTitle>
+                <CardDescription>How collections are categorized in analytics and exports.</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground space-y-1">
+                <p><span className="font-semibold text-foreground">Case payments:</span> `contribution`, `case_wallet_deduction`</p>
+                <p><span className="font-semibold text-foreground">Late/default-account payments:</span> `arrears`</p>
+                <p><span className="font-semibold text-foreground">Reinstatement penalty:</span> `penalty`</p>
+              </CardContent>
+            </Card>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Late Payments (Count)</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.late_payment_metrics?.late_payment_count || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Late Payments (Total)</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">KES {Number(disciplineReport?.late_payment_metrics?.late_payment_total || 0).toLocaleString()}</div></CardContent>
+              </Card>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Late Payment Reconciliation</CardTitle>
+                <CardDescription>Checks sampled API metrics against sampled detailed rows (same scope).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground">Count Match</div>
+                    <div className={`text-xl font-bold ${latePaymentReconciliation.countMatch ? 'text-green-700' : 'text-red-700'}`}>
+                      {latePaymentReconciliation.countMatch ? 'MATCH' : 'MISMATCH'}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Sample metrics: {latePaymentReconciliation.metricsCount.toLocaleString()} | Rows: {latePaymentReconciliation.rowCount.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground">Amount Match</div>
+                    <div className={`text-xl font-bold ${latePaymentReconciliation.totalMatch ? 'text-green-700' : 'text-red-700'}`}>
+                      {latePaymentReconciliation.totalMatch ? 'MATCH' : 'MISMATCH'}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Sample metrics: KES {latePaymentReconciliation.metricsTotal.toLocaleString()} | Rows: KES {latePaymentReconciliation.rowTotal.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground">Delta (Metrics - Rows)</div>
+                    <div className={`text-xl font-bold ${latePaymentReconciliation.isMatch ? 'text-green-700' : 'text-red-700'}`}>
+                      KES {latePaymentReconciliation.totalDiff.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Count delta: {latePaymentReconciliation.countDiff.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 text-xs text-muted-foreground">
+                  Full range total: {latePaymentReconciliation.fullCount.toLocaleString()} rows, KES {latePaymentReconciliation.fullTotal.toLocaleString()}
+                  {latePaymentReconciliation.scope?.sample_truncated ? ` (sample limited to ${latePaymentReconciliation.scope.row_limit.toLocaleString()} rows)` : ''}
+                </div>
+              </CardContent>
+            </Card>
 
             <ContributionTrendChart 
               data={contributionTrendData}
@@ -1565,6 +1743,56 @@ const Reports = () => {
                     </TableBody>
                   </Table>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Late Payments (Default Account)</CardTitle>
+                  <CardDescription>Closed-case settlements collected as arrears/default-account entries.</CardDescription>
+                  {disciplineReport?.late_payment_scope?.sample_truncated && (
+                    <p className="mt-1 text-xs text-amber-700">
+                      Showing latest {disciplineReport.late_payment_scope.sampled_row_count.toLocaleString()} of {disciplineReport.late_payment_scope.full_row_count.toLocaleString()} rows.
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleExportXlsx('discipline_late_payments', (disciplineReport?.late_payments || []) as unknown as Record<string, unknown>[], disciplineLatePaymentHeaders)}>
+                    <Download className="h-4 w-4 mr-2" />Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleExportCsv('discipline_late_payments', (disciplineReport?.late_payments || []) as unknown as Record<string, unknown>[], disciplineLatePaymentHeaders)}>
+                    <FileText className="h-4 w-4 mr-2" />CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Case</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(disciplineReport?.late_payments || []).length === 0 ? (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No late payments found.</TableCell></TableRow>
+                    ) : (
+                      (disciplineReport?.late_payments || []).slice(0, 300).map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{format(new Date(row.created_at), 'MMM dd, yyyy HH:mm')}</TableCell>
+                          <TableCell>#{row.member_number || '-'} {row.member_name || '-'}</TableCell>
+                          <TableCell className="capitalize">{String(row.member_status || '-').replace(/_/g, ' ')}</TableCell>
+                          <TableCell>{row.case_number || '-'}</TableCell>
+                          <TableCell className="text-right font-semibold">KES {Number(row.amount || 0).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
 
