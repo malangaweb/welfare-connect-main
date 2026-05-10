@@ -148,16 +148,20 @@ serve(async (req) => {
       throw txError;
     }
 
-    const { data: activeCases, error: casesError } = await supabase
+    const { data: allCases, error: casesError } = await supabase
       .from("cases")
       .select("id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date")
-      .or("is_active.eq.true,is_finalized.eq.true");
+      .order("created_at", { ascending: false })
+      .limit(1000);
 
     if (casesError) {
       throw casesError;
     }
 
-    const caseIds = (activeCases || []).map((c) => c.id);
+    const payableCandidates = (allCases || []).filter((c: any) =>
+      Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date),
+    );
+    const caseIds = payableCandidates.map((c) => c.id);
     let paidCaseIds = new Set<string>();
 
     if (caseIds.length > 0) {
@@ -199,10 +203,10 @@ serve(async (req) => {
       );
     }
 
-    const activeCasesSummary = (activeCases || []).map((c) => ({
+    const activeCasesSummary = payableCandidates.map((c) => ({
       ...c,
       paid: paidCaseIds.has(String(c.id)),
-      late_payment: Boolean(c.is_finalized),
+      late_payment: Boolean(!c.is_active || c.is_finalized),
     }));
 
     return jsonResponse(200, {

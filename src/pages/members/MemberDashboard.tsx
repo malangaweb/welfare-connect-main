@@ -11,7 +11,7 @@ import { memberLinks, memberLogout } from "./memberLinks";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
 import { getAppToken, invokeWithAppToken } from "@/lib/appAuth";
 import { walletRowDelta } from "@/lib/walletEffect";
@@ -49,9 +49,15 @@ const MemberDashboard = () => {
   const [pinData, setPinData] = useState({ oldPin: "", newPin: "", confirmPin: "" });
   const [isChangingPin, setIsChangingPin] = useState(false);
   const [payToCaseOpen, setPayToCaseOpen] = useState(false);
-  const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [isPayingCase, setIsPayingCase] = useState(false);
   const navigate = useNavigate();
+  const payableCases = activeCasesSummary.filter((c) => !c.paid);
+  const selectedPayableCases = payableCases.filter((c) => selectedCaseIds.includes(c.id));
+  const selectedTotalRequired = selectedPayableCases.reduce(
+    (sum, c) => sum + Math.max(0, Number(c.contribution_per_member) || 0),
+    0,
+  );
 
   const fetchData = async () => {
     const member_id = localStorage.getItem("member_member_id");
@@ -257,48 +263,40 @@ const MemberDashboard = () => {
 
   const handlePayToCase = async () => {
     if (!member?.id) return;
-    if (!selectedCaseId) {
+    if (selectedCaseIds.length === 0) {
       toast({
         variant: "destructive",
-        title: "Select case",
-        description: "Choose a case to pay first.",
+        title: "Select cases",
+        description: "Choose one or more cases to pay first.",
       });
       return;
     }
 
-    const selectedCase = activeCasesSummary.find((c) => c.id === selectedCaseId);
-    if (!selectedCase) {
+    const selectedCases = payableCases.filter((c) => selectedCaseIds.includes(c.id));
+    if (selectedCases.length === 0) {
       toast({
         variant: "destructive",
-        title: "Case not found",
-        description: "Please reselect case and try again.",
+        title: "Cases not found",
+        description: "Please reselect cases and try again.",
       });
       return;
     }
 
-    if (selectedCase.paid) {
-      toast({
-        title: "Already paid",
-        description: `You already paid case #${selectedCase.case_number}.`,
-      });
-      return;
-    }
-
-    const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
-    if (requiredAmount <= 0) {
+    const invalidAmountCases = selectedCases.filter((c) => (Number(c.contribution_per_member) || 0) <= 0);
+    if (invalidAmountCases.length > 0) {
       toast({
         variant: "destructive",
         title: "Invalid case amount",
-        description: "This case has no valid contribution amount.",
+        description: `Case(s) ${invalidAmountCases.map((c) => `#${c.case_number}`).join(", ")} have no valid contribution amount.`,
       });
       return;
     }
 
-    if (walletBalance < requiredAmount) {
+    if (walletBalance < selectedTotalRequired) {
       toast({
         variant: "destructive",
         title: "Insufficient funds",
-        description: `Required KES ${requiredAmount.toLocaleString()}, but your wallet has KES ${walletBalance.toLocaleString()}.`,
+        description: `Required KES ${selectedTotalRequired.toLocaleString()}, but your wallet has KES ${walletBalance.toLocaleString()}.`,
       });
       return;
     }
@@ -308,9 +306,9 @@ const MemberDashboard = () => {
 
       const { data: existingPayment, error: checkError } = await supabase
         .from("transactions")
-        .select("status, amount, transaction_type")
+        .select("case_id, status, amount, transaction_type")
         .eq("member_id", member.id)
-        .eq("case_id", selectedCaseId)
+        .in("case_id", selectedCaseIds)
         .in("transaction_type", [
           "contribution",
           "case_wallet_deduction",
@@ -321,43 +319,51 @@ const MemberDashboard = () => {
 
       if (checkError) throw checkError;
 
-      const netPaid = (existingPayment || []).reduce((sum, tx) => {
-        if (tx.status && tx.status !== "completed") return sum;
+      const paidByCase = new Map<string, number>();
+      (existingPayment || []).forEach((tx) => {
+        if (tx.status && tx.status !== "completed") return;
+        const caseId = String(tx.case_id || "");
+        if (!caseId) return;
         const txType = String(tx.transaction_type || "");
         const amount = Number(tx.amount) || 0;
+        const current = paidByCase.get(caseId) || 0;
         if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
-          return sum + Math.abs(amount);
+          paidByCase.set(caseId, current + Math.abs(amount));
+        } else if (txType === "contribution_refund" || txType === "case_wallet_refund") {
+          paidByCase.set(caseId, current - Math.abs(amount));
         }
-        if (txType === "contribution_refund" || txType === "case_wallet_refund") {
-          return sum - Math.abs(amount);
-        }
-        return sum;
-      }, 0);
-      const isAlreadyPaid = netPaid > 0;
-      if (isAlreadyPaid) {
+      });
+
+      const alreadyPaidCases = selectedCases.filter((c) => (paidByCase.get(c.id) || 0) > 0);
+      if (alreadyPaidCases.length > 0) {
         toast({
           title: "Already paid",
-          description: `You already paid case #${selectedCase.case_number}.`,
+          description: `Already paid: ${alreadyPaidCases.map((c) => `#${c.case_number}`).join(", ")}.`,
         });
         return;
       }
 
-      const isLatePayment = Boolean(selectedCase.is_finalized || selectedCase.late_payment);
-      const { error: insertError } = await supabase.from("transactions").insert({
-        member_id: member.id,
-        case_id: selectedCaseId,
-        amount: requiredAmount,
-        transaction_type: isLatePayment ? "arrears" : "case_wallet_deduction",
-        status: "completed",
-        description: isLatePayment
-          ? `Late case payment (default account) for case #${selectedCase.case_number} (member portal)`
-          : `Case wallet deduction for case #${selectedCase.case_number} (member portal)`,
-        metadata: {
-          source: "member_portal_pay_to_case",
-          late_case_payment: isLatePayment,
-          paid_case_number: selectedCase.case_number,
-        },
-      } as any);
+      const rows = selectedCases.map((selectedCase) => {
+        const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
+        const isLatePayment = Boolean(selectedCase.is_finalized || selectedCase.late_payment);
+        return {
+          member_id: member.id,
+          case_id: selectedCase.id,
+          amount: requiredAmount,
+          transaction_type: isLatePayment ? "arrears" : "case_wallet_deduction",
+          status: "completed",
+          description: isLatePayment
+            ? `Late case payment (default account) for case #${selectedCase.case_number} (member portal)`
+            : `Case wallet deduction for case #${selectedCase.case_number} (member portal)`,
+          metadata: {
+            source: "member_portal_pay_to_case",
+            late_case_payment: isLatePayment,
+            paid_case_number: selectedCase.case_number,
+          },
+        };
+      });
+
+      const { error: insertError } = await supabase.from("transactions").insert(rows as any);
 
       if (insertError) {
         const maybeCode = (insertError as { code?: string }).code;
@@ -378,13 +384,11 @@ const MemberDashboard = () => {
 
       toast({
         title: "Payment successful",
-        description: isLatePayment
-          ? `KES ${requiredAmount.toLocaleString()} paid late to closed case #${selectedCase.case_number}.`
-          : `KES ${requiredAmount.toLocaleString()} paid to case #${selectedCase.case_number}.`,
+        description: `Paid ${selectedCases.length} case(s), total KES ${selectedTotalRequired.toLocaleString()}. Closed-case payments were recorded as late payments in default account.`,
       });
 
       setPayToCaseOpen(false);
-      setSelectedCaseId("");
+      setSelectedCaseIds([]);
       await fetchData();
     } catch (error) {
       console.error("Pay to case error:", error);
@@ -842,47 +846,46 @@ const MemberDashboard = () => {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label>Select Case</Label>
-                      <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={activeCasesSummary.length > 0 ? "Choose case" : "No open cases"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activeCasesSummary.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              #{c.case_number} - KES {Number(c.contribution_per_member || 0).toLocaleString()}
-                              {c.paid ? " (Already paid)" : c.late_payment ? " (Closed - Late Payment)" : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="max-h-56 overflow-auto rounded-md border p-2 space-y-2">
+                        {payableCases.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No payable cases</p>
+                        ) : (
+                          payableCases.map((c) => (
+                            <label key={c.id} className="flex items-start gap-2 text-sm">
+                              <Checkbox
+                                checked={selectedCaseIds.includes(c.id)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedCaseIds((prev) => {
+                                    if (checked) return prev.includes(c.id) ? prev : [...prev, c.id];
+                                    return prev.filter((id) => id !== c.id);
+                                  });
+                                }}
+                              />
+                              <span>
+                                #{c.case_number} - KES {Number(c.contribution_per_member || 0).toLocaleString()}
+                                {c.late_payment ? " (Closed - Late Payment)" : ""}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
                     </div>
 
-                    {selectedCaseId && (
+                    {selectedCaseIds.length > 0 && (
                       <div className="rounded-md border p-3 text-sm">
-                        {(() => {
-                          const selectedCase = activeCasesSummary.find((c) => c.id === selectedCaseId);
-                          if (!selectedCase) return null;
-
-                          const requiredAmount = Number(selectedCase.contribution_per_member || 0);
-                          const shortfall = Math.max(requiredAmount - walletBalance, 0);
-
-                          return (
-                            <div className="space-y-1">
-                              <p>Required amount: <strong>KES {requiredAmount.toLocaleString()}</strong></p>
-                              <p>Wallet balance: <strong>KES {walletBalance.toLocaleString()}</strong></p>
-                              {selectedCase.late_payment && (
-                                <p className="text-amber-700">Closed case payment: this will be recorded in default account as late payment.</p>
-                              )}
-                              {selectedCase.paid ? (
-                                <p className="text-amber-700">Already paid for this case.</p>
-                              ) : shortfall > 0 ? (
-                                <p className="text-red-600">Insufficient balance. Add KES {shortfall.toLocaleString()} more.</p>
-                              ) : (
-                                <p className="text-green-700">You have enough balance to pay this case.</p>
-                              )}
-                            </div>
-                          );
-                        })()}
+                        <div className="space-y-1">
+                          <p>Selected cases: <strong>{selectedPayableCases.length}</strong></p>
+                          <p>Total required amount: <strong>KES {selectedTotalRequired.toLocaleString()}</strong></p>
+                          <p>Wallet balance: <strong>KES {walletBalance.toLocaleString()}</strong></p>
+                          {selectedPayableCases.some((c) => c.late_payment) && (
+                            <p className="text-amber-700">Includes closed case payments: these will be recorded in default account as late payments.</p>
+                          )}
+                          {walletBalance < selectedTotalRequired ? (
+                            <p className="text-red-600">Insufficient balance. Add KES {(selectedTotalRequired - walletBalance).toLocaleString()} more.</p>
+                          ) : (
+                            <p className="text-green-700">You have enough balance to pay selected cases.</p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -892,7 +895,7 @@ const MemberDashboard = () => {
                       variant="outline"
                       onClick={() => {
                         setPayToCaseOpen(false);
-                        setSelectedCaseId("");
+                        setSelectedCaseIds([]);
                       }}
                       disabled={isPayingCase}
                     >
@@ -900,7 +903,7 @@ const MemberDashboard = () => {
                     </Button>
                     <Button
                       onClick={handlePayToCase}
-                      disabled={!selectedCaseId || isPayingCase || activeCasesSummary.length === 0}
+                      disabled={selectedCaseIds.length === 0 || isPayingCase || payableCases.length === 0}
                     >
                       {isPayingCase ? "Paying..." : "Pay"}
                     </Button>
