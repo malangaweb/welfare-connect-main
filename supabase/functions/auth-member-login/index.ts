@@ -95,10 +95,6 @@ serve(async (req) => {
       return jsonResponse(401, { error: "Invalid member credentials" });
     }
 
-    if (!member.is_active) {
-      return jsonResponse(403, { error: "Member account is inactive" });
-    }
-
     const suppliedPhone = normalizePhone(String(phone_number));
     const storedPhone = normalizePhone(String(member.phone_number || ""));
     if (!storedPhone || suppliedPhone !== storedPhone) {
