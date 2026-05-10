@@ -39,6 +39,7 @@ serve(async (req) => {
       { data: transitions, error: transitionsErr },
       { data: reinstatements, error: reinstatementsErr },
       { data: unpaidRows, error: unpaidErr },
+      { data: defaultStreakRows, error: defaultStreakErr },
     ] = await Promise.all([
       supabase.from('v_member_status_distribution').select('status, member_count'),
       supabase.from('v_member_discipline_metrics').select('*').limit(1).maybeSingle(),
@@ -59,6 +60,11 @@ serve(async (req) => {
         .select('*')
         .order('unpaid_total', { ascending: false })
         .limit(500),
+      supabase
+        .from('member_default_streaks')
+        .select('member_id, current_streak, last_defaulted, updated_at, last_case_id')
+        .order('updated_at', { ascending: false })
+        .limit(1000),
     ]);
 
     if (statusErr) throw statusErr;
@@ -66,11 +72,13 @@ serve(async (req) => {
     if (transitionsErr) throw transitionsErr;
     if (reinstatementsErr) throw reinstatementsErr;
     if (unpaidErr) throw unpaidErr;
+    if (defaultStreakErr) throw defaultStreakErr;
 
     const memberIds = Array.from(new Set([
       ...(transitions || []).map((row: any) => row.member_id).filter(Boolean),
       ...(reinstatements || []).map((row: any) => row.member_id).filter(Boolean),
       ...(unpaidRows || []).map((row: any) => row.member_id).filter(Boolean),
+      ...(defaultStreakRows || []).map((row: any) => row.member_id).filter(Boolean),
     ]));
 
     const memberLookup = new Map<string, { member_number: string; name: string; status: string }>();
@@ -110,9 +118,24 @@ serve(async (req) => {
       member_name: memberLookup.get(row.member_id)?.name || null,
     }));
 
+    const defaultStreaksWithMember = (defaultStreakRows || []).map((row: any) => ({
+      ...row,
+      member_number: memberLookup.get(row.member_id)?.member_number || null,
+      member_name: memberLookup.get(row.member_id)?.name || null,
+      member_status: memberLookup.get(row.member_id)?.status || null,
+    }));
+
+    const default_outcomes = {
+      streak_0: defaultStreaksWithMember.filter((row: any) => toNum(row.current_streak) === 0).length,
+      streak_1: defaultStreaksWithMember.filter((row: any) => toNum(row.current_streak) === 1).length,
+      streak_ge_2: defaultStreaksWithMember.filter((row: any) => toNum(row.current_streak) >= 2).length,
+      members_tracked: defaultStreaksWithMember.length,
+    };
+
     return jsonResponse(200, {
       days,
       status_distribution,
+      default_outcomes,
       metrics: {
         active_count: toNum((metricsRow as any)?.active_count),
         inactive_count: toNum((metricsRow as any)?.inactive_count),
@@ -125,6 +148,7 @@ serve(async (req) => {
       transitions: transitionsWithMember,
       reinstatements: reinstatementsWithMember,
       unpaid_obligations: unpaidRows || [],
+      default_streaks: defaultStreaksWithMember,
     });
   } catch (e) {
     console.error("api-discipline-report error:", e);

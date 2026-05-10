@@ -33,7 +33,7 @@ async function resolveMember(
   for (const selector of selectors) {
     const byId = await supabase
       .from("members")
-      .select("id, member_number, name, wallet_balance, is_active")
+      .select("id, member_number, name, wallet_balance, is_active, status")
       .eq("id", selector)
       .maybeSingle();
 
@@ -46,7 +46,7 @@ async function resolveMember(
 
     const byMemberNumber = await supabase
       .from("members")
-      .select("id, member_number, name, wallet_balance, is_active")
+      .select("id, member_number, name, wallet_balance, is_active, status")
       .eq("member_number", selector)
       .maybeSingle();
 
@@ -130,6 +130,13 @@ serve(async (req) => {
 
     const resolvedMemberId = String(member.id);
 
+    const { data: streakRow, error: streakError } = await supabase
+      .from("member_default_streaks")
+      .select("current_streak, last_defaulted, updated_at")
+      .eq("member_id", resolvedMemberId)
+      .maybeSingle();
+    if (streakError) throw streakError;
+
     const { data: transactions, error: txError } = await supabase
       .from("transactions")
       .select("id, case_id, amount, transaction_type, description, created_at, status, mpesa_reference")
@@ -144,8 +151,7 @@ serve(async (req) => {
     const { data: activeCases, error: casesError } = await supabase
       .from("cases")
       .select("id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date")
-      .eq("is_active", true)
-      .eq("is_finalized", false);
+      .or("is_active.eq.true,is_finalized.eq.true");
 
     if (casesError) {
       throw casesError;
@@ -163,6 +169,7 @@ serve(async (req) => {
         .in("transaction_type", [
           "contribution",
           "case_wallet_deduction",
+          "arrears",
           "contribution_refund",
           "case_wallet_refund",
         ]);
@@ -176,7 +183,7 @@ serve(async (req) => {
           const txType = String(r.transaction_type || "");
           const amount = Number(r.amount) || 0;
           const current = netByCase.get(caseId) || 0;
-          if (txType === "contribution" || txType === "case_wallet_deduction") {
+          if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
             netByCase.set(caseId, current + Math.abs(amount));
             return;
           }
@@ -195,6 +202,7 @@ serve(async (req) => {
     const activeCasesSummary = (activeCases || []).map((c) => ({
       ...c,
       paid: paidCaseIds.has(String(c.id)),
+      late_payment: Boolean(c.is_finalized),
     }));
 
     return jsonResponse(200, {
@@ -204,8 +212,14 @@ serve(async (req) => {
         name: member.name,
         wallet_balance: member.wallet_balance,
         is_active: member.is_active,
+        status: (member as any).status || null,
       },
       wallet_balance: member.wallet_balance,
+      discipline: {
+        consecutive_default_streak: Number((streakRow as any)?.current_streak || 0),
+        last_case_defaulted: Boolean((streakRow as any)?.last_defaulted || false),
+        last_streak_updated_at: (streakRow as any)?.updated_at || null,
+      },
       recent_transactions: transactions || [],
       active_cases_summary: activeCasesSummary,
     });

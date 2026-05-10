@@ -123,10 +123,26 @@ interface DisciplineUnpaidObligation {
 interface DisciplineReportResponse {
   days: number;
   status_distribution: Record<string, number>;
+  default_outcomes?: {
+    streak_0: number;
+    streak_1: number;
+    streak_ge_2: number;
+    members_tracked: number;
+  };
   metrics: DisciplineMetrics;
   transitions: DisciplineTransition[];
   reinstatements: DisciplineReinstatement[];
   unpaid_obligations: DisciplineUnpaidObligation[];
+  default_streaks?: Array<{
+    member_id: string;
+    member_number: string | null;
+    member_name: string | null;
+    member_status: string | null;
+    current_streak: number;
+    last_defaulted: boolean;
+    updated_at: string;
+    last_case_id: string | null;
+  }>;
 }
 
 interface HeaderMap {
@@ -226,6 +242,15 @@ const disciplineUnpaidHeaders: HeaderMap[] = [
   { key: 'status', label: 'Status' },
   { key: 'unpaid_case_count', label: 'Unpaid Cases' },
   { key: 'unpaid_total', label: 'Unpaid Total (KES)' },
+];
+
+const disciplineDefaultStreakHeaders: HeaderMap[] = [
+  { key: 'member_number', label: 'Member #' },
+  { key: 'member_name', label: 'Name' },
+  { key: 'member_status', label: 'Current Status' },
+  { key: 'current_streak', label: 'Consecutive Defaults' },
+  { key: 'last_defaulted', label: 'Defaulted In Last Finalized Case' },
+  { key: 'updated_at', label: 'Last Evaluated At' },
 ];
 
 const Reports = () => {
@@ -1457,8 +1482,8 @@ const Reports = () => {
                             {Number(m.walletBalance || 0).toLocaleString()}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={m.isActive ? 'default' : 'secondary'} className={m.isActive ? 'bg-primary/15 text-primary hover:bg-primary/15' : 'bg-muted text-muted-foreground hover:bg-muted'}>
-                              {m.isActive ? 'Active' : 'Inactive'}
+                            <Badge variant="secondary" className="capitalize bg-muted text-foreground hover:bg-muted">
+                              {String(m.status || (m.isActive ? 'active' : 'inactive')).replace(/_/g, ' ')}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-semibold">{Number(m.totalContributions || 0).toLocaleString()}</TableCell>
@@ -1495,6 +1520,24 @@ const Reports = () => {
                 <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.metrics?.inactive_count || 0).toLocaleString()}</div></CardContent>
               </Card>
             </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Streak 0 Members</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.default_outcomes?.streak_0 || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Streak 1 Members</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.default_outcomes?.streak_1 || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Streak 2+ Members</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.default_outcomes?.streak_ge_2 || 0).toLocaleString()}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Tracked Members</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{Number(disciplineReport?.default_outcomes?.members_tracked || 0).toLocaleString()}</div></CardContent>
+              </Card>
+            </div>
 
             <Card>
               <CardHeader>
@@ -1522,6 +1565,51 @@ const Reports = () => {
                     </TableBody>
                   </Table>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Consecutive Default Outcomes</CardTitle>
+                  <CardDescription>Current streak counters derived from finalized-case evaluations.</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleExportXlsx('discipline_default_streaks', (disciplineReport?.default_streaks || []) as unknown as Record<string, unknown>[], disciplineDefaultStreakHeaders)}>
+                    <Download className="h-4 w-4 mr-2" />Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleExportCsv('discipline_default_streaks', (disciplineReport?.default_streaks || []) as unknown as Record<string, unknown>[], disciplineDefaultStreakHeaders)}>
+                    <FileText className="h-4 w-4 mr-2" />CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Consecutive Defaults</TableHead>
+                      <TableHead>Last Finalized Case Default</TableHead>
+                      <TableHead>Last Evaluated</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(disciplineReport?.default_streaks || []).length === 0 ? (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No default streak records found.</TableCell></TableRow>
+                    ) : (
+                      (disciplineReport?.default_streaks || []).slice(0, 300).map((row) => (
+                        <TableRow key={row.member_id}>
+                          <TableCell>#{row.member_number || '-'} {row.member_name || '-'}</TableCell>
+                          <TableCell className="capitalize">{String(row.member_status || '-').replace(/_/g, ' ')}</TableCell>
+                          <TableCell className="text-right font-semibold">{Number(row.current_streak || 0).toLocaleString()}</TableCell>
+                          <TableCell>{row.last_defaulted ? 'Yes' : 'No'}</TableCell>
+                          <TableCell>{format(new Date(row.updated_at), 'MMM dd, yyyy HH:mm')}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
 

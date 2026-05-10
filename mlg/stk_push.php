@@ -12,6 +12,7 @@ try {
     $role = strtolower(trim((string)($claims['role'] ?? '')));
 
     $body = mlg_read_json_body();
+    $diagMode = isset($body['diag']) && ($body['diag'] === true || $body['diag'] === 1 || $body['diag'] === '1' || $body['diag'] === 'true');
 
     $financeRoles = ['super_admin', 'treasurer'];
     if ($role !== 'member' && !in_array($role, $financeRoles, true)) {
@@ -47,6 +48,45 @@ try {
     $shortcode = trim((string)(getenv('MPESA_SHORTCODE') ?: '174379'));
     if ($passkey === '' || $shortcode === '') {
         mlg_json_response(500, ['error' => 'Missing MPESA_PASSKEY or MPESA_SHORTCODE']);
+    }
+
+    if ($diagMode) {
+        $env = strtolower(trim((string)(getenv('MPESA_ENV') ?: 'production')));
+        $consumerKey = trim((string)(getenv('MPESA_CONSUMER_KEY') ?: ''));
+        $consumerSecret = trim((string)(getenv('MPESA_CONSUMER_SECRET') ?: ''));
+        $callbackUrl = trim((string)(getenv('MPESA_STK_CALLBACK_URL') ?: ''));
+
+        $safeHash = static function (string $value): ?string {
+            if ($value === '') return null;
+            return substr(hash('sha256', $value), 0, 12);
+        };
+        $safePrefix = static function (string $value, int $len = 6): ?string {
+            if ($value === '') return null;
+            return substr($value, 0, min(strlen($value), $len));
+        };
+
+        mlg_json_response(200, [
+            'success' => true,
+            'diag' => true,
+            'config' => [
+                'mpesa_env' => $env,
+                'mpesa_base_url' => mlg_mpesa_base_url(),
+                'shortcode' => $shortcode,
+                'callback_url_set' => $callbackUrl !== '',
+                'consumer_key_len' => strlen($consumerKey),
+                'consumer_secret_len' => strlen($consumerSecret),
+                'passkey_len' => strlen($passkey),
+                'consumer_key_prefix' => $safePrefix($consumerKey),
+                'consumer_secret_prefix' => $safePrefix($consumerSecret),
+                'consumer_key_sha256_12' => $safeHash($consumerKey),
+                'consumer_secret_sha256_12' => $safeHash($consumerSecret),
+                'passkey_sha256_12' => $safeHash($passkey),
+            ],
+            'request_context' => [
+                'member_id_used' => $memberId,
+                'role' => $role,
+            ],
+        ]);
     }
 
     $timestamp = mlg_mpesa_timestamp();

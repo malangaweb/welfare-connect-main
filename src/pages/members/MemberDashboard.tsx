@@ -21,7 +21,10 @@ type ActiveCaseSummary = {
   case_number: string;
   case_type: string;
   contribution_per_member: number;
+  is_active?: boolean;
+  is_finalized?: boolean;
   paid: boolean;
+  late_payment?: boolean;
 };
 
 const MemberDashboard = () => {
@@ -311,6 +314,7 @@ const MemberDashboard = () => {
         .in("transaction_type", [
           "contribution",
           "case_wallet_deduction",
+          "arrears",
           "contribution_refund",
           "case_wallet_refund",
         ]);
@@ -321,7 +325,7 @@ const MemberDashboard = () => {
         if (tx.status && tx.status !== "completed") return sum;
         const txType = String(tx.transaction_type || "");
         const amount = Number(tx.amount) || 0;
-        if (txType === "contribution" || txType === "case_wallet_deduction") {
+        if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
           return sum + Math.abs(amount);
         }
         if (txType === "contribution_refund" || txType === "case_wallet_refund") {
@@ -338,15 +342,20 @@ const MemberDashboard = () => {
         return;
       }
 
+      const isLatePayment = Boolean(selectedCase.is_finalized || selectedCase.late_payment);
       const { error: insertError } = await supabase.from("transactions").insert({
         member_id: member.id,
         case_id: selectedCaseId,
         amount: requiredAmount,
-        transaction_type: "case_wallet_deduction",
+        transaction_type: isLatePayment ? "arrears" : "case_wallet_deduction",
         status: "completed",
-        description: `Case wallet deduction for case #${selectedCase.case_number} (member portal)`,
+        description: isLatePayment
+          ? `Late case payment (default account) for case #${selectedCase.case_number} (member portal)`
+          : `Case wallet deduction for case #${selectedCase.case_number} (member portal)`,
         metadata: {
           source: "member_portal_pay_to_case",
+          late_case_payment: isLatePayment,
+          paid_case_number: selectedCase.case_number,
         },
       } as any);
 
@@ -369,7 +378,9 @@ const MemberDashboard = () => {
 
       toast({
         title: "Payment successful",
-        description: `KES ${requiredAmount.toLocaleString()} paid to case #${selectedCase.case_number}.`,
+        description: isLatePayment
+          ? `KES ${requiredAmount.toLocaleString()} paid late to closed case #${selectedCase.case_number}.`
+          : `KES ${requiredAmount.toLocaleString()} paid to case #${selectedCase.case_number}.`,
       });
 
       setPayToCaseOpen(false);
@@ -558,7 +569,9 @@ const MemberDashboard = () => {
                   <User className="h-5 w-5 text-primary" />
                   Profile Information
                 </CardTitle>
-                <Badge variant="outline">{member.is_active ? "Active" : "Inactive"}</Badge>
+                <Badge variant="outline" className="capitalize">
+                  {String(member.status || (member.is_active ? "active" : "inactive")).replace(/_/g, " ")}
+                </Badge>
               </div>
               <CardDescription>Your personal information</CardDescription>
             </CardHeader>
@@ -623,6 +636,13 @@ const MemberDashboard = () => {
               <div className="text-sm text-muted-foreground mt-1 mb-4">
                 Last updated: {new Date().toLocaleDateString()}
               </div>
+
+              {String(member.status || "").toLowerCase() === "inactive" && (
+                <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                  Inactive due to default discipline. You can still settle case obligations (including closed cases) as late payments.
+                  Status is cleared only through reinstatement with KES 300 penalty.
+                </div>
+              )}
 
               <Dialog open={fundWalletOpen} onOpenChange={setFundWalletOpen}>
                 <DialogTrigger asChild>
@@ -830,7 +850,7 @@ const MemberDashboard = () => {
                           {activeCasesSummary.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
                               #{c.case_number} - KES {Number(c.contribution_per_member || 0).toLocaleString()}
-                              {c.paid ? " (Already paid)" : ""}
+                              {c.paid ? " (Already paid)" : c.late_payment ? " (Closed - Late Payment)" : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -850,6 +870,9 @@ const MemberDashboard = () => {
                             <div className="space-y-1">
                               <p>Required amount: <strong>KES {requiredAmount.toLocaleString()}</strong></p>
                               <p>Wallet balance: <strong>KES {walletBalance.toLocaleString()}</strong></p>
+                              {selectedCase.late_payment && (
+                                <p className="text-amber-700">Closed case payment: this will be recorded in default account as late payment.</p>
+                              )}
                               {selectedCase.paid ? (
                                 <p className="text-amber-700">Already paid for this case.</p>
                               ) : shortfall > 0 ? (
