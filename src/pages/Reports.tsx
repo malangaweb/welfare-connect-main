@@ -627,6 +627,45 @@ const Reports = () => {
     };
   }, [disciplineReport]);
 
+  const disciplineAccountReconciliation = useMemo(() => {
+    const days = Number(disciplineReport?.days || 180);
+    const fromTime = Date.now() - days * 24 * 60 * 60 * 1000;
+    const inScope = (tx: Transaction) => new Date(String(tx.created_at)).getTime() >= fromTime;
+    const successful = (tx: Transaction) => {
+      const s = String(tx.status || '').toLowerCase();
+      return s === '' || s === 'completed' || s === 'success';
+    };
+
+    const arrearsRows = transactions.filter((tx) => inScope(tx) && successful(tx) && isArrearsTransaction(tx));
+    const penaltyRows = transactions.filter((tx) => inScope(tx) && successful(tx) && isPenaltyTransaction(tx));
+
+    const arrearsLedgerCount = arrearsRows.length;
+    const arrearsLedgerTotal = arrearsRows.reduce((sum, tx) => sum + Math.abs(Number(tx.amount || 0)), 0);
+    const lateCount = Number(disciplineReport?.late_payment_metrics?.late_payment_count || 0);
+    const lateTotal = Number(disciplineReport?.late_payment_metrics?.late_payment_total || 0);
+
+    const penaltyLedgerCount = penaltyRows.length;
+    const penaltyLedgerTotal = penaltyRows.reduce((sum, tx) => sum + Math.abs(Number(tx.amount || 0)), 0);
+    const reinstatementCount = Number(disciplineReport?.metrics?.reinstatement_total || 0);
+    const reinstatementPenaltyTotal = Number(disciplineReport?.metrics?.reinstatement_penalty_total || 0);
+
+    return {
+      days,
+      arrearsLedgerCount,
+      arrearsLedgerTotal,
+      lateCount,
+      lateTotal,
+      arrearsCountDiff: arrearsLedgerCount - lateCount,
+      arrearsTotalDiff: arrearsLedgerTotal - lateTotal,
+      penaltyLedgerCount,
+      penaltyLedgerTotal,
+      reinstatementCount,
+      reinstatementPenaltyTotal,
+      penaltyCountDiff: penaltyLedgerCount - reinstatementCount,
+      penaltyTotalDiff: penaltyLedgerTotal - reinstatementPenaltyTotal,
+    };
+  }, [disciplineReport, transactions]);
+
   const defaulterByLocation: DefaulterByLocation[] = useMemo(() => {
     const grouped: Record<string, DefaulterByLocation> = {};
     defaulters.forEach(d => {
@@ -1743,6 +1782,50 @@ const Reports = () => {
                     </TableBody>
                   </Table>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Daily Reconciliation Widget</CardTitle>
+                <CardDescription>
+                  Finance cross-check for last {disciplineAccountReconciliation.days} day(s): account ledger totals vs discipline-rule metrics.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-md border p-4 space-y-2">
+                    <div className="font-semibold">Arrears Account vs Late Payments</div>
+                    <div className="text-sm text-muted-foreground">
+                      Ledger arrears: {disciplineAccountReconciliation.arrearsLedgerCount.toLocaleString()} tx, KES {disciplineAccountReconciliation.arrearsLedgerTotal.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Late payments metric: {disciplineAccountReconciliation.lateCount.toLocaleString()} tx, KES {disciplineAccountReconciliation.lateTotal.toLocaleString()}
+                    </div>
+                    <div className={`text-sm font-medium ${disciplineAccountReconciliation.arrearsCountDiff === 0 ? 'text-green-700' : 'text-amber-700'}`}>
+                      Count delta: {disciplineAccountReconciliation.arrearsCountDiff.toLocaleString()}
+                    </div>
+                    <div className={`text-sm font-medium ${Math.abs(disciplineAccountReconciliation.arrearsTotalDiff) < 0.0001 ? 'text-green-700' : 'text-amber-700'}`}>
+                      Amount delta: KES {disciplineAccountReconciliation.arrearsTotalDiff.toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border p-4 space-y-2">
+                    <div className="font-semibold">Penalty Account vs Reinstatements</div>
+                    <div className="text-sm text-muted-foreground">
+                      Ledger penalty: {disciplineAccountReconciliation.penaltyLedgerCount.toLocaleString()} tx, KES {disciplineAccountReconciliation.penaltyLedgerTotal.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Reinstatement metric: {disciplineAccountReconciliation.reinstatementCount.toLocaleString()} events, KES {disciplineAccountReconciliation.reinstatementPenaltyTotal.toLocaleString()}
+                    </div>
+                    <div className={`text-sm font-medium ${disciplineAccountReconciliation.penaltyCountDiff === 0 ? 'text-green-700' : 'text-amber-700'}`}>
+                      Count delta: {disciplineAccountReconciliation.penaltyCountDiff.toLocaleString()}
+                    </div>
+                    <div className={`text-sm font-medium ${Math.abs(disciplineAccountReconciliation.penaltyTotalDiff) < 0.0001 ? 'text-green-700' : 'text-amber-700'}`}>
+                      Amount delta: KES {disciplineAccountReconciliation.penaltyTotalDiff.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 

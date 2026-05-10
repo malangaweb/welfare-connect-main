@@ -19,6 +19,7 @@ const ArrearsAccount = () => {
         .from('transactions')
         .select('*')
         .eq('transaction_type', 'arrears')
+        .in('status', ['completed', 'success'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -27,12 +28,12 @@ const ArrearsAccount = () => {
         id: item.id,
         memberId: item.member_id,
         caseId: item.case_id,
-        amount: Number(item.amount),
-        transactionType: 'arrears',
-        mpesaReference: item.mpesa_reference,
-        createdAt: new Date(item.created_at),
-        description: item.description || 'Arrears deduction',
-      }));
+          amount: Number(item.amount),
+          transactionType: 'arrears',
+          mpesaReference: item.mpesa_reference,
+          createdAt: new Date(item.created_at),
+          description: item.description || (item.case_id ? 'Late case payment (default account)' : 'Arrears deduction'),
+        }));
 
       setTransactions(formattedData);
 

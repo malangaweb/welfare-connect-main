@@ -21,6 +21,7 @@ const PenaltyAccount = () => {
           .from('transactions')
           .select('*')
           .eq('transaction_type', 'penalty')
+          .in('status', ['completed', 'success'])
           .order('created_at', { ascending: false })) as { data: DbTransaction[] | null; error: any };
 
         if (error) throw error;
@@ -54,29 +55,6 @@ const PenaltyAccount = () => {
     fetchTransactions();
   }, []);
 
-  // For demo purposes, using mock data if needed
-  const mockTransactions: Transaction[] = [
-    {
-      id: '5',
-      memberId: '3',
-      amount: 1000,
-      transactionType: 'penalty',
-      createdAt: new Date('2023-11-10'),
-      description: 'Penalty fee for account reactivation - Michael Jones',
-    },
-    {
-      id: '6',
-      memberId: '4',
-      amount: 1000,
-      transactionType: 'penalty',
-      createdAt: new Date('2023-12-05'),
-      description: 'Penalty fee for account reactivation - Sarah Williams',
-    },
-  ];
-
-  // Use mock data if no real data is available yet
-  const displayTransactions = transactions.length > 0 ? transactions : mockTransactions;
-
   return (
     <div className="space-y-6">
       <AccountSummaryCard 
@@ -87,7 +65,7 @@ const PenaltyAccount = () => {
       />
       
       <AccountTransactionsList 
-        transactions={displayTransactions}
+        transactions={transactions}
         title="Penalty Fees"
       />
     </div>
