@@ -9,20 +9,32 @@ mlg_require_post();
 
 try {
     $claims = mlg_verify_app_jwt();
-    $role = strtolower(trim((string)($claims['role'] ?? '')));
-    $claimMemberId = trim((string)($claims['member_id'] ?? $claims['sub'] ?? ''));
+    $rawRole = trim((string)($claims['role'] ?? $claims['user_role'] ?? ''));
+    $role = strtolower(str_replace([' ', '-'], '_', $rawRole));
+    $claimMemberId = trim((string)(
+        $claims['member_id']
+        ?? $claims['memberId']
+        ?? $claims['sub']
+        ?? $claims['user_id']
+        ?? ''
+    ));
 
     $body = mlg_read_json_body();
     $diagMode = isset($body['diag']) && ($body['diag'] === true || $body['diag'] === 1 || $body['diag'] === '1' || $body['diag'] === 'true');
 
-    $financeRoles = ['super_admin', 'admin', 'treasurer', 'secretary'];
+    $financeRoles = ['super_admin', 'superadmin', 'admin', 'treasurer', 'secretary', 'finance'];
     // Backward-compatible fallback: older member tokens may not include an explicit role
     // but still contain member_id/sub claims.
     $isMemberLike = ($role === 'member') || ($role === '' && $claimMemberId !== '');
     $isFinanceRole = in_array($role, $financeRoles, true);
 
     if (!$isMemberLike && !$isFinanceRole) {
-        mlg_json_response(403, ['error' => 'Forbidden: insufficient role']);
+        mlg_json_response(403, [
+            'error' => 'Forbidden',
+            'details' => 'insufficient role',
+            'role' => $role,
+            'has_member_claim' => $claimMemberId !== '',
+        ]);
     }
 
     $memberId = $isMemberLike
