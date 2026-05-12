@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { clearAppToken } from '@/lib/appAuth';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -40,7 +41,7 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    clearAppToken();
     localStorage.removeItem('currentUser');
     navigate('/login');
   };

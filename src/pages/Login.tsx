@@ -5,7 +5,7 @@ import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { supabase } from '@/integrations/supabase/client';
-import { clearMemberSession, isAppTokenExpired, normalizePhone, setAppToken } from '@/lib/appAuth';
+import { clearAppToken, clearMemberSession, isAppTokenExpired, normalizePhone, setAppToken } from '@/lib/appAuth';
 
 // Define explicit types for the user row
 interface UserProfile {
@@ -71,9 +71,13 @@ const Login = () => {
           clearMemberSession();
         }
       } else {
-        if (token && currentUser) {
+        if (token && currentUser && !isAppTokenExpired(token)) {
           navigate('/dashboard', { replace: true });
           return;
+        }
+        if (token && isAppTokenExpired(token)) {
+          clearAppToken();
+          localStorage.removeItem('currentUser');
         }
       }
 

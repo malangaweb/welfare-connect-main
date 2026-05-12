@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { UserRole } from "@/lib/types";
 import { getCurrentUser, logAuthorizationFailure } from "@/lib/authorization";
 import { getAllowedRolesForPath, normalizeRole } from "@/lib/rbac";
+import { clearAppToken, isAppTokenExpired } from "@/lib/appAuth";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -37,6 +38,13 @@ export default function ProtectedRoute({
       if (!mounted) return;
 
       const token = localStorage.getItem('app_token') || localStorage.getItem('token');
+      if (token && isAppTokenExpired(token)) {
+        clearAppToken();
+        localStorage.removeItem('currentUser');
+        setIsAuthorized(false);
+        setLoading(false);
+        return;
+      }
       const hasAnyAuthSignal = !!session || !!token;
       if (!hasAnyAuthSignal) {
         setIsAuthorized(false);
@@ -82,6 +90,13 @@ export default function ProtectedRoute({
       const resolvedAllowedRoles = allowedRoles || getAllowedRolesForPath(window.location.pathname);
       if (!mounted) return;
       const token = localStorage.getItem('app_token') || localStorage.getItem('token');
+      if (token && isAppTokenExpired(token)) {
+        clearAppToken();
+        localStorage.removeItem('currentUser');
+        setIsAuthorized(false);
+        setLoading(false);
+        return;
+      }
       const hasAnyAuthSignal = !!session || !!token;
 
       if (!hasAnyAuthSignal) {

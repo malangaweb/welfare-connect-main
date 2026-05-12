@@ -141,54 +141,76 @@ function mlg_verify_app_jwt(): array
         throw new RuntimeException('Missing bearer token');
     }
 
-    $secret = getenv('APP_JWT_SECRET') ?: '';
+    $sanitizeSecret = static function (string $raw): string {
+        $secret = trim($raw);
+        if (strlen($secret) >= 2) {
+            $first = $secret[0];
+            $last = $secret[strlen($secret) - 1];
+            if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                $secret = substr($secret, 1, -1);
+            }
+        }
+        return trim($secret);
+    };
+
+    $verifyWithSecret = static function (string $jwt, string $secret): array {
+        $parts = explode('.', $jwt);
+        if (count($parts) !== 3) {
+            throw new RuntimeException('Invalid JWT format');
+        }
+
+        [$encodedHeader, $encodedPayload, $encodedSig] = $parts;
+        $headerJson = mlg_base64url_decode($encodedHeader);
+        $payloadJson = mlg_base64url_decode($encodedPayload);
+        $signature = mlg_base64url_decode($encodedSig);
+
+        if ($headerJson === '' || $payloadJson === '' || $signature === '') {
+            throw new RuntimeException('Invalid JWT encoding');
+        }
+
+        $header = json_decode($headerJson, true);
+        $payload = json_decode($payloadJson, true);
+        if (!is_array($header) || !is_array($payload)) {
+            throw new RuntimeException('Invalid JWT payload');
+        }
+
+        if (($header['alg'] ?? '') !== 'HS256') {
+            throw new RuntimeException('Unsupported JWT algorithm');
+        }
+
+        $signedPart = $encodedHeader . '.' . $encodedPayload;
+        $expected = hash_hmac('sha256', $signedPart, $secret, true);
+
+        if (!hash_equals($expected, $signature)) {
+            throw new RuntimeException('Signature verification failed');
+        }
+
+        $now = time();
+        $exp = isset($payload['exp']) ? (int)$payload['exp'] : 0;
+        if ($exp > 0 && $exp <= $now) {
+            throw new RuntimeException('Session expired');
+        }
+
+        return $payload;
+    };
+
+    $secretCandidates = [
+        getenv('APP_JWT_SECRET') ?: '',
+        getenv('APP_AUTH_SECRET') ?: '',
+    ];
+    $secretCandidates = array_values(array_unique(array_filter(array_map($sanitizeSecret, $secretCandidates), static fn($s) => $s !== '')));
     $localError = '';
 
-    if ($secret !== '') {
-        try {
-            $parts = explode('.', $token);
-            if (count($parts) !== 3) {
-                throw new RuntimeException('Invalid JWT format');
+    if (!empty($secretCandidates)) {
+        foreach ($secretCandidates as $secret) {
+            try {
+                return $verifyWithSecret($token, $secret);
+            } catch (Throwable $e) {
+                $localError = $e->getMessage();
             }
-
-            [$encodedHeader, $encodedPayload, $encodedSig] = $parts;
-            $headerJson = mlg_base64url_decode($encodedHeader);
-            $payloadJson = mlg_base64url_decode($encodedPayload);
-            $signature = mlg_base64url_decode($encodedSig);
-
-            if ($headerJson === '' || $payloadJson === '' || $signature === '') {
-                throw new RuntimeException('Invalid JWT encoding');
-            }
-
-            $header = json_decode($headerJson, true);
-            $payload = json_decode($payloadJson, true);
-            if (!is_array($header) || !is_array($payload)) {
-                throw new RuntimeException('Invalid JWT payload');
-            }
-
-            if (($header['alg'] ?? '') !== 'HS256') {
-                throw new RuntimeException('Unsupported JWT algorithm');
-            }
-
-            $signedPart = $encodedHeader . '.' . $encodedPayload;
-            $expected = hash_hmac('sha256', $signedPart, $secret, true);
-
-            if (!hash_equals($expected, $signature)) {
-                throw new RuntimeException('Signature verification failed');
-            }
-
-            $now = time();
-            $exp = isset($payload['exp']) ? (int)$payload['exp'] : 0;
-            if ($exp > 0 && $exp <= $now) {
-                throw new RuntimeException('Session expired');
-            }
-
-            return $payload;
-        } catch (Throwable $e) {
-            $localError = $e->getMessage();
         }
     } else {
-        $localError = 'APP_JWT_SECRET is not configured';
+        $localError = 'APP_JWT_SECRET/APP_AUTH_SECRET is not configured';
     }
 
     $remoteClaims = mlg_verify_app_token_via_supabase_functions($token);

@@ -116,6 +116,7 @@ const WalletFundingDialog = ({
           headers: {
             "Content-Type": "application/json",
             "x-app-token": appToken,
+            Authorization: `Bearer ${appToken}`,
           },
           body: JSON.stringify({
             memberId,
