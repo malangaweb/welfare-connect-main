@@ -47,12 +47,22 @@ const WalletCard = ({
           
           <div className="space-y-2">
             {showFundingOption && memberId && memberName && onFundingSuccess && (
-              <WalletFundingDialog 
-                memberId={memberId}
-                memberName={memberName}
-                memberPhone={memberPhone}
-                onFundingSuccess={onFundingSuccess}
-              />
+              <>
+                <WalletFundingDialog 
+                  memberId={memberId}
+                  memberName={memberName}
+                  memberPhone={memberPhone}
+                  onFundingSuccess={onFundingSuccess}
+                  mode="stk"
+                />
+                <WalletFundingDialog 
+                  memberId={memberId}
+                  memberName={memberName}
+                  memberPhone={memberPhone}
+                  onFundingSuccess={onFundingSuccess}
+                  mode="manual"
+                />
+              </>
             )}
             
             {memberId && memberName && onTransferSuccess && (

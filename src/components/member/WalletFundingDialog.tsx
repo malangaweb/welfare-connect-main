@@ -1,6 +1,8 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 
 import {
   Dialog,
@@ -22,13 +24,17 @@ interface WalletFundingDialogProps {
   memberName: string;
   memberPhone?: string;
   onFundingSuccess: () => void;
+  mode?: "stk" | "manual";
 }
+
+type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
 const WalletFundingDialog = ({
   memberId,
   memberName,
   memberPhone,
   onFundingSuccess,
+  mode = "stk",
 }: WalletFundingDialogProps) => {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,6 +42,7 @@ const WalletFundingDialog = ({
   const [phone, setPhone] = useState("");
   const [reference, setReference] = useState("");
   const [accountReference, setAccountReference] = useState("");
+  const isStkMode = mode === "stk";
 
   useEffect(() => {
     if (!open) return;
@@ -60,48 +67,75 @@ const WalletFundingDialog = ({
       // Convert amount to a number
       const numAmount = parseFloat(amount);
 
-      const normalizedPhone = String(phone || "").replace(/\D/g, "");
-      if (normalizedPhone.length < 10) {
-        throw new Error("Enter a valid M-Pesa phone number.");
-      }
+      if (isStkMode) {
+        const normalizedPhone = String(phone || "").replace(/\D/g, "");
+        if (normalizedPhone.length < 10) {
+          throw new Error("Enter a valid M-Pesa phone number.");
+        }
 
-      const appToken = getAppToken();
-      if (!appToken) {
-        throw new Error("Session expired. Please login again.");
-      }
+        const appToken = getAppToken();
+        if (!appToken) {
+          throw new Error("Session expired. Please login again.");
+        }
 
-      const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
-      const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
-      const endpoint = normalizedBaseUrl
-        ? `${normalizedBaseUrl}/stk_push.php`
-        : "/mlg/stk_push.php";
+        const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
+        const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
+        const endpoint = normalizedBaseUrl
+          ? `${normalizedBaseUrl}/stk_push.php`
+          : "/mlg/stk_push.php";
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-app-token": appToken,
-        },
-        body: JSON.stringify({
-          memberId,
-          phone: normalizedPhone,
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-app-token": appToken,
+          },
+          body: JSON.stringify({
+            memberId,
+            phone: normalizedPhone,
+            amount: numAmount,
+            accountReference: accountReference || memberId,
+            transactionDesc: `Wallet top-up for ${memberName}`,
+          }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            String((result as { error?: unknown }).error || "").trim() ||
+            `Request failed with status ${response.status}`;
+          throw new Error(message);
+        }
+
+        toast.success("STK Push sent", {
+          description: `Prompt sent to ${normalizedPhone}. Complete payment with M-Pesa PIN.`,
+        });
+      } else {
+        const transactionPayload: TransactionInsert = {
+          member_id: memberId,
           amount: numAmount,
-          accountReference: accountReference || memberId,
-          transactionDesc: `Wallet top-up for ${memberName}`,
-        }),
-      });
+          transaction_type: "wallet_funding",
+          payment_method: reference ? "mpesa" : "manual",
+          status: "completed",
+          mpesa_reference: reference || null,
+          reference: accountReference || null,
+          description: `Manual wallet funding - ${reference || "Added by admin"}`,
+          created_at: new Date().toISOString(),
+          metadata: {
+            source: "manual",
+            entry_type: "wallet_funding_dialog_manual",
+            mpesa_reference: reference || null,
+            account_reference: accountReference || null,
+          },
+        };
 
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const message =
-          String((result as { error?: unknown }).error || "").trim() ||
-          `Request failed with status ${response.status}`;
-        throw new Error(message);
+        const { error: transactionError } = await (supabase.from("transactions") as any).insert(transactionPayload);
+        if (transactionError) throw transactionError;
+
+        toast.success("Wallet funded successfully", {
+          description: `KES ${numAmount.toLocaleString()} has been added to ${memberName}'s wallet.`,
+        });
       }
-
-      toast.success("STK Push sent", {
-        description: `Prompt sent to ${normalizedPhone}. Complete payment with M-Pesa PIN.`,
-      });
       
       // Reset form and close dialog
       setAmount("");
@@ -124,16 +158,18 @@ const WalletFundingDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="w-full">
+        <Button className="w-full" variant={isStkMode ? "default" : "outline"}>
           <Wallet className="mr-2 h-4 w-4" />
-          Add Funds
+          {isStkMode ? "Fund Wallet (STK)" : "Add Funds (Manual)"}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Fund Member Wallet</DialogTitle>
+          <DialogTitle>{isStkMode ? "Fund Member Wallet (STK Push)" : "Add Funds Manually"}</DialogTitle>
           <DialogDescription>
-            Add funds to {memberName}'s wallet balance.
+            {isStkMode
+              ? `Initiate M-Pesa STK push for ${memberName}.`
+              : `Record a manual wallet top-up for ${memberName}.`}
           </DialogDescription>
         </DialogHeader>
         
@@ -158,18 +194,20 @@ const WalletFundingDialog = ({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="phone">M-Pesa Phone *</Label>
-            <Input
-              id="phone"
-              placeholder="07xx xxx xxx or 2547xxxxxxxx"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              STK push will be sent to this phone number.
-            </p>
-          </div>
+          {isStkMode && (
+            <div className="space-y-2">
+              <Label htmlFor="phone">M-Pesa Phone *</Label>
+              <Input
+                id="phone"
+                placeholder="07xx xxx xxx or 2547xxxxxxxx"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                STK push will be sent to this phone number.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="accountReference">Account Reference (optional)</Label>
@@ -187,7 +225,7 @@ const WalletFundingDialog = ({
             </Button>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Fund Wallet
+              {isStkMode ? "Send STK Push" : "Add Funds"}
             </Button>
           </DialogFooter>
         </form>
