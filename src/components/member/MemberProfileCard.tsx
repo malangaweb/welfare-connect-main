@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { Edit, UserMinus, Wallet, UserCog } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Member } from '@/lib/types';
 import { toast } from '@/components/ui/use-toast';
+import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
 
 interface MemberProfileCardProps {
   member: Member;
@@ -58,15 +58,7 @@ const MemberProfileCard = ({ member }: MemberProfileCardProps) => {
           <p className="text-muted-foreground">Member #{member.memberNumber}</p>
           
           <div className="mt-2">
-            {member.isActive ? (
-              <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
-                Active
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="bg-red-100 text-red-800 hover:bg-red-100">
-                Inactive
-              </Badge>
-            )}
+            <MemberStatusBadge member={member} />
           </div>
           
           <div className="mt-6 flex flex-col gap-2 w-full">

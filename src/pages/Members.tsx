@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Gender, Member } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
-import { persistentCache } from '@/lib/cache';
 import { mapDbMemberToMember, normalizeMemberStatus } from '@/lib/db-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
@@ -289,16 +288,7 @@ const Members = () => {
   const [positiveBalanceFilter, setPositiveBalanceFilter] = useState(false);
   const [locations, setLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [members, setMembers] = useState<Member[]>(() => {
-    // ⚡ Instant load: Start with cached data if it exists
-    const cached = persistentCache.get<{members: Member[], locations: string[]}>('members-list');
-    if (cached) {
-      setTimeout(() => setLoading(false), 0);
-      setLocations(cached.locations);
-      return cached.members;
-    }
-    return [];
-  });
+  const [members, setMembers] = useState<Member[]>([]);
   const [allMembers, setAllMembers] = useState<Member[]>([]); // Store complete list for exports
   const [editMemberOpen, setEditMemberOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);

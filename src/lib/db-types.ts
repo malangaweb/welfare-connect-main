@@ -11,7 +11,7 @@ export function normalizeMemberStatus(
 ): NormalizedMemberStatus {
   const raw = String(rawStatus || '').trim().toLowerCase();
 
-  if (raw === 'probation' || raw === 'probabation') return 'probation';
+  if (raw === 'probation' || raw === 'probabation' || raw === 'probabtion') return 'probation';
   if (raw === 'deceased' || raw === 'deaceased' || raw === 'dead') return 'deceased';
   if (raw === 'inactive') return 'inactive';
   if (raw === 'active') return 'active';
