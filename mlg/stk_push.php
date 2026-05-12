@@ -14,7 +14,7 @@ try {
     $body = mlg_read_json_body();
     $diagMode = isset($body['diag']) && ($body['diag'] === true || $body['diag'] === 1 || $body['diag'] === '1' || $body['diag'] === 'true');
 
-    $financeRoles = ['super_admin', 'treasurer'];
+    $financeRoles = ['super_admin', 'admin', 'treasurer', 'secretary'];
     if ($role !== 'member' && !in_array($role, $financeRoles, true)) {
         mlg_json_response(403, ['error' => 'Forbidden']);
     }

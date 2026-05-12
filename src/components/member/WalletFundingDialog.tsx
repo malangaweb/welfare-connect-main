@@ -38,6 +38,33 @@ const WalletFundingDialog = ({
   onFundingSuccess,
   mode = "stk",
 }: WalletFundingDialogProps) => {
+  const extractErrorMessage = (payload: unknown): string => {
+    if (!payload) return "";
+    if (typeof payload === "string") return payload.trim();
+    if (typeof payload === "object") {
+      const obj = payload as Record<string, unknown>;
+      const direct =
+        (typeof obj.error === "string" && obj.error) ||
+        (typeof obj.message === "string" && obj.message) ||
+        "";
+      if (direct.trim()) return direct.trim();
+      if (obj.error && typeof obj.error === "object") {
+        const nested = obj.error as Record<string, unknown>;
+        const nestedMsg =
+          (typeof nested.message === "string" && nested.message) ||
+          (typeof nested.error === "string" && nested.error) ||
+          "";
+        if (nestedMsg.trim()) return nestedMsg.trim();
+      }
+      try {
+        return JSON.stringify(obj);
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  };
+
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState("");
@@ -103,11 +130,9 @@ const WalletFundingDialog = ({
           }),
         });
 
-        const result = await response.json().catch(() => ({}));
+        const result = await response.json().catch(() => null);
         if (!response.ok) {
-          const message =
-            String((result as { error?: unknown }).error || "").trim() ||
-            `Request failed with status ${response.status}`;
+          const message = extractErrorMessage(result) || `Request failed with status ${response.status}`;
           throw new Error(message);
         }
 
