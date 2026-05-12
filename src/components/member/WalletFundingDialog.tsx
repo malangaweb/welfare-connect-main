@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Wallet, Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { getAppToken } from "@/lib/appAuth";
 
 interface WalletFundingDialogProps {
   memberId: string;
@@ -34,6 +35,7 @@ const WalletFundingDialog = ({
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState("");
+  const [phone, setPhone] = useState("");
   const [reference, setReference] = useState("");
   const [accountReference, setAccountReference] = useState("");
 
@@ -54,43 +56,81 @@ const WalletFundingDialog = ({
       // Convert amount to a number
       const numAmount = parseFloat(amount);
 
-      // 1. Create transaction payload
-      // Note: We no longer need to fetch current balance or calculate new balance
-      // The database trigger will handle wallet updates automatically
-      const transactionPayload: TransactionInsert = {
-        member_id: memberId,
-        amount: numAmount,
-        transaction_type: "wallet_funding",
-        payment_method: reference ? "mpesa" : "manual",
-        status: "completed",
-        // `mpesa_reference` is the M-Pesa receipt/confirmation code when provided
-        mpesa_reference: reference || null,
-        // `reference` is an auxiliary reference such as Paybill account reference / member number
-        reference: accountReference || null,
-        description: `Wallet funding - ${reference || "Manual addition by admin"}`,
-        created_at: new Date().toISOString(),
-        metadata: {
-          source: "manual",
-          entry_type: "wallet_funding_dialog",
+      const normalizedPhone = String(phone || "").replace(/\D/g, "");
+      const useStkPush = normalizedPhone.length >= 10;
+
+      if (useStkPush) {
+        const appToken = getAppToken();
+        if (!appToken) {
+          throw new Error("Session expired. Please login again.");
+        }
+
+        const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
+        const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
+        const endpoint = normalizedBaseUrl
+          ? `${normalizedBaseUrl}/stk_push.php`
+          : "/mlg/stk_push.php";
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-app-token": appToken,
+          },
+          body: JSON.stringify({
+            memberId,
+            phone: normalizedPhone,
+            amount: numAmount,
+            accountReference: accountReference || memberId,
+            transactionDesc: `Wallet top-up for ${memberName}`,
+          }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            String((result as { error?: unknown }).error || "").trim() ||
+            `Request failed with status ${response.status}`;
+          throw new Error(message);
+        }
+
+        toast.success("STK Push sent", {
+          description: `Prompt sent to ${normalizedPhone}. Complete payment with M-Pesa PIN.`,
+        });
+      } else {
+        // Manual top-up fallback.
+        const transactionPayload: TransactionInsert = {
+          member_id: memberId,
+          amount: numAmount,
+          transaction_type: "wallet_funding",
+          payment_method: reference ? "mpesa" : "manual",
+          status: "completed",
           mpesa_reference: reference || null,
-          account_reference: accountReference || null,
-        },
-      };
-      
-      // 2. Create a transaction record
-      // Note: A database trigger automatically updates the member's wallet_balance
-      const { error: transactionError } = await (supabase.from("transactions") as any).insert(
-        transactionPayload
-      );
+          reference: accountReference || null,
+          description: `Wallet funding - ${reference || "Manual addition by admin"}`,
+          created_at: new Date().toISOString(),
+          metadata: {
+            source: "manual",
+            entry_type: "wallet_funding_dialog",
+            mpesa_reference: reference || null,
+            account_reference: accountReference || null,
+          },
+        };
 
-      if (transactionError) throw transactionError;
+        const { error: transactionError } = await (supabase.from("transactions") as any).insert(
+          transactionPayload
+        );
 
-      toast.success("Wallet funded successfully", {
-        description: `KES ${numAmount.toLocaleString()} has been added to ${memberName}'s wallet.`,
-      });
+        if (transactionError) throw transactionError;
+
+        toast.success("Wallet funded successfully", {
+          description: `KES ${numAmount.toLocaleString()} has been added to ${memberName}'s wallet.`,
+        });
+      }
       
       // Reset form and close dialog
       setAmount("");
+      setPhone("");
       setReference("");
       setAccountReference("");
       setOpen(false);
@@ -142,6 +182,19 @@ const WalletFundingDialog = ({
               value={reference}
               onChange={(e) => setReference(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phone">M-Pesa Phone (optional)</Label>
+            <Input
+              id="phone"
+              placeholder="07xx xxx xxx or 2547xxxxxxxx"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              If provided, an STK push will be sent. If empty, this is recorded as manual funding.
+            </p>
           </div>
 
           <div className="space-y-2">

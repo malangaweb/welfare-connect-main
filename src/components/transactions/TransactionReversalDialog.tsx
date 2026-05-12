@@ -16,6 +16,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/integrations/supabase/client'
 import type { Database } from '@/integrations/supabase/types'
 import { Transaction } from '@/lib/types'
+import { getAppToken } from '@/lib/appAuth'
 
 interface TransactionReversalDialogProps {
   transaction: Transaction | null
@@ -37,7 +38,6 @@ export function TransactionReversalDialog({
   if (!transaction) return null
 
   const canReverse = transaction.status !== 'reversed'
-  type MemberPhoneRow = Pick<Database['public']['Tables']['members']['Row'], 'phone_number'>
 
   const handleReversal = async () => {
     if (!reason.trim()) {
@@ -62,32 +62,49 @@ export function TransactionReversalDialog({
       }
 
       if (useMpesaReversal && transaction.paymentMethod === 'mpesa') {
-        const { data: memberData, error: memberError } = await supabase
-          .from('members')
-          .select('phone_number')
-          .eq('id', transaction.memberId)
-          .maybeSingle()
+        try {
+          const appToken = getAppToken()
+          if (!appToken) {
+            throw new Error('Session expired. Please login again.')
+          }
 
-        if (memberError) throw memberError
-        const member = memberData as MemberPhoneRow | null
-        if (!member?.phone_number) {
-          throw new Error('Member phone number not found')
-        }
-        const phone = member.phone_number
+          const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || '').trim()
+          const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, '')
+          const endpoint = normalizedBaseUrl
+            ? `${normalizedBaseUrl}/mpesa_reversal.php`
+            : '/mlg/mpesa_reversal.php'
 
-        const { error: b2cError } = await supabase.functions.invoke('mpesa-b2c', {
-          body: {
-            phone,
-            amount: Math.abs(transaction.amount),
-            memberId: transaction.memberId,
-            reason: `Reversal: ${reason}`,
-            isReversal: true,
-            transactionId: transaction.id,
-          },
-        })
+          const reversalResp = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-app-token': appToken,
+            },
+            body: JSON.stringify({
+              transactionId: transaction.id,
+              mpesaReceipt: transaction.mpesaReference || null,
+              amount: Math.abs(transaction.amount),
+              reason: `Reversal: ${reason}`,
+            }),
+          })
 
-        if (b2cError) {
-          console.error('B2C reversal error:', b2cError)
+          const reversalJson = await reversalResp.json().catch(() => ({}))
+          if (!reversalResp.ok) {
+            const message =
+              String((reversalJson as { error?: unknown }).error || '').trim() ||
+              `Request failed with status ${reversalResp.status}`
+            throw new Error(message)
+          }
+
+          const respCode = String((reversalJson as { ResponseCode?: unknown }).ResponseCode ?? '').trim()
+          if (respCode !== '' && respCode !== '0') {
+            const message =
+              String((reversalJson as { ResponseDescription?: unknown }).ResponseDescription || '').trim() ||
+              'Daraja reversal was not accepted'
+            throw new Error(message)
+          }
+        } catch (mpesaError: any) {
+          console.error('Daraja reversal error:', mpesaError)
           toast.warning('M-Pesa reversal failed', {
             description: 'Proceeding with local reversal only.',
           })
