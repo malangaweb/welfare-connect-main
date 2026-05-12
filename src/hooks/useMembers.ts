@@ -103,16 +103,16 @@ export function useMemberLocations() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('residences')
-        .select('location')
-        .not('location', 'is', null);
+        .select('name')
+        .not('name', 'is', null);
 
       if (error) {
         throw error;
       }
 
       // Get unique locations - explicitly type the data
-      const rawData = data as { location: string }[] | null;
-      const locations = [...new Set((rawData || []).map(r => r.location).filter(Boolean))];
+      const rawData = data as { name: string }[] | null;
+      const locations = [...new Set((rawData || []).map(r => r.name).filter(Boolean))];
       const sortedLocations = locations.sort();
       
       // Cache the result

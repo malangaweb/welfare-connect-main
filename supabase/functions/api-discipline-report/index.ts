@@ -45,7 +45,9 @@ serve(async (req) => {
       { data: latePaymentAggregateRow, error: latePaymentAggregateErr },
     ] = await Promise.all([
       supabase.from('v_member_status_distribution').select('status, member_count'),
-      supabase.from('v_member_discipline_metrics').select('*').limit(1).maybeSingle(),
+      supabase.from('v_member_discipline_metrics').select(
+        'active_count, inactive_count, probation_count, deceased_count, auto_inactive_total, reinstatement_total, reinstatement_penalty_total',
+      ).limit(1).maybeSingle(),
       supabase
         .from('member_status_transitions')
         .select('id, member_id, from_status, to_status, reason, performed_by_role, created_at, details')
@@ -60,7 +62,7 @@ serve(async (req) => {
         .limit(500),
       supabase
         .from('v_member_unpaid_obligations_summary')
-        .select('*')
+        .select('member_id, member_number, name, status, unpaid_case_count, unpaid_total')
         .order('unpaid_total', { ascending: false })
         .limit(500),
       supabase

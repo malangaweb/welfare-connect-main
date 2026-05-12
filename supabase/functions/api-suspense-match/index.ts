@@ -33,7 +33,9 @@ serve(async (req) => {
 
     const { data: suspense, error: suspenseErr } = await supabase
       .from("wrong_mpesa_transactions")
-      .select("*")
+      .select(
+        "id, amount, mpesa_receipt_number, intended_case_id, reference, notes, transaction_date, status",
+      )
       .eq("id", suspenseId)
       .maybeSingle();
     if (suspenseErr || !suspense) return jsonResponse(404, { error: "Suspense transaction not found" });

@@ -38,6 +38,7 @@ import {
 import type { Database } from '@/integrations/supabase/types';
 import { persistentCache } from '@/lib/cache';
 import { createReportFilename, exportRowsToCSV, exportRowsToXLSX } from '@/lib/reportExport';
+import { CASE_ROW_COLUMNS, MEMBER_DETAIL_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 type MemberUpdate = Database["public"]["Tables"]["members"]["Update"];
@@ -267,7 +268,7 @@ const syncCaseActualAmount = async (caseId: string, caseNumber: string) => {
 const fetchCasePageData = async (caseId: string) => {
   const { data: caseData, error: caseError } = await supabase
     .from('cases')
-    .select('*')
+    .select(CASE_ROW_COLUMNS)
     .eq('id', caseId)
     .maybeSingle();
 
@@ -278,7 +279,7 @@ const fetchCasePageData = async (caseId: string) => {
 
   const { data: memberData, error: memberError } = await supabase
     .from('members')
-    .select('*')
+    .select(MEMBER_DETAIL_COLUMNS)
     .eq('id', dbCase.affected_member_id)
     .maybeSingle();
 
@@ -290,7 +291,7 @@ const fetchCasePageData = async (caseId: string) => {
 
   const { count: memberCount, error: membersError } = await supabase
     .from('members')
-    .select('*', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true });
 
   if (membersError) throw membersError;
 
@@ -330,7 +331,7 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
     });
   };
 
-  const handleExportContributionsXlsx = () => {
+  const handleExportContributionsXlsx = async () => {
     if (contributions.length === 0) {
       toast({
         title: 'No data to export',
@@ -350,7 +351,7 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
       { key: 'lastActivity', label: 'Last Activity' },
       { key: 'status', label: 'Status' },
     ];
-    exportRowsToXLSX(createReportFilename(`case_${caseNumber}_member_contributions`, 'xlsx'), rows, headers);
+    await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_member_contributions`, 'xlsx'), rows, headers);
     toast({ title: 'Export complete', description: `Exported ${rows.length} contribution rows.` });
   };
 
@@ -740,7 +741,7 @@ const CaseDetails = () => {
       setTimeout(async () => {
         const { data: refreshedCase } = await (supabase
           .from('cases')
-          .select('*')
+          .select(CASE_ROW_COLUMNS)
           .eq('id', id)
           .single()) as { data: DbCase | null };
         

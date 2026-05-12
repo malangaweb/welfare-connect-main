@@ -96,7 +96,6 @@ serve(async (req) => {
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
-    requirePrivilegedRole(claims.role);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -106,7 +105,9 @@ serve(async (req) => {
     const fetchExisting = async () => {
       const { data, error } = await supabase
         .from("settings")
-        .select("*")
+        .select(
+          "id, organization_name, organization_email, organization_phone, registration_fee, renewal_fee, penalty_amount, paybill_number, member_id_start, case_id_start, mpesa_consumer_key, mpesa_consumer_secret, mpesa_passkey, mpesa_shortcode, mpesa_initiator_name, mpesa_initiator_password, mpesa_env, created_at, updated_at",
+        )
         .order("id", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -128,6 +129,7 @@ serve(async (req) => {
     if (action !== "update") {
       return jsonResponse(400, { error: "Unsupported action" });
     }
+    requirePrivilegedRole(claims.role);
 
     const updateInput = ((body as Record<string, unknown>).settings || {}) as Record<string, unknown>;
     const existing = await fetchExisting();

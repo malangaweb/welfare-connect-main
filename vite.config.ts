@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    // Raise the chunk size warning threshold (heavy libs like recharts/jspdf are expected to be large)
+    // Raise the chunk size warning threshold (heavy libs like recharts are expected to be large)
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
@@ -64,8 +64,6 @@ export default defineConfig(({ mode }) => ({
           'supabase': ['@supabase/supabase-js'],
           // Charts (recharts is large)
           'charts': ['recharts'],
-          // PDF / Excel export (large, rarely used)
-          'export-libs': ['jspdf', 'jspdf-autotable', 'html2canvas', 'xlsx'],
           // Form utilities
           'forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
           // Date utilities

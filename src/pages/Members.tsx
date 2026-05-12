@@ -23,9 +23,9 @@ import {
 import { Gender, Member } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
 import { mapDbMemberToMember, normalizeMemberStatus } from '@/lib/db-types';
+import { MEMBER_DETAIL_COLUMNS } from '@/lib/supabaseSelectColumns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
-import * as XLSX from 'xlsx';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -52,6 +52,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { Database } from '@/integrations/supabase/types';
+import { loadXlsx } from '@/lib/reportExportLibs';
 
 const getMemberNumberValue = (memberNumber?: string) => {
   if (!memberNumber) return Number.MAX_SAFE_INTEGER;
@@ -289,7 +290,6 @@ const Members = () => {
   const [locations, setLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<Member[]>([]);
-  const [allMembers, setAllMembers] = useState<Member[]>([]); // Store complete list for exports
   const [editMemberOpen, setEditMemberOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -313,6 +313,7 @@ const Members = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const itemsPerPage = 20;
 
   // Debounce search input so filtering doesn't run on every keystroke
@@ -617,7 +618,7 @@ const Members = () => {
       const buildMembersQuery = (withCount: boolean) => {
         let query = supabase
           .from('members')
-          .select('*', withCount ? { count: 'exact' } : undefined);
+          .select(MEMBER_DETAIL_COLUMNS, withCount ? { count: 'exact' } : undefined);
 
         // Apply Server-Side Search
         if (debouncedSearch) {
@@ -642,34 +643,32 @@ const Members = () => {
         return query;
       };
 
-      const fetchedRows: any[] = [];
-      const pageSize = 1000;
-      let from = 0;
-      let totalCountValue = 0;
+      const sortColumnMap: Record<SortKey, string> = {
+        memberNumber: 'member_number_numeric',
+        name: 'name',
+        gender: 'gender',
+        residence: 'residence',
+        walletBalance: 'wallet_balance',
+        registrationDate: 'registration_date',
+      };
 
-      while (true) {
-        const withCount = from === 0;
-        const { data, error, count } = await buildMembersQuery(withCount).range(from, from + pageSize - 1);
-        if (error) throw error;
-        const batch = (data as any[]) || [];
-        fetchedRows.push(...batch);
+      let query = buildMembersQuery(true);
+      if (defaultersFilter) query = query.lt('wallet_balance', 0);
+      if (positiveBalanceFilter) query = query.gte('wallet_balance', 0);
+      query = query
+        .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
+        .order('member_number', { ascending: true });
 
-        if (withCount && count !== null) {
-          totalCountValue = count;
-          setTotalCount(count);
-        }
-
-        if (batch.length < pageSize) break;
-        from += pageSize;
-      }
-
-      if (totalCountValue === 0) {
-        setTotalCount(fetchedRows.length);
-      }
+      const pageFrom = (currentPage - 1) * itemsPerPage;
+      const pageTo = pageFrom + itemsPerPage - 1;
+      const { data: fetchedRows, error, count } = await query.range(pageFrom, pageTo);
+      if (error) throw error;
+      setTotalCount(count || 0);
+      setTotalPages(Math.max(1, Math.ceil((count || 0) / itemsPerPage)));
 
       // Map members - use stored wallet_balance from database
       // (RPC calls for every member cause resource exhaustion with large member lists)
-      const membersWithBalances = (fetchedRows || []).map((m: any) => {
+      const membersWithBalances = ((fetchedRows as any[]) || []).map((m: any) => {
         const baseMember = mapDbMemberToMember(m);
         return {
           ...baseMember,
@@ -677,32 +676,7 @@ const Members = () => {
           dependants: []
         };
       });
-
-      // Client-side filtering for defaulters and positive balance
-      let filteredMembers = membersWithBalances;
-      if (defaultersFilter) {
-        filteredMembers = filteredMembers.filter(m => m.walletBalance < 0);
-      }
-      if (positiveBalanceFilter) {
-        filteredMembers = filteredMembers.filter(m => m.walletBalance >= 0);
-      }
-
-      // Apply client-side sorting for proper numeric sorting of member numbers
-      const sortedMembers = sortMembers(filteredMembers, sortConfig);
-
-      // Update total pages based on sorted/filtered results
-      const actualTotal = sortedMembers.length;
-      setTotalPages(Math.ceil(actualTotal / itemsPerPage));
-
-      // Store ALL members (sorted & filtered) for exports
-      setAllMembers(sortedMembers);
-
-      // Apply client-side pagination
-      const pageFrom = (currentPage - 1) * itemsPerPage;
-      const pageTo = pageFrom + itemsPerPage;
-      const paginatedMembers = sortedMembers.slice(pageFrom, pageTo);
-
-      setMembers(paginatedMembers);
+      setMembers(membersWithBalances);
 
       // Fetch locations from residences table
       if (locations.length === 0) {
@@ -716,6 +690,72 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchMembersForExport = async (mode: 'all' | 'defaulters' | 'positive') => {
+    const buildExportQuery = () => {
+      let query = supabase.from('members').select(MEMBER_DETAIL_COLUMNS);
+
+      if (debouncedSearch) {
+        query = query.or(`member_number.ilike.%${debouncedSearch}%,name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%`);
+      }
+
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'probation') {
+          query = (query as any).in('status', ['probation', 'probabation']);
+        } else if (statusFilter === 'deceased') {
+          query = (query as any).in('status', ['deceased', 'deaceased']);
+        } else if (statusFilter === 'active' || statusFilter === 'inactive') {
+          query = query.eq('status', statusFilter);
+        }
+      }
+
+      if (locationFilter !== 'all') {
+        query = query.eq('residence', locationFilter);
+      }
+
+      // Keep page-level toggles applied for "all"
+      if (mode === 'all') {
+        if (defaultersFilter) query = query.lt('wallet_balance', 0);
+        if (positiveBalanceFilter) query = query.gte('wallet_balance', 0);
+      }
+
+      if (mode === 'defaulters') query = query.lt('wallet_balance', 0);
+      if (mode === 'positive') query = query.gte('wallet_balance', 0);
+
+      const sortColumnMap: Record<SortKey, string> = {
+        memberNumber: 'member_number_numeric',
+        name: 'name',
+        gender: 'gender',
+        residence: 'residence',
+        walletBalance: 'wallet_balance',
+        registrationDate: 'registration_date',
+      };
+
+      return query
+        .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
+        .order('member_number', { ascending: true });
+    };
+
+    const rows: any[] = [];
+    const batchSize = 1000;
+
+    for (let from = 0; ; from += batchSize) {
+      const { data, error } = await buildExportQuery().range(from, from + batchSize - 1);
+      if (error) throw error;
+      const batch = (data as any[]) || [];
+      rows.push(...batch);
+      if (batch.length < batchSize) break;
+    }
+
+    return rows.map((m: any) => {
+      const baseMember = mapDbMemberToMember(m);
+      return {
+        ...baseMember,
+        walletBalance: Number(m.wallet_balance) || 0,
+        dependants: [],
+      };
+    }) as Member[];
   };
 
   useEffect(() => {
@@ -761,6 +801,7 @@ const Members = () => {
     if (!file) return;
     
     try {
+      const XLSX = await loadXlsx();
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const sheetName = workbook.SheetNames[0];
@@ -1005,7 +1046,7 @@ const Members = () => {
       // First, let's check what's currently in the database
       const { data: currentData, error: currentError } = await supabase
         .from('members')
-        .select('*')
+        .select(MEMBER_DETAIL_COLUMNS)
         .eq('id', selectedMember.id)
         .single();
       
@@ -1040,7 +1081,7 @@ const Members = () => {
       // Verify the update by fetching the data again
       const { data: verifyData, error: verifyError } = await supabase
         .from('members')
-        .select('*')
+        .select(MEMBER_DETAIL_COLUMNS)
         .eq('id', selectedMember.id)
         .single();
       
@@ -1121,10 +1162,11 @@ const Members = () => {
     }
   };
 
-  const handleExportMembers = () => {
+  const handleExportMembers = async () => {
     try {
-      // Use allMembers (complete list, not paginated)
-      const sortedMembers = allMembers.length > 0 ? allMembers : sortMembers(members, sortConfig);
+      setExporting(true);
+      const XLSX = await loadXlsx();
+      const sortedMembers = await fetchMembersForExport('all');
       // Prepare data for export - member number, name and phone number
       const exportData = sortedMembers.map(member => ({
         'Member Number': member.memberNumber,
@@ -1158,15 +1200,16 @@ const Members = () => {
         description: "Failed to export members data. Please try again.",
       });
     }
+    finally {
+      setExporting(false);
+    }
   };
 
-  const handleExportDefaulters = () => {
+  const handleExportDefaulters = async () => {
     try {
-      // Use allMembers (complete list, not paginated)
-      const allMembersToExport = allMembers.length > 0 ? allMembers : sortMembers(members, sortConfig);
-      
-      // Get only members with negative wallet balance
-      const defaulters = allMembersToExport.filter(member => member.walletBalance < 0);
+      setExporting(true);
+      const XLSX = await loadXlsx();
+      const defaulters = await fetchMembersForExport('defaulters');
       
       if (defaulters.length === 0) {
         toast({
@@ -1211,15 +1254,16 @@ const Members = () => {
         description: "Failed to export defaulters data. Please try again.",
       });
     }
+    finally {
+      setExporting(false);
+    }
   };
 
-  const handleExportPositiveBalance = () => {
+  const handleExportPositiveBalance = async () => {
     try {
-      // Use allMembers (complete list, not paginated)
-      const allMembersToExport = allMembers.length > 0 ? allMembers : sortMembers(members, sortConfig);
-      
-      // Get only members with positive or zero wallet balance
-      const positiveBalanceMembers = allMembersToExport.filter(member => member.walletBalance >= 0);
+      setExporting(true);
+      const XLSX = await loadXlsx();
+      const positiveBalanceMembers = await fetchMembersForExport('positive');
       
       if (positiveBalanceMembers.length === 0) {
         toast({
@@ -1263,6 +1307,9 @@ const Members = () => {
         title: "Export Failed",
         description: "Failed to export positive balance members data. Please try again.",
       });
+    }
+    finally {
+      setExporting(false);
     }
   };
 
@@ -1375,15 +1422,15 @@ const Members = () => {
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="font-semibold text-slate-900">Export</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={handleExportMembers} className="cursor-pointer">
+                  <DropdownMenuItem onClick={handleExportMembers} className="cursor-pointer" disabled={exporting}>
                     <Download className="h-4 w-4 mr-2" />
-                    All Members
+                    {exporting ? 'Exporting...' : 'All Members'}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportDefaulters} className="cursor-pointer">
+                  <DropdownMenuItem onClick={handleExportDefaulters} className="cursor-pointer" disabled={exporting}>
                     <Download className="h-4 w-4 mr-2" />
                     Defaulters
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportPositiveBalance} className="cursor-pointer">
+                  <DropdownMenuItem onClick={handleExportPositiveBalance} className="cursor-pointer" disabled={exporting}>
                     <Download className="h-4 w-4 mr-2" />
                     Positive Balance
                   </DropdownMenuItem>
@@ -1457,17 +1504,17 @@ const Members = () => {
                         <TableHead className="w-10 px-2">
                           <Checkbox
                             checked={
-                              allMembers.length > 0 &&
-                              allMembers.every((m) => selectedMemberIds.has(m.id))
+                              members.length > 0 &&
+                              members.every((m) => selectedMemberIds.has(m.id))
                             }
                             onCheckedChange={(v) => {
                               const checked = v === true;
                               setSelectedMemberIds((prev) => {
                                 const next = new Set(prev);
                                 if (checked) {
-                                  allMembers.forEach((m) => next.add(m.id));
+                                  members.forEach((m) => next.add(m.id));
                                 } else {
-                                  allMembers.forEach((m) => next.delete(m.id));
+                                  members.forEach((m) => next.delete(m.id));
                                 }
                                 return next;
                               });

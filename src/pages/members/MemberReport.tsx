@@ -53,12 +53,12 @@ import {
   Area
 } from "recharts";
 import { format, subMonths, differenceInMonths, parseISO, startOfMonth, endOfMonth, startOfYear } from "date-fns";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import { useToast } from "@/components/ui/use-toast";
+import { loadHtml2canvas, loadJsPdf } from "@/lib/reportExportLibs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { walletRowDelta } from "@/lib/walletEffect";
+import { CASE_ROW_COLUMNS, MEMBER_DETAIL_COLUMNS, TRANSACTION_LIST_COLUMNS } from "@/lib/supabaseSelectColumns";
 
 interface Member {
   id: string;
@@ -376,7 +376,7 @@ const MemberReport = () => {
 
         const { data: memberData, error: memberError } = await supabase
           .from("members")
-          .select("*")
+          .select(MEMBER_DETAIL_COLUMNS)
           .eq("id", member_id)
           .single();
 
@@ -391,7 +391,7 @@ const MemberReport = () => {
         const oneYearAgo = subMonths(new Date(), 12);
         const { data: transactionsData, error: transactionsError } = await supabase
           .from("transactions")
-          .select("*")
+          .select(TRANSACTION_LIST_COLUMNS)
           .eq("member_id", member_id)
           .gte("created_at", oneYearAgo.toISOString())
           .order("created_at", { ascending: true });
@@ -400,7 +400,8 @@ const MemberReport = () => {
         
         const { data: casesData, error: casesError } = await supabase
           .from("cases")
-          .select("*");
+          .select(CASE_ROW_COLUMNS)
+          .eq("affected_member_id", member_id);
 
         if (casesError) throw casesError;
         
@@ -469,6 +470,7 @@ const MemberReport = () => {
     
     try {
       await new Promise(resolve => setTimeout(resolve, 100));
+      const html2canvas = await loadHtml2canvas();
       const canvas = await html2canvas(reportRef.current, {
         scale: 2,
         useCORS: true,
@@ -477,7 +479,8 @@ const MemberReport = () => {
       });
       
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const JsPDF = await loadJsPdf();
+      const pdf = new JsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const margin = 10;

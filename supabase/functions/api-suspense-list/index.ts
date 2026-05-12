@@ -26,7 +26,9 @@ serve(async (req) => {
 
     const { data, error } = await supabase
       .from("wrong_mpesa_transactions")
-      .select("*")
+      .select(
+        "id, mpesa_receipt_number, phone_number, amount, sender_name, transaction_date, status, reference, matched_member_id, intended_case_id, intended_member_id, created_at",
+      )
       .eq("status", "pending")
       .order("transaction_date", { ascending: false })
       .limit(300);

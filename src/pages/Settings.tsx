@@ -15,6 +15,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus } from 'lucide-react';
 import { invokeWithAppToken } from '@/lib/appAuth';
+import { fetchSafeSettings } from '@/lib/settingsClient';
 
 interface Residence {
   id: string;
@@ -104,7 +105,7 @@ const Settings = () => {
       try {
         const { data, error } = await supabase
           .from('residences')
-          .select('*')
+          .select('id, name, created_at')
           .order('name', { ascending: true });
           
         if (error) throw error;
@@ -124,17 +125,13 @@ const Settings = () => {
 
     const fetchSettings = async () => {
       try {
-        const data = await invokeWithAppToken<{ settings: SettingsData | null }>('api-settings', {
-          action: 'get',
-        });
-
-        if (data?.settings) {
-          const settings = data.settings;
+        const settings = await fetchSafeSettings();
+        if (settings) {
           setSettingsMeta({
-            has_mpesa_consumer_key: settings.has_mpesa_consumer_key,
-            has_mpesa_consumer_secret: settings.has_mpesa_consumer_secret,
-            has_mpesa_passkey: settings.has_mpesa_passkey,
-            has_mpesa_initiator_password: settings.has_mpesa_initiator_password,
+            has_mpesa_consumer_key: false,
+            has_mpesa_consumer_secret: false,
+            has_mpesa_passkey: false,
+            has_mpesa_initiator_password: false,
           });
           form.reset({
             registration_fee: settings.registration_fee,
@@ -156,7 +153,7 @@ const Settings = () => {
           });
         }
       } catch (error) {
-        console.error('Error fetching settings:', error);
+        console.error('Error fetching settings snapshot:', error);
       }
     };
 

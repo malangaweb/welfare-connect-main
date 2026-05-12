@@ -27,6 +27,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Transaction } from "@/lib/types";
 import { supabase } from '@/integrations/supabase/client';
+import { TRANSACTION_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 import { toast } from '@/components/ui/use-toast';
 
 interface AccountTransactionsListProps {
@@ -142,7 +143,7 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
       }
 
       setLoading(true);
-      let query = supabase.from('transactions').select('*');
+      let query = supabase.from('transactions').select(TRANSACTION_LIST_COLUMNS);
       
       // Filter by account type based on title
       if (title.toLowerCase().includes('registration')) {
@@ -178,7 +179,7 @@ const AccountTransactionsList = ({ title, transactions: providedTransactions }: 
         // Get all transactions first
         const transactionsResult = await (supabase
           .from('transactions')
-          .select('*')
+          .select(TRANSACTION_LIST_COLUMNS)
           .order('created_at', { ascending: false }) as unknown as { data: any[] | null; error: Error | null });
         const allTransactions = transactionsResult.data;
         const transactionsError = transactionsResult.error;

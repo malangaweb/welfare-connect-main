@@ -1,0 +1,230 @@
+{
+  "generated_at": "2026-05-12T20:53:35.061Z",
+  "source": "supabase-rest-probe-anon",
+  "relations": {
+    "members": {
+      "ok": true,
+      "relation": "members",
+      "columns": [
+        "id",
+        "member_number",
+        "name",
+        "gender",
+        "date_of_birth",
+        "national_id_number",
+        "phone_number",
+        "email_address",
+        "residence",
+        "next_of_kin",
+        "registration_date",
+        "probation_end_date",
+        "wallet_balance",
+        "is_active",
+        "status",
+        "pin_hash",
+        "pin_attempts",
+        "pin_locked_until",
+        "last_login",
+        "created_at"
+      ],
+      "status": 200
+    },
+    "dependants": {
+      "ok": true,
+      "relation": "dependants",
+      "columns": [
+        "id",
+        "member_id",
+        "name",
+        "gender",
+        "relationship",
+        "date_of_birth",
+        "is_disabled",
+        "is_eligible"
+      ],
+      "status": 200
+    },
+    "cases": {
+      "ok": true,
+      "relation": "cases",
+      "columns": [
+        "id",
+        "case_number",
+        "affected_member_id",
+        "dependant_id",
+        "case_type",
+        "contribution_per_member",
+        "start_date",
+        "end_date",
+        "expected_amount",
+        "actual_amount",
+        "is_active",
+        "is_finalized",
+        "created_at",
+        "updated_at"
+      ],
+      "status": 200
+    },
+    "transactions": {
+      "ok": true,
+      "relation": "transactions",
+      "columns": [
+        "id",
+        "member_id",
+        "case_id",
+        "amount",
+        "transaction_type",
+        "payment_method",
+        "mpesa_reference",
+        "reference",
+        "description",
+        "status",
+        "created_at",
+        "metadata"
+      ],
+      "status": 200
+    },
+    "settings": {
+      "ok": false,
+      "relation": "settings",
+      "columns": [
+        "id",
+        "organization_name",
+        "organization_email",
+        "organization_phone",
+        "registration_fee",
+        "renewal_fee",
+        "penalty_amount",
+        "paybill_number",
+        "member_id_start",
+        "case_id_start",
+        "mpesa_consumer_key",
+        "mpesa_consumer_secret",
+        "mpesa_passkey",
+        "mpesa_shortcode",
+        "mpesa_initiator_name",
+        "mpesa_initiator_password",
+        "mpesa_env"
+      ],
+      "status": 401,
+      "message": "permission denied for table settings"
+    },
+    "monthly_contributions_summary": {
+      "ok": true,
+      "relation": "monthly_contributions_summary",
+      "columns": [
+        "month",
+        "transaction_type",
+        "transaction_count",
+        "total_amount",
+        "unique_members"
+      ],
+      "status": 200
+    },
+    "case_funding_summary": {
+      "ok": true,
+      "relation": "case_funding_summary",
+      "columns": [
+        "case_id",
+        "case_number",
+        "case_type",
+        "affected_member_id",
+        "contribution_per_member",
+        "start_date",
+        "end_date",
+        "expected_amount",
+        "actual_amount",
+        "variance",
+        "is_active",
+        "is_finalized"
+      ],
+      "status": 200
+    },
+    "member_transaction_summary": {
+      "ok": true,
+      "relation": "member_transaction_summary",
+      "columns": [
+        "member_id",
+        "member_number",
+        "name",
+        "phone_number",
+        "status",
+        "wallet_balance",
+        "contributions_count",
+        "total_contributions",
+        "disbursements_count",
+        "total_disbursements",
+        "last_transaction_date"
+      ],
+      "status": 200
+    },
+    "audit_logs": {
+      "ok": true,
+      "relation": "audit_logs",
+      "columns": [
+        "id",
+        "user_id",
+        "action",
+        "table_name",
+        "record_id",
+        "status",
+        "metadata",
+        "timestamp",
+        "created_at"
+      ],
+      "status": 200
+    },
+    "reversals_audit": {
+      "ok": true,
+      "relation": "reversals_audit",
+      "columns": [
+        "reversal_id",
+        "member_id",
+        "member_name",
+        "member_number",
+        "reversal_amount",
+        "description",
+        "original_transaction_id",
+        "reason",
+        "admin_id",
+        "reversal_date",
+        "original_transaction_date",
+        "original_amount"
+      ],
+      "status": 200
+    },
+    "wrong_mpesa_transactions": {
+      "ok": true,
+      "relation": "wrong_mpesa_transactions",
+      "columns": [
+        "id",
+        "amount",
+        "reference",
+        "mpesa_receipt_number",
+        "status"
+      ],
+      "status": 200
+    },
+    "members_on_probation": {
+      "ok": true,
+      "relation": "members_on_probation",
+      "columns": [
+        "id",
+        "member_number",
+        "name",
+        "days_overdue"
+      ],
+      "status": 200
+    },
+    "residences": {
+      "ok": true,
+      "relation": "residences",
+      "columns": [
+        "id",
+        "name",
+        "created_at"
+      ],
+      "status": 200
+    }
+  }
+}

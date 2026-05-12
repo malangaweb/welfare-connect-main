@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { mapDbMemberToMember } from '@/lib/db-types';
 import { persistentCache } from '@/lib/cache';
+import { DEPENDANT_COLUMNS, MEMBER_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 type CaseInsert = Database["public"]["Tables"]["cases"]["Insert"];
 
@@ -32,7 +33,7 @@ const NewCase = () => {
         while (true) {
           const { data: membersBatch, error: membersError } = await supabase
             .from('members')
-            .select('*', { count: 'exact' })
+            .select(MEMBER_LIST_COLUMNS)
             .range(from, from + pageSize - 1);
 
           if (membersError) {
@@ -54,7 +55,7 @@ const NewCase = () => {
         // Fetch dependants from the dependants table
         const { data: dependantsData, error: dependantsError } = await (supabase as any)
           .from('dependants')
-          .select('*');
+          .select(DEPENDANT_COLUMNS);
         
         if (dependantsError) {
           console.error('Error fetching dependants:', dependantsError);
@@ -148,7 +149,7 @@ const NewCase = () => {
       // Get total member count for calculation
       const { count: memberCount, error: countError } = await supabase
         .from('members')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       if (countError) {
         console.error('Error getting member count:', countError);

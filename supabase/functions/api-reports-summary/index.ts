@@ -39,8 +39,8 @@ serve(async (req) => {
       { count: activeCases, error: activeCasesErr },
       { count: totalTransactions, error: txCountErr },
       { count: defaulters, error: defaultersErr },
-      { data: monthTx, error: monthTxErr },
-      { data: suspenseRows, error: suspenseErr },
+      { data: monthAgg, error: monthAggErr },
+      { data: suspenseAgg, error: suspenseAggErr },
       { data: statusRows, error: statusRowsErr },
       { data: disciplineMetrics, error: disciplineMetricsErr },
       { count: monthlyAutoInactive, error: monthlyAutoInactiveErr },
@@ -52,20 +52,16 @@ serve(async (req) => {
       supabase.from("cases").select("id", { count: "exact", head: true }).eq("is_active", true),
       supabase.from("transactions").select("id", { count: "exact", head: true }),
       supabase.from("members").select("id", { count: "exact", head: true }).lt("wallet_balance", 0),
-      supabase
-        .from("transactions")
-        .select("amount, transaction_type, status")
-        .gte("created_at", startOfMonth),
-      supabase
-        .from("wrong_mpesa_transactions")
-        .select("amount")
-        .in("status", ["pending", "PENDING_REVIEW"]),
+      supabase.rpc("get_monthly_inflow_total", { p_start: startOfMonth }),
+      supabase.rpc("get_suspense_pending_summary"),
       supabase
         .from("v_member_status_distribution")
         .select("status, member_count"),
       supabase
         .from("v_member_discipline_metrics")
-        .select("*")
+        .select(
+          "active_count, inactive_count, probation_count, deceased_count, auto_inactive_total, reinstatement_total, reinstatement_penalty_total",
+        )
         .limit(1)
         .maybeSingle(),
       supabase
@@ -85,25 +81,20 @@ serve(async (req) => {
     if (activeCasesErr) throw activeCasesErr;
     if (txCountErr) throw txCountErr;
     if (defaultersErr) throw defaultersErr;
-    if (monthTxErr) throw monthTxErr;
-    if (suspenseErr) throw suspenseErr;
+    if (monthAggErr) throw monthAggErr;
+    if (suspenseAggErr) throw suspenseAggErr;
     if (statusRowsErr) throw statusRowsErr;
     if (disciplineMetricsErr) throw disciplineMetricsErr;
     if (monthlyAutoInactiveErr) throw monthlyAutoInactiveErr;
     if (monthlyReinstatementsErr) throw monthlyReinstatementsErr;
 
-    const inflowTypes = new Set(["wallet_funding", "contribution", "case_wallet_deduction"]);
-    const monthlyCollection = (monthTx || []).reduce((sum: number, row: any) => {
-      const status = String(row.status || "").toLowerCase();
-      if (!(status === "" || status === "completed" || status === "success")) return sum;
-      if (!inflowTypes.has(String(row.transaction_type || ""))) return sum;
-      return sum + Math.abs(toNum(row.amount));
-    }, 0);
+    const monthRow = Array.isArray(monthAgg) ? monthAgg[0] : monthAgg;
+    const monthlyCollection = toNum((monthRow as Record<string, unknown> | null | undefined)?.total);
 
-    const suspensePendingAmount = (suspenseRows || []).reduce(
-      (sum: number, row: any) => sum + Math.abs(toNum(row.amount)),
-      0,
-    );
+    const suspenseRow = Array.isArray(suspenseAgg) ? suspenseAgg[0] : suspenseAgg;
+    const sr = suspenseRow as Record<string, unknown> | null | undefined;
+    const suspensePendingCount = toNum(sr?.pending_count);
+    const suspensePendingAmount = toNum(sr?.pending_amount);
 
     const statusDistribution = (statusRows || []).reduce((acc: Record<string, number>, row: any) => {
       const key = String(row?.status || "unknown");
@@ -120,7 +111,7 @@ serve(async (req) => {
         total_transactions: totalTransactions || 0,
         defaulter_count: defaulters || 0,
         monthly_collection: monthlyCollection,
-        suspense_pending_count: (suspenseRows || []).length,
+        suspense_pending_count: suspensePendingCount,
         suspense_pending_amount: suspensePendingAmount,
         status_distribution: statusDistribution,
         discipline: {

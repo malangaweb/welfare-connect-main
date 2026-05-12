@@ -10,6 +10,12 @@ import { authorizeQuery } from './queryAuthorization';
 import { getCurrentUser } from './authorization';
 import { User, Member } from './types';
 import { listAdminUsers } from './adminUsersApi';
+import {
+  CASE_ROW_COLUMNS,
+  MEMBER_DETAIL_COLUMNS,
+  MEMBER_LIST_COLUMNS,
+  TRANSACTION_LIST_COLUMNS,
+} from '@/lib/supabaseSelectColumns';
 
 /**
  * Authorization context for data operations
@@ -51,12 +57,12 @@ export const membersService = {
       throw new Error('Unauthorized: Cannot read members');
     }
 
-    let query = supabase.from('members').select('*', { count: 'exact' });
+    let query = supabase.from('members').select(MEMBER_LIST_COLUMNS, { count: 'exact' });
 
     // Apply filters
     if (filters?.search) {
       query = query.or(
-        `member_number.ilike.%${filters.search}%,first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,phone_number.ilike.%${filters.search}%`
+        `member_number.ilike.%${filters.search}%,name.ilike.%${filters.search}%,phone_number.ilike.%${filters.search}%`
       );
     }
 
@@ -65,7 +71,7 @@ export const membersService = {
     }
 
     if (filters?.location && filters.location !== 'all') {
-      query = query.eq('residences.location', filters.location);
+      query = query.eq('residence', filters.location);
     }
 
     if (filters?.defaultersOnly) {
@@ -75,6 +81,10 @@ export const membersService = {
     if (filters?.positiveBalanceOnly) {
       query = query.gt('wallet_balance', 0);
     }
+
+    query = query
+      .order('member_number_numeric', { ascending: true })
+      .order('member_number', { ascending: true });
 
     const { data, error, count } = await query;
 
@@ -101,7 +111,7 @@ export const membersService = {
 
     const { data, error } = await supabase
       .from('members')
-      .select('*')
+      .select(MEMBER_DETAIL_COLUMNS)
       .eq('id', memberId)
       .single();
 
@@ -128,20 +138,20 @@ export const membersService = {
     // Fetch member
     const memberPromise = supabase
       .from('members')
-      .select('*')
+      .select(MEMBER_DETAIL_COLUMNS)
       .eq('id', memberId)
       .single();
 
     // Fetch cases
     const casesPromise = supabase
       .from('cases')
-      .select('*')
-      .eq('member_id', memberId);
+      .select(CASE_ROW_COLUMNS)
+      .eq('affected_member_id', memberId);
 
     // Fetch transactions
     const transactionsPromise = supabase
       .from('transactions')
-      .select('*')
+      .select(TRANSACTION_LIST_COLUMNS)
       .eq('member_id', memberId)
       .order('created_at', { ascending: false });
 
@@ -199,14 +209,14 @@ export const transactionsService = {
 
     let query = supabase
       .from('transactions')
-      .select('*', { count: 'exact' });
+      .select(TRANSACTION_LIST_COLUMNS, { count: 'exact' });
 
     if (memberId) {
       query = query.eq('member_id', memberId);
     }
 
     if (filters?.type) {
-      query = query.eq('type', filters.type);
+      query = query.eq('transaction_type', filters.type);
     }
 
     if (filters?.status) {
@@ -240,7 +250,7 @@ export const transactionsService = {
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select(TRANSACTION_LIST_COLUMNS)
       .eq('id', transactionId)
       .single();
 
@@ -284,7 +294,7 @@ export const casesService = {
 
     let query = supabase
       .from('cases')
-      .select('*', { count: 'exact' });
+      .select(CASE_ROW_COLUMNS, { count: 'exact' });
 
     if (filters?.memberId) {
       // Check if user can access this member's cases
@@ -294,11 +304,13 @@ export const casesService = {
         throw new Error('Unauthorized: Cannot access these cases');
       }
 
-      query = query.eq('member_id', filters.memberId);
+      query = query.eq('affected_member_id', filters.memberId);
     }
 
     if (filters?.status) {
-      query = query.eq('status', filters.status);
+      const s = String(filters.status).toLowerCase();
+      if (s === 'active') query = query.eq('is_active', true);
+      else if (s === 'inactive') query = query.eq('is_active', false);
     }
 
     // Pagination
@@ -327,7 +339,7 @@ export const casesService = {
 
     const { data: caseData, error } = await supabase
       .from('cases')
-      .select('*')
+      .select(CASE_ROW_COLUMNS)
       .eq('id', caseId)
       .single();
 
@@ -336,9 +348,9 @@ export const casesService = {
     }
 
     // Check if user can access this case
-    if (caseData && typeof caseData === 'object' && 'member_id' in caseData) {
+    if (caseData && typeof caseData === 'object' && 'affected_member_id' in caseData) {
       try {
-        authorizeQuery({ resourceType: 'member', resourceId: (caseData as any).member_id });
+        authorizeQuery({ resourceType: 'member', resourceId: (caseData as any).affected_member_id });
       } catch (error) {
         throw new Error('Unauthorized: Cannot access this case');
       }
@@ -447,7 +459,7 @@ export const dashboardService = {
 
     const { data, error } = await supabase
       .from('members')
-      .select('*')
+      .select(MEMBER_LIST_COLUMNS)
       .lt('wallet_balance', 0)
       .order('wallet_balance', { ascending: true })
       .limit(limit);

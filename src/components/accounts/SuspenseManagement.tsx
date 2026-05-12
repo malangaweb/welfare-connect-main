@@ -160,7 +160,18 @@ export function SuspenseManagement() {
       const { data, error } = await supabase
         .from('wrong_mpesa_transactions')
         .select(`
-          *,
+          id,
+          mpesa_receipt_number,
+          phone_number,
+          amount,
+          sender_name,
+          transaction_date,
+          status,
+          reference,
+          matched_member_id,
+          intended_case_id,
+          intended_member_id,
+          created_at,
           matched_member:matched_member_id (
             id,
             name,
@@ -179,6 +190,7 @@ export function SuspenseManagement() {
           )
         `)
         .order('created_at', { ascending: false })
+        .limit(1500)
 
       if (error) {
         throw error

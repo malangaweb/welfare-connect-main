@@ -9,6 +9,11 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { Member } from '@/lib/types';
 import { mapDbMemberToMember } from '@/lib/db-types';
+import {
+  CASE_ROW_COLUMNS,
+  DEPENDANT_COLUMNS,
+  MEMBER_DETAIL_COLUMNS,
+} from '@/lib/supabaseSelectColumns';
 
 type CaseUpdate = Database["public"]["Tables"]["cases"]["Update"];
 
@@ -33,7 +38,7 @@ const EditCase = () => {
 
         const { data: caseData, error: caseError } = await supabase
           .from('cases')
-          .select('*')
+          .select(CASE_ROW_COLUMNS)
           .eq('id', id)
           .maybeSingle();
 
@@ -50,22 +55,7 @@ const EditCase = () => {
         while (true) {
           const { data: membersBatch, error: membersError } = await supabase
             .from('members')
-            .select(`
-              id,
-              member_number,
-              name,
-              gender,
-              date_of_birth,
-              national_id_number,
-              phone_number,
-              email_address,
-              residence,
-              next_of_kin,
-              dependants,
-              registration_date,
-              is_active,
-              wallet_balance
-            `)
+            .select(MEMBER_DETAIL_COLUMNS)
             .range(from, from + pageSize - 1);
 
           if (membersError) throw membersError;
@@ -84,7 +74,7 @@ const EditCase = () => {
         // Fetch dependants from the dependants table
         const { data: dependantsData, error: dependantsError } = await (supabase as any)
           .from('dependants')
-          .select('*');
+          .select(DEPENDANT_COLUMNS);
         
         if (dependantsError) {
           console.error('Error fetching dependants:', dependantsError);
@@ -186,7 +176,7 @@ const EditCase = () => {
 
       const { count: memberCount, error: countError } = await supabase
         .from('members')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       if (countError) throw countError;
 

@@ -30,12 +30,15 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import { supabase } from '@/integrations/supabase/client'
+import {
+  CASE_FUNDING_SUMMARY_COLUMNS,
+  MEMBER_TRANSACTION_SUMMARY_COLUMNS,
+  MONTHLY_CONTRIBUTIONS_SUMMARY_COLUMNS,
+} from '@/lib/supabaseSelectColumns'
 import { toast } from '@/components/ui/use-toast'
 import ReportsSubnav from '@/components/reports/ReportsSubnav'
 import { createReportFilename, exportRowsToCSV } from '@/lib/reportExport'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+import { loadJsPdfWithAutotable, loadXlsx } from '@/lib/reportExportLibs'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -118,7 +121,6 @@ const MONTHS = [
 ]
 
 const ITEMS_PER_PAGE = 15
-const CONTRIBUTION_TX_FETCH_LIMIT = 2000
 
 const formatCellValue = (col: string, value: unknown): string => {
   if (value === null || value === undefined) return ''
@@ -138,19 +140,33 @@ const safeFormatMonth = (value: string) => {
   return format(date, 'MMMM yyyy')
 }
 
+const getMonthDateRange = (selectedMonth: string, selectedYear: string) => {
+  if (selectedMonth === 'all' || selectedYear === 'all') return null
+  const year = Number(selectedYear)
+  const month = Number(selectedMonth)
+  if (!Number.isInteger(year) || !Number.isInteger(month)) return null
+  const start = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
+  const end = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0))
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
 const FiscalReports = () => {
   const [activeTab, setActiveTab] = useState('contributions')
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [selectedYear, setSelectedYear] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [casesLoading, setCasesLoading] = useState(false)
+  const [contributionTxLoading, setContributionTxLoading] = useState(false)
 
   const [monthlyData, setMonthlyData] = useState<MonthlySummary[]>([])
   const [caseData, setCaseData] = useState<CaseFunding[]>([])
+  const [allCaseOptions, setAllCaseOptions] = useState<Array<{ id: string; case_number: string; case_type: string }>>([])
   const [memberContributions, setMemberContributions] = useState<MemberContribution[]>([])
   const [contributionTransactions, setContributionTransactions] = useState<ContributionTransaction[]>([])
   const [disciplineCollectionTransactions, setDisciplineCollectionTransactions] = useState<DisciplineCollectionTransaction[]>([])
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [contributionTxTotalCount, setContributionTxTotalCount] = useState(0)
+  const [caseFundingTotalCount, setCaseFundingTotalCount] = useState(0)
 
   const [contributionsSearch, setContributionsSearch] = useState('')
   const [contributionTransactionsSearch, setContributionTransactionsSearch] = useState('')
@@ -158,6 +174,8 @@ const FiscalReports = () => {
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
   const [caseFilterSearch, setCaseFilterSearch] = useState('')
   const [casesSearch, setCasesSearch] = useState('')
+  const [caseFundingStatusFilter, setCaseFundingStatusFilter] = useState<'all' | 'active' | 'finalized' | 'closed'>('all')
+  const [caseFundingTypeFilter, setCaseFundingTypeFilter] = useState('all')
   const [membersSearch, setMembersSearch] = useState('')
   const [contributionsPage, setContributionsPage] = useState(1)
   const [contributionTransactionsPage, setContributionTransactionsPage] = useState(1)
@@ -168,16 +186,9 @@ const FiscalReports = () => {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [{ data: monthly }, { data: caseFunding }, { data: memberTx }, { data: txRows, count: txCount }, { data: disciplineRows }, { data: dashSummary }] = await Promise.all([
-          supabase.from('monthly_contributions_summary').select('*').order('month', { ascending: false }),
-          supabase.from('case_funding_summary').select('*'),
-          supabase.from('member_transaction_summary').select('*').order('member_number'),
-          supabase
-            .from('transactions')
-            .select('id, created_at, transaction_type, amount, status, mpesa_reference, description, case_id, members(member_number, name), cases(case_number)', { count: 'exact' })
-            .in('transaction_type', ['contribution', 'contribution_refund'])
-            .order('created_at', { ascending: false })
-            .limit(CONTRIBUTION_TX_FETCH_LIMIT),
+        const [{ data: monthly }, { data: memberTx }, { data: disciplineRows }, { data: dashSummary }, { data: caseOptions }] = await Promise.all([
+          supabase.from('monthly_contributions_summary').select(MONTHLY_CONTRIBUTIONS_SUMMARY_COLUMNS).order('month', { ascending: false }),
+          supabase.from('member_transaction_summary').select(MEMBER_TRANSACTION_SUMMARY_COLUMNS).order('member_number'),
           supabase
             .from('transactions')
             .select('id, created_at, transaction_type, amount, status')
@@ -186,31 +197,19 @@ const FiscalReports = () => {
             .order('created_at', { ascending: false })
             .limit(5000),
           supabase.rpc('get_enhanced_dashboard_summary'),
+          supabase.from('cases').select('id, case_number, case_type').order('case_number', { ascending: false }),
         ])
 
         setMonthlyData((monthly || []) as MonthlySummary[])
-        setCaseData((caseFunding || []) as CaseFunding[])
         setMemberContributions((memberTx || []) as MemberContribution[])
-        setContributionTransactions(
-          ((txRows || []) as any[]).map((tx) => {
-            const membersData = Array.isArray(tx.members) ? tx.members[0] : tx.members
-            return {
-              id: tx.id,
-              created_at: tx.created_at,
-              transaction_type: tx.transaction_type,
-              amount: Number(tx.amount || 0),
-              status: tx.status || null,
-              mpesa_reference: tx.mpesa_reference || null,
-              description: tx.description || null,
-              member_name: membersData?.name || 'Unknown',
-              member_number: membersData?.member_number || '-',
-              case_id: tx.case_id || null,
-              case_number: (Array.isArray(tx.cases) ? tx.cases[0] : tx.cases)?.case_number || null,
-            } as ContributionTransaction
-          })
-        )
         setSummary(((dashSummary as any)?.[0] || {}) as DashboardSummary)
-        setContributionTxTotalCount(Number(txCount || 0))
+        setAllCaseOptions(
+          ((caseOptions || []) as any[]).map((c) => ({
+            id: String(c.id),
+            case_number: String(c.case_number || ''),
+            case_type: String(c.case_type || ''),
+          }))
+        )
         setDisciplineCollectionTransactions(
           ((disciplineRows || []) as any[]).map((tx) => ({
             id: tx.id,
@@ -231,12 +230,118 @@ const FiscalReports = () => {
     fetchData()
   }, [])
 
-  const exportToPDF = useCallback((title: string, data: any[], columns: string[]) => {
+  useEffect(() => {
+    const fetchCaseFundingPage = async () => {
+      setCasesLoading(true)
+      try {
+        let query = supabase
+          .from('case_funding_summary')
+          .select(CASE_FUNDING_SUMMARY_COLUMNS, { count: 'exact' })
+          .order('case_number', { ascending: false })
+
+        const term = casesSearch.trim()
+        if (term) {
+          query = query.or(`case_number.ilike.%${term}%,case_type.ilike.%${term}%`)
+        }
+
+        if (caseFundingStatusFilter === 'active') query = query.eq('is_active', true)
+        if (caseFundingStatusFilter === 'finalized') query = query.eq('is_finalized', true)
+        if (caseFundingStatusFilter === 'closed') query = query.eq('is_active', false).eq('is_finalized', false)
+        if (caseFundingTypeFilter !== 'all') query = query.eq('case_type', caseFundingTypeFilter)
+
+        const from = (casesPage - 1) * ITEMS_PER_PAGE
+        const to = from + ITEMS_PER_PAGE - 1
+        const { data, error, count } = await query.range(from, to)
+        if (error) throw error
+        setCaseData((data || []) as CaseFunding[])
+        setCaseFundingTotalCount(Number(count || 0))
+      } catch (error: any) {
+        console.error('Case funding fetch error:', error)
+        toast({ title: 'Error', description: 'Failed to load case funding report.', variant: 'destructive' })
+      } finally {
+        setCasesLoading(false)
+      }
+    }
+
+    fetchCaseFundingPage()
+  }, [casesPage, casesSearch, caseFundingStatusFilter, caseFundingTypeFilter])
+
+  useEffect(() => {
+    const fetchContributionTransactionsPage = async () => {
+      setContributionTxLoading(true)
+      try {
+        let query = supabase
+          .from('transactions')
+          .select('id, created_at, transaction_type, amount, status, mpesa_reference, description, case_id, members(member_number, name), cases(case_number)', { count: 'exact' })
+          .order('created_at', { ascending: false })
+
+        if (contributionTypeFilter === 'all') {
+          query = query.in('transaction_type', ['contribution', 'contribution_refund'])
+        } else {
+          query = query.eq('transaction_type', contributionTypeFilter)
+        }
+
+        const dateRange = getMonthDateRange(selectedMonth, selectedYear)
+        if (dateRange) {
+          query = query.gte('created_at', dateRange.start).lt('created_at', dateRange.end)
+        } else if (selectedYear !== 'all') {
+          const year = Number(selectedYear)
+          if (Number.isInteger(year)) {
+            const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0)).toISOString()
+            const end = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0)).toISOString()
+            query = query.gte('created_at', start).lt('created_at', end)
+          }
+        }
+
+        if (selectedCaseIds.length > 0) query = query.in('case_id', selectedCaseIds)
+
+        const term = contributionTransactionsSearch.trim()
+        if (term) {
+          query = query.or(`mpesa_reference.ilike.%${term}%,description.ilike.%${term}%,members.name.ilike.%${term}%,members.member_number.ilike.%${term}%,cases.case_number.ilike.%${term}%`)
+        }
+
+        const from = (contributionTransactionsPage - 1) * ITEMS_PER_PAGE
+        const to = from + ITEMS_PER_PAGE - 1
+        const { data: txRows, error, count } = await query.range(from, to)
+        if (error) throw error
+
+        setContributionTransactions(
+          ((txRows || []) as any[]).map((tx) => {
+            const membersData = Array.isArray(tx.members) ? tx.members[0] : tx.members
+            return {
+              id: tx.id,
+              created_at: tx.created_at,
+              transaction_type: tx.transaction_type,
+              amount: Number(tx.amount || 0),
+              status: tx.status || null,
+              mpesa_reference: tx.mpesa_reference || null,
+              description: tx.description || null,
+              member_name: membersData?.name || 'Unknown',
+              member_number: membersData?.member_number || '-',
+              case_id: tx.case_id || null,
+              case_number: (Array.isArray(tx.cases) ? tx.cases[0] : tx.cases)?.case_number || null,
+            } as ContributionTransaction
+          })
+        )
+        setContributionTxTotalCount(Number(count || 0))
+      } catch (error: any) {
+        console.error('Contribution transactions fetch error:', error)
+        toast({ title: 'Error', description: 'Failed to load contribution transactions.', variant: 'destructive' })
+      } finally {
+        setContributionTxLoading(false)
+      }
+    }
+
+    fetchContributionTransactionsPage()
+  }, [contributionTransactionsPage, selectedMonth, selectedYear, contributionTypeFilter, selectedCaseIds, contributionTransactionsSearch])
+
+  const exportToPDF = useCallback(async (title: string, data: any[], columns: string[]) => {
     try {
       if (!data.length) {
         toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
         return
       }
+      const jsPDF = await loadJsPdfWithAutotable()
       const doc = new jsPDF()
       doc.setFontSize(16)
       doc.text(title, 14, 20)
@@ -260,12 +365,13 @@ const FiscalReports = () => {
     }
   }, [])
 
-  const exportToExcel = useCallback((title: string, data: any[]) => {
+  const exportToExcel = useCallback(async (title: string, data: any[]) => {
     try {
       if (!data.length) {
         toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
         return
       }
+      const XLSX = await loadXlsx()
       const ws = XLSX.utils.json_to_sheet(data)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, title)
@@ -321,46 +427,28 @@ const FiscalReports = () => {
   }, [monthlyData, contributionTransactions])
 
   const caseFilterOptions = useMemo(() => {
-    return caseData
+    return allCaseOptions
       .map((c) => ({
-        id: String(c.case_id),
+        id: String(c.id),
         label: `#${c.case_number} - ${String(c.case_type || '').toUpperCase()}`,
       }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [caseData])
+  }, [allCaseOptions])
+
+  const caseTypeOptions = useMemo(() => {
+    const set = new Set<string>()
+    allCaseOptions.forEach((c) => {
+      const value = String(c.case_type || '').trim()
+      if (value) set.add(value)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [allCaseOptions])
 
   const filteredCaseFilterOptions = useMemo(() => {
     const term = caseFilterSearch.trim().toLowerCase()
     if (!term) return caseFilterOptions
     return caseFilterOptions.filter((c) => c.label.toLowerCase().includes(term))
   }, [caseFilterOptions, caseFilterSearch])
-
-  const filteredContributionTransactions = useMemo(() => {
-    const term = contributionTransactionsSearch.trim().toLowerCase()
-    return contributionTransactions.filter((tx) => {
-      const date = new Date(tx.created_at)
-      const monthMatch = selectedMonth === 'all' || date.getMonth() === Number(selectedMonth)
-      const yearMatch = selectedYear === 'all' || date.getFullYear().toString() === selectedYear
-      const typeMatch = contributionTypeFilter === 'all' || tx.transaction_type === contributionTypeFilter
-      const caseMatch = selectedCaseIds.length === 0 || (tx.case_id ? selectedCaseIds.includes(tx.case_id) : false)
-      const searchMatch =
-        term === '' ||
-        tx.member_name.toLowerCase().includes(term) ||
-        tx.member_number.toLowerCase().includes(term) ||
-        String(tx.case_number || '').toLowerCase().includes(term) ||
-        String(tx.mpesa_reference || '').toLowerCase().includes(term) ||
-        String(tx.description || '').toLowerCase().includes(term)
-
-      return monthMatch && yearMatch && typeMatch && caseMatch && searchMatch
-    })
-  }, [contributionTransactions, contributionTransactionsSearch, selectedMonth, selectedYear, contributionTypeFilter, selectedCaseIds])
-
-  const filteredCaseData = useMemo(() => {
-    return caseData.filter((item) => {
-      const term = casesSearch.toLowerCase()
-      return term === '' || String(item.case_number || '').toLowerCase().includes(term) || String(item.case_type || '').toLowerCase().includes(term)
-    })
-  }, [caseData, casesSearch])
 
   const filteredDisciplineCollections = useMemo(() => {
     const grouped = new Map<string, { transaction_type: 'arrears' | 'penalty'; transaction_count: number; total_amount: number }>()
@@ -401,17 +489,18 @@ const FiscalReports = () => {
   }
 
   const paginatedMonthlyData = useMemo(() => paginate(filteredMonthlyData, contributionsPage), [filteredMonthlyData, contributionsPage])
-  const paginatedContributionTransactions = useMemo(
-    () => paginate(filteredContributionTransactions, contributionTransactionsPage),
-    [filteredContributionTransactions, contributionTransactionsPage]
-  )
-  const paginatedCaseData = useMemo(() => paginate(filteredCaseData, casesPage), [filteredCaseData, casesPage])
+  const caseDataTotalPages = Math.max(1, Math.ceil(caseFundingTotalCount / ITEMS_PER_PAGE))
+  const contributionTransactionsTotalPages = Math.max(1, Math.ceil(contributionTxTotalCount / ITEMS_PER_PAGE))
   const paginatedMemberData = useMemo(() => paginate(filteredMemberData, membersPage), [filteredMemberData, membersPage])
 
   useEffect(() => {
     setContributionsPage(1)
     setContributionTransactionsPage(1)
   }, [selectedMonth, selectedYear, contributionsSearch, contributionTransactionsSearch, contributionTypeFilter, selectedCaseIds])
+
+  useEffect(() => {
+    setCasesPage(1)
+  }, [casesSearch, caseFundingStatusFilter, caseFundingTypeFilter])
 
   const renderPagination = (currentPage: number, totalPages: number, onPageChange: (page: number) => void, total: number, start: number, end: number) => {
     if (totalPages <= 1) return null
@@ -597,11 +686,6 @@ const FiscalReports = () => {
                   <div>
                     <CardTitle>Contribution Transactions</CardTitle>
                     <CardDescription>Raw contribution transaction records for the selected period</CardDescription>
-                    {contributionTxTotalCount > contributionTransactions.length && (
-                      <p className="mt-1 text-xs text-amber-700">
-                        Showing latest {contributionTransactions.length.toLocaleString()} of {contributionTxTotalCount.toLocaleString()} rows.
-                      </p>
-                    )}
                   </div>
                   <div className="flex gap-2">
                     <Select value={contributionTypeFilter} onValueChange={(value: 'all' | 'contribution' | 'contribution_refund') => setContributionTypeFilter(value)}>
@@ -674,7 +758,7 @@ const FiscalReports = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => exportToExcel('Case Contribution Transactions', filteredContributionTransactions)}
+                      onClick={() => exportToExcel('Case Contribution Transactions', contributionTransactions)}
                     >
                       <FileSpreadsheet className="mr-2 h-4 w-4" />
                       Excel
@@ -682,7 +766,7 @@ const FiscalReports = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => exportToCSV('Case Contribution Transactions', filteredContributionTransactions)}
+                      onClick={() => exportToCSV('Case Contribution Transactions', contributionTransactions)}
                     >
                       <FileText className="mr-2 h-4 w-4" />
                       CSV
@@ -715,12 +799,12 @@ const FiscalReports = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {loading ? renderSkeletonRows(8) : paginatedContributionTransactions.data.length === 0 ? (
+                      {loading || contributionTxLoading ? renderSkeletonRows(8) : contributionTransactions.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No contribution transactions found</TableCell>
                         </TableRow>
                       ) : (
-                        paginatedContributionTransactions.data.map((item) => (
+                        contributionTransactions.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell>{format(new Date(item.created_at), 'dd MMM yyyy HH:mm')}</TableCell>
                             <TableCell className="font-medium">{item.case_number ? `#${item.case_number}` : '-'}</TableCell>
@@ -751,11 +835,11 @@ const FiscalReports = () => {
                 </div>
                 {renderPagination(
                   contributionTransactionsPage,
-                  paginatedContributionTransactions.totalPages,
+                  contributionTransactionsTotalPages,
                   setContributionTransactionsPage,
-                  paginatedContributionTransactions.total,
-                  paginatedContributionTransactions.start,
-                  paginatedContributionTransactions.end
+                  contributionTxTotalCount,
+                  (contributionTransactionsPage - 1) * ITEMS_PER_PAGE,
+                  contributionTransactionsPage * ITEMS_PER_PAGE
                 )}
               </CardContent>
             </Card>
@@ -770,19 +854,43 @@ const FiscalReports = () => {
                     <CardDescription>Progress of fundraising for each case</CardDescription>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => exportToPDF('Case Funding Report', filteredCaseData, ['case_number', 'case_type', 'expected_amount', 'actual_amount', 'variance', 'is_active'])}><Download className="mr-2 h-4 w-4" />PDF</Button>
-                    <Button variant="outline" size="sm" onClick={() => exportToExcel('Case Funding Report', filteredCaseData)}><FileSpreadsheet className="mr-2 h-4 w-4" />Excel</Button>
-                    <Button variant="outline" size="sm" onClick={() => exportToCSV('Case Funding Report', filteredCaseData)}><FileSpreadsheet className="mr-2 h-4 w-4" />CSV</Button>
+                    <Button variant="outline" size="sm" onClick={() => exportToPDF('Case Funding Report', caseData, ['case_number', 'case_type', 'expected_amount', 'actual_amount', 'variance', 'is_active'])}><Download className="mr-2 h-4 w-4" />PDF</Button>
+                    <Button variant="outline" size="sm" onClick={() => exportToExcel('Case Funding Report', caseData)}><FileSpreadsheet className="mr-2 h-4 w-4" />Excel</Button>
+                    <Button variant="outline" size="sm" onClick={() => exportToCSV('Case Funding Report', caseData)}><FileSpreadsheet className="mr-2 h-4 w-4" />CSV</Button>
                   </div>
                 </div>
-                <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search by case number or type..." value={casesSearch} onChange={(e) => { setCasesSearch(e.target.value); setCasesPage(1) }} className="pl-8" /></div>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <div className="relative max-w-sm flex-1"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search by case number or type..." value={casesSearch} onChange={(e) => { setCasesSearch(e.target.value); setCasesPage(1) }} className="pl-8" /></div>
+                  <Select value={caseFundingStatusFilter} onValueChange={(value: 'all' | 'active' | 'finalized' | 'closed') => setCaseFundingStatusFilter(value)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="finalized">Finalized</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={caseFundingTypeFilter} onValueChange={setCaseFundingTypeFilter}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Case Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Case Types</SelectItem>
+                      {caseTypeOptions.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="rounded-lg border">
                   <Table>
                     <TableHeader><TableRow><TableHead>Case Number</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Expected</TableHead><TableHead className="text-right">Raised</TableHead><TableHead className="text-right">Variance</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {loading ? renderSkeletonRows(6) : paginatedCaseData.data.length === 0 ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No cases found</TableCell></TableRow> : paginatedCaseData.data.map((item) => (
+                      {loading || casesLoading ? renderSkeletonRows(6) : caseData.length === 0 ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No cases found</TableCell></TableRow> : caseData.map((item) => (
                         <TableRow key={item.case_id}>
                           <TableCell className="font-medium">{item.case_number}</TableCell>
                           <TableCell className="capitalize">{item.case_type}</TableCell>
@@ -795,7 +903,7 @@ const FiscalReports = () => {
                     </TableBody>
                   </Table>
                 </div>
-                {renderPagination(casesPage, paginatedCaseData.totalPages, setCasesPage, paginatedCaseData.total, paginatedCaseData.start, paginatedCaseData.end)}
+                {renderPagination(casesPage, caseDataTotalPages, setCasesPage, caseFundingTotalCount, (casesPage - 1) * ITEMS_PER_PAGE, casesPage * ITEMS_PER_PAGE)}
               </CardContent>
             </Card>
           </TabsContent>

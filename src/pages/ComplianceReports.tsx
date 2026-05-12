@@ -17,9 +17,13 @@ import { supabase } from '@/integrations/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import ReportsSubnav from '@/components/reports/ReportsSubnav'
 import { createReportFilename } from '@/lib/reportExport'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+import { loadJsPdfWithAutotable, loadXlsx } from '@/lib/reportExportLibs'
+import {
+  AUDIT_LOG_LIST_COLUMNS,
+  MEMBERS_ON_PROBATION_COMPLIANCE_COLUMNS,
+  REVERSALS_AUDIT_COLUMNS,
+  WRONG_MPESA_PENDING_COUNT_COLUMNS,
+} from '@/lib/supabaseSelectColumns'
 import { format, subDays, startOfYear } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -89,12 +93,16 @@ const ComplianceReports = () => {
     try {
       const { data, error } = await supabase
         .from('audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .select(AUDIT_LOG_LIST_COLUMNS)
+        .order('timestamp', { ascending: false })
         .limit(100)
 
       if (error) throw error
-      setAuditLogs(data || [])
+      const rows = (data || []).map((row: Record<string, unknown>) => ({
+        ...row,
+        created_at: (row.created_at as string) || (row.timestamp as string),
+      })) as AuditEntry[]
+      setAuditLogs(rows)
     } catch (error: any) {
       console.error('Error fetching audit logs:', error)
       toast({
@@ -109,7 +117,7 @@ const ComplianceReports = () => {
     try {
       const { data, error } = await supabase
         .from('reversals_audit')
-        .select('*')
+        .select(REVERSALS_AUDIT_COLUMNS)
         .order('reversal_date', { ascending: false })
 
       if (error) throw error
@@ -144,11 +152,11 @@ const ComplianceReports = () => {
           .select('id, member_number, name, wallet_balance'),
         supabase
           .from('wrong_mpesa_transactions')
-          .select('*', { count: 'exact' })
+          .select(WRONG_MPESA_PENDING_COUNT_COLUMNS, { count: 'exact' })
           .eq('status', 'pending'),
         supabase
           .from('members_on_probation')
-          .select('*')
+          .select(MEMBERS_ON_PROBATION_COMPLIANCE_COLUMNS)
           .gt('days_overdue', 0),
         supabase
           .from('transactions')
@@ -192,7 +200,7 @@ const ComplianceReports = () => {
           affected_count: suspense.length,
           recommendation: 'Review and match suspense transactions to member accounts',
           details: suspense.map((entry: any) => {
-            const reference = entry.mpesa_reference || entry.mpesa_ref || entry.reference || entry.id
+            const reference = entry.reference || entry.mpesa_receipt_number || entry.id
             const amount = Number(entry.amount || 0)
             return `Ref ${reference}: KES ${Math.abs(amount).toLocaleString()} pending match`
           }),
@@ -331,8 +339,9 @@ const ComplianceReports = () => {
     setExpandedIssues((prev) => ({ ...prev, [issueId]: !prev[issueId] }))
   }
 
-  const exportAuditToPDF = () => {
+  const exportAuditToPDF = async () => {
     try {
+      const jsPDF = await loadJsPdfWithAutotable()
       const doc = new jsPDF()
       
       doc.setFontSize(16)
@@ -420,12 +429,13 @@ const ComplianceReports = () => {
     }
   }
 
-  const exportReversalsToExcel = () => {
+  const exportReversalsToExcel = async () => {
     try {
       if (!reversals.length) {
         toast({ title: 'No data to export', description: 'No reversals available for export.', variant: 'destructive' })
         return
       }
+      const XLSX = await loadXlsx()
       const ws = XLSX.utils.json_to_sheet(reversals)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Reversals')

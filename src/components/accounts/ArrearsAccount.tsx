@@ -4,6 +4,7 @@ import AccountSummaryCard from './AccountSummaryCard';
 import AccountTransactionsList from './AccountTransactionsList';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { TRANSACTION_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 const ArrearsAccount = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -17,7 +18,7 @@ const ArrearsAccount = () => {
     try {
       const { data, error } = await supabase
         .from('transactions')
-        .select('*')
+        .select(TRANSACTION_LIST_COLUMNS)
         .eq('transaction_type', 'arrears')
         .in('status', ['completed', 'success'])
         .order('created_at', { ascending: false });

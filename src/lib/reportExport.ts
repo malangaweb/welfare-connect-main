@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import { loadXlsx } from './reportExportLibs';
 
 const stamp = () => {
   const d = new Date();
@@ -46,11 +46,12 @@ export const exportRowsToCSV = (
   downloadBlob(filename, new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' }));
 };
 
-export const exportRowsToXLSX = (
+export const exportRowsToXLSX = async (
   filename: string,
   rows: Record<string, unknown>[],
   headers: { key: string; label: string }[]
 ) => {
+  const XLSX = await loadXlsx();
   const exportData = rows.map((row) => {
     const obj: Record<string, unknown> = {};
     headers.forEach((h) => {

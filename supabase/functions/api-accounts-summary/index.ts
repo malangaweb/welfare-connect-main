@@ -29,66 +29,26 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const [{ data: members, error: membersErr }, { data: txRows, error: txErr }, { data: suspenseRows, error: suspenseErr }] =
-      await Promise.all([
-        supabase.from("members").select("id, is_active, wallet_balance"),
-        supabase
-          .from("transactions")
-          .select("amount, transaction_type, status")
-          .order("created_at", { ascending: false })
-          .limit(5000),
-        supabase
-          .from("wrong_mpesa_transactions")
-          .select("amount, status")
-          .in("status", ["pending", "PENDING_REVIEW"]),
-      ]);
+    const { data: summaryRows, error: summaryErr } = await supabase.rpc("get_accounts_summary");
+    if (summaryErr) throw summaryErr;
 
-    if (membersErr) throw membersErr;
-    if (txErr) throw txErr;
-    if (suspenseErr) throw suspenseErr;
-
-    const memberList = members || [];
-    const walletBalance = memberList.reduce((sum: number, m: any) => sum + toNum(m.wallet_balance), 0);
-    const activeMembers = memberList.filter((m: any) => m.is_active === true).length;
-
-    const completed = (txRows || []).filter((t: any) => {
-      const status = String(t.status || "").toLowerCase();
-      return status.length === 0 || status === "completed" || status === "success";
-    });
-
-    const contributionTypes = new Set(["contribution", "case_wallet_deduction"]);
-    const fundingTypes = new Set(["wallet_funding"]);
-    const refundTypes = new Set(["contribution_refund", "case_wallet_refund", "refund", "wallet_refund"]);
-
-    let contributions = 0;
-    let walletFunding = 0;
-    let refunds = 0;
-
-    for (const row of completed) {
-      const txType = String((row as any).transaction_type || "");
-      const amount = toNum((row as any).amount);
-      if (contributionTypes.has(txType)) contributions += Math.abs(amount);
-      if (fundingTypes.has(txType)) walletFunding += Math.abs(amount);
-      if (refundTypes.has(txType)) refunds += Math.abs(amount);
+    const row = Array.isArray(summaryRows) ? summaryRows[0] : summaryRows;
+    if (!row || typeof row !== "object") {
+      throw new Error("get_accounts_summary returned no data");
     }
 
-    const suspenseList = suspenseRows || [];
-    const suspensePendingCount = suspenseList.length;
-    const suspensePendingAmount = suspenseList.reduce(
-      (sum: number, row: any) => sum + Math.abs(toNum(row.amount)),
-      0,
-    );
+    const r = row as Record<string, unknown>;
 
     return jsonResponse(200, {
       accounts: {
-        active_members: activeMembers,
-        total_members: memberList.length,
-        wallet_balance_total: walletBalance,
-        contributions_total: contributions,
-        wallet_funding_total: walletFunding,
-        refunds_total: refunds,
-        suspense_pending_count: suspensePendingCount,
-        suspense_pending_amount: suspensePendingAmount,
+        active_members: toNum(r.active_members),
+        total_members: toNum(r.total_members),
+        wallet_balance_total: toNum(r.total_wallet_balance),
+        contributions_total: toNum(r.contributions_total),
+        wallet_funding_total: toNum(r.wallet_funding_total),
+        refunds_total: toNum(r.refunds_total),
+        suspense_pending_count: toNum(r.suspense_pending_count),
+        suspense_pending_amount: toNum(r.suspense_pending_amount),
       },
     });
   } catch (e) {

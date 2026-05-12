@@ -7,6 +7,7 @@ import BulkRenewalFeeDialog from './BulkRenewalFeeDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { fetchSafeSettings } from '@/lib/settingsClient';
+import { TRANSACTION_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 const RenewalAccount = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -31,7 +32,7 @@ const RenewalAccount = () => {
       // Then get the transactions
       const { data, error } = await supabase
         .from('transactions')
-        .select('*')
+        .select(TRANSACTION_LIST_COLUMNS)
         .eq('transaction_type', 'renewal')
         .order('created_at', { ascending: false });
 

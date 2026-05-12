@@ -30,12 +30,13 @@ async function resolveMember(
   supabase: ReturnType<typeof createClient>,
   selectors: string[],
 ) {
+  const memberSelect = "id, member_number, name, wallet_balance, is_active, status";
+
   for (const selector of selectors) {
-    const byId = await supabase
-      .from("members")
-      .select("id, member_number, name, wallet_balance, is_active, status")
-      .eq("id", selector)
-      .maybeSingle();
+    const [byId, byMemberNumber] = await Promise.all([
+      supabase.from("members").select(memberSelect).eq("id", selector).maybeSingle(),
+      supabase.from("members").select(memberSelect).eq("member_number", selector).maybeSingle(),
+    ]);
 
     if (byId.data) {
       return byId.data;
@@ -43,12 +44,6 @@ async function resolveMember(
     if (byId.error && !isInvalidUuidError(byId.error)) {
       throw byId.error;
     }
-
-    const byMemberNumber = await supabase
-      .from("members")
-      .select("id, member_number, name, wallet_balance, is_active, status")
-      .eq("member_number", selector)
-      .maybeSingle();
 
     if (byMemberNumber.error) {
       throw byMemberNumber.error;
@@ -130,33 +125,39 @@ serve(async (req) => {
 
     const resolvedMemberId = String(member.id);
 
-    const { data: streakRow, error: streakError } = await supabase
-      .from("member_default_streaks")
-      .select("current_streak, last_defaulted, updated_at")
-      .eq("member_id", resolvedMemberId)
-      .maybeSingle();
+    // Run independent reads in parallel; avoid loading full case history (was limit 1000).
+    const casesSelect =
+      "id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date";
+    const payableCaseFilter =
+      "is_active.eq.true,is_finalized.eq.true,end_date.not.is.null";
+
+    const [
+      { data: streakRow, error: streakError },
+      { data: transactions, error: txError },
+      { data: allCases, error: casesError },
+    ] = await Promise.all([
+      supabase
+        .from("member_default_streaks")
+        .select("current_streak, last_defaulted, updated_at")
+        .eq("member_id", resolvedMemberId)
+        .maybeSingle(),
+      supabase
+        .from("transactions")
+        .select("id, case_id, amount, transaction_type, description, created_at, status, mpesa_reference")
+        .eq("member_id", resolvedMemberId)
+        .order("created_at", { ascending: false })
+        .limit(10),
+      supabase
+        .from("cases")
+        .select(casesSelect)
+        .or(payableCaseFilter)
+        .order("created_at", { ascending: false })
+        .limit(400),
+    ]);
+
     if (streakError) throw streakError;
-
-    const { data: transactions, error: txError } = await supabase
-      .from("transactions")
-      .select("id, case_id, amount, transaction_type, description, created_at, status, mpesa_reference")
-      .eq("member_id", resolvedMemberId)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    if (txError) {
-      throw txError;
-    }
-
-    const { data: allCases, error: casesError } = await supabase
-      .from("cases")
-      .select("id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date")
-      .order("created_at", { ascending: false })
-      .limit(1000);
-
-    if (casesError) {
-      throw casesError;
-    }
+    if (txError) throw txError;
+    if (casesError) throw casesError;
 
     const payableCandidates = (allCases || []).filter((c: any) =>
       Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date),

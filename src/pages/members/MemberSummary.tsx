@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
+import { MEMBER_DETAIL_COLUMNS, TRANSACTION_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 const MemberSummary = () => {
   const [member, setMember] = useState<any>(null);
@@ -30,7 +31,7 @@ const MemberSummary = () => {
     }
     supabase
       .from("members")
-      .select("*")
+      .select(MEMBER_DETAIL_COLUMNS)
       .eq("id", member_id)
       .single()
       .then(({ data }) => {
@@ -44,7 +45,7 @@ const MemberSummary = () => {
     // Fetch all transactions (used elsewhere); balances come from member row
     (supabase as any)
       .from("transactions")
-      .select("*")
+      .select(TRANSACTION_LIST_COLUMNS)
       .eq("member_id", member_id)
       .then(({ data }: { data: any[] }) => {
         setTransactions(data || []);
@@ -80,7 +81,7 @@ const MemberSummary = () => {
       setEditOpen(false);
       // Add a short delay before refetching
       setTimeout(async () => {
-        const { data } = await supabase.from('members').select('*').eq('id', member.id).single();
+        const { data } = await supabase.from('members').select(MEMBER_DETAIL_COLUMNS).eq('id', member.id).single();
         setMember(data);
       }, 500);
     } catch (err: any) {

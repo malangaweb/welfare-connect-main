@@ -27,11 +27,10 @@ async function resolveMemberId(
   selectors: string[],
 ): Promise<string | null> {
   for (const selector of selectors) {
-    const byId = await supabase
-      .from("members")
-      .select("id")
-      .eq("id", selector)
-      .maybeSingle();
+    const [byId, byMemberNumber] = await Promise.all([
+      supabase.from("members").select("id").eq("id", selector).maybeSingle(),
+      supabase.from("members").select("id").eq("member_number", selector).maybeSingle(),
+    ]);
 
     if (byId.data?.id) {
       return String(byId.data.id);
@@ -39,12 +38,6 @@ async function resolveMemberId(
     if (byId.error && !isInvalidUuidError(byId.error)) {
       throw byId.error;
     }
-
-    const byMemberNumber = await supabase
-      .from("members")
-      .select("id")
-      .eq("member_number", selector)
-      .maybeSingle();
 
     if (byMemberNumber.error) {
       throw byMemberNumber.error;
@@ -105,22 +98,22 @@ serve(async (req) => {
       return jsonResponse(404, { error: "Member not found" });
     }
 
-    const { data: cases, error: casesErr } = await supabase
-      .from("cases")
-      .select("id, case_number, case_type, contribution_per_member, expected_amount, actual_amount, is_active, is_finalized, created_at")
-      .eq("member_id", memberId)
-      .order("created_at", { ascending: false })
-      .limit(30);
+    const [{ data: cases, error: casesErr }, { data: transactions, error: txErr }] = await Promise.all([
+      supabase
+        .from("cases")
+        .select("id, case_number, case_type, contribution_per_member, expected_amount, actual_amount, is_active, is_finalized, created_at")
+        .eq("affected_member_id", memberId)
+        .order("created_at", { ascending: false })
+        .limit(30),
+      supabase
+        .from("transactions")
+        .select("id, amount, transaction_type, payment_method, mpesa_reference, reference, description, status, created_at, case_id")
+        .eq("member_id", memberId)
+        .order("created_at", { ascending: false })
+        .limit(40),
+    ]);
 
     if (casesErr) throw casesErr;
-
-    const { data: transactions, error: txErr } = await supabase
-      .from("transactions")
-      .select("id, amount, transaction_type, payment_method, mpesa_reference, reference, description, status, created_at, case_id")
-      .eq("member_id", memberId)
-      .order("created_at", { ascending: false })
-      .limit(40);
-
     if (txErr) throw txErr;
 
     return jsonResponse(200, {

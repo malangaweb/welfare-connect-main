@@ -5,6 +5,7 @@ import { DbTransaction } from '@/lib/db-types';
 import AccountSummaryCard from './AccountSummaryCard';
 import AccountTransactionsList from './AccountTransactionsList';
 import { supabase } from '@/integrations/supabase/client';
+import { TRANSACTION_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 const PenaltyAccount = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -19,7 +20,7 @@ const PenaltyAccount = () => {
       try {
         const { data, error } = await (supabase
           .from('transactions')
-          .select('*')
+          .select(TRANSACTION_LIST_COLUMNS)
           .eq('transaction_type', 'penalty')
           .in('status', ['completed', 'success'])
           .order('created_at', { ascending: false })) as { data: DbTransaction[] | null; error: any };

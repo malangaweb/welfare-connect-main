@@ -15,6 +15,7 @@ import DashboardLayout from '@/layouts/DashboardLayout';
 import { Transaction } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
 import { persistentCache } from '@/lib/cache';
+import { TRANSACTION_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -78,7 +79,7 @@ const Transactions = () => {
       }
 
       let query = supabase.from('transactions')
-        .select('*', { count: 'exact' })
+        .select(TRANSACTION_LIST_COLUMNS, { count: 'exact' })
         .order('created_at', { ascending: false });
         
       if (memberId) {

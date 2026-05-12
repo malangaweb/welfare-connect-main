@@ -43,6 +43,12 @@ import { persistentCache } from '@/lib/cache';
 import ReportsSubnav from '@/components/reports/ReportsSubnav';
 import { createReportFilename, exportRowsToCSV, exportRowsToXLSX } from '@/lib/reportExport';
 import { invokeWithAppToken } from '@/lib/appAuth';
+import {
+  CASE_ROW_COLUMNS,
+  MEMBER_LIST_COLUMNS,
+  REPORT_TRANSACTION_COLUMNS,
+} from '@/lib/supabaseSelectColumns';
+import { normalizeMemberStatus } from '@/lib/db-types';
 
 import {
   ContributionTrendChart,
@@ -294,6 +300,26 @@ const disciplineLatePaymentHeaders: HeaderMap[] = [
   { key: 'description', label: 'Description' },
 ];
 
+const REPORT_TX_BATCH = 5000;
+const REPORT_TX_MAX = 50000;
+
+async function fetchReportTransactionsBatched(): Promise<Transaction[]> {
+  const rows: Transaction[] = [];
+  for (let from = 0; rows.length < REPORT_TX_MAX; from += REPORT_TX_BATCH) {
+    const to = from + REPORT_TX_BATCH - 1;
+    const { data, error } = await supabase
+      .from('transactions')
+      .select(REPORT_TRANSACTION_COLUMNS)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...(data as Transaction[]));
+    if (data.length < REPORT_TX_BATCH) break;
+  }
+  return rows;
+}
+
 const Reports = () => {
   const navigate = useNavigate();
   const { toast: showToast } = useToast();
@@ -363,14 +389,15 @@ const Reports = () => {
     }
 
     try {
-      const [summaryRes, membersRes, casesRes, txRes] = await Promise.all([
+      const [summaryRes, membersRes, casesRes, reportTransactions] = await Promise.all([
         (supabase.rpc as any)('get_dashboard_summary'),
-        supabase.from('members').select('*'),
-        supabase.from('cases').select('*'),
         supabase
-          .from('transactions')
-          .select('id, amount, mpesa_reference, description, created_at, transaction_type, status, member_id, case_id')
-          .order('created_at', { ascending: false }),
+          .from('members')
+          .select(MEMBER_LIST_COLUMNS)
+          .order('member_number_numeric', { ascending: true })
+          .order('member_number', { ascending: true }),
+        supabase.from('cases').select(CASE_ROW_COLUMNS),
+        fetchReportTransactionsBatched(),
       ]);
 
       if (summaryRes.data) {
@@ -393,6 +420,19 @@ const Reports = () => {
         registrationDate: m.registration_date ? new Date(m.registration_date) : new Date(),
         walletBalance: Number(m.wallet_balance) || 0,
         isActive: m.is_active,
+        status: normalizeMemberStatus(m.status, m.is_active),
+        nextOfKin:
+          m.next_of_kin && typeof m.next_of_kin === "object"
+            ? {
+                name: String((m.next_of_kin as Record<string, unknown>).name || ""),
+                relationship: String((m.next_of_kin as Record<string, unknown>).relationship || ""),
+                phoneNumber: String(
+                  (m.next_of_kin as Record<string, unknown>).phoneNumber ||
+                    (m.next_of_kin as Record<string, unknown>).phone_number ||
+                    "",
+                ),
+              }
+            : { name: "", relationship: "", phoneNumber: "" },
         dependants: []
       }));
       setMembers(mappedMembers);
@@ -407,6 +447,9 @@ const Reports = () => {
         contributionPerMember: Number(c.contribution_per_member) || 0,
         startDate: c.start_date ? new Date(c.start_date) : new Date(),
         endDate: c.end_date ? new Date(c.end_date) : new Date(),
+        expectedAmount: Number(c.expected_amount) || 0,
+        actualAmount: Number(c.actual_amount) || 0,
+        dependantId: c.dependant_id || undefined,
         isActive: c.is_active,
         isFinalized: c.is_finalized,
         createdAt: c.created_at ? new Date(c.created_at) : new Date(),
@@ -414,7 +457,7 @@ const Reports = () => {
       setCases(mappedCases);
       persistentCache.set('reports-cases', mappedCases, 10 * 60 * 1000);
 
-      const txs: Transaction[] = txRes.data || [];
+      const txs: Transaction[] = reportTransactions;
       setTransactions(txs);
       persistentCache.set('reports-tx', txs, 10 * 60 * 1000);
 
@@ -960,7 +1003,7 @@ const Reports = () => {
     fetchAll(true);
   };
 
-  const handleExportXlsx = (baseName: string, rows: Record<string, unknown>[], headers: HeaderMap[]) => {
+  const handleExportXlsx = async (baseName: string, rows: Record<string, unknown>[], headers: HeaderMap[]) => {
     if (!rows.length) {
       showToast({
         title: 'No data to export',
@@ -969,7 +1012,7 @@ const Reports = () => {
       });
       return;
     }
-    exportRowsToXLSX(createReportFilename(baseName, 'xlsx'), rows, headers);
+    await exportRowsToXLSX(createReportFilename(baseName, 'xlsx'), rows, headers);
     showToast({ title: 'Export complete', description: 'Excel file downloaded.' });
   };
 

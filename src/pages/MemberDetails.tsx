@@ -26,6 +26,7 @@ import MemberDetailsLoading from '@/components/member/MemberDetailsLoading';
 import MemberDetailsError from '@/components/member/MemberDetailsError';
 import MemberForm from '@/components/forms/MemberForm';
 import { deleteMemberUserLinks } from '@/lib/adminUsersApi';
+import { DEPENDANT_COLUMNS, MEMBER_DETAIL_COLUMNS } from '@/lib/supabaseSelectColumns';
 
 const MemberDetails = () => {
   const navigate = useNavigate();
@@ -91,8 +92,15 @@ const MemberDetails = () => {
     // Refresh member data
     try {
       setLoading(true);
-      const { data: memberData } = await supabase.from('members').select('*').eq('id', id).maybeSingle();
-      const { data: dependantsData } = await supabase.from('dependants').select('*').eq('member_id', id);
+      const { data: memberData } = await supabase
+        .from('members')
+        .select(MEMBER_DETAIL_COLUMNS)
+        .eq('id', id)
+        .maybeSingle();
+      const { data: dependantsData } = await supabase
+        .from('dependants')
+        .select(DEPENDANT_COLUMNS)
+        .eq('member_id', id);
       if (memberData) {
         const dbMember = memberData as DbMember;
         const dependants = dependantsData as DbDependant[] || [];
@@ -205,16 +213,10 @@ const MemberDetails = () => {
     // Refresh member data after funding
     try {
       setLoading(true);
-      const { data: memberData } = await supabase
-        .from('members')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-        
-      const { data: dependantsData } = await supabase
-        .from('dependants')
-        .select('*')
-        .eq('member_id', id);
+      const [{ data: memberData }, { data: dependantsData }] = await Promise.all([
+        supabase.from('members').select(MEMBER_DETAIL_COLUMNS).eq('id', id).maybeSingle(),
+        supabase.from('dependants').select(DEPENDANT_COLUMNS).eq('member_id', id),
+      ]);
         
       if (memberData) {
         const dbMember = memberData as DbMember;
@@ -332,7 +334,7 @@ const MemberDetails = () => {
         // @ts-ignore
         .update(updateData)
         .eq('id', id)
-        .select();
+        .select(MEMBER_DETAIL_COLUMNS);
 
       if (error) {
         console.error('Supabase update error:', error);
@@ -343,7 +345,7 @@ const MemberDetails = () => {
           // @ts-ignore
           .update(updateData)
           .eq('id', id)
-          .select();
+          .select(MEMBER_DETAIL_COLUMNS);
         
         if (fallbackError) {
           throw fallbackError;
@@ -353,7 +355,7 @@ const MemberDetails = () => {
       // Verify the update by fetching the data again
       const { data: verifyData, error: verifyError } = await supabase
         .from('members')
-        .select('*')
+        .select(MEMBER_DETAIL_COLUMNS)
         .eq('id', id)
         .single();
       
@@ -447,21 +449,7 @@ const MemberDetails = () => {
       
       const { data: memberData, error: memberError } = await supabase
         .from('members')
-        .select(`
-          id,
-          member_number,
-          name,
-          gender,
-          date_of_birth,
-          national_id_number,
-          phone_number,
-          email_address,
-          residence,
-          next_of_kin,
-          registration_date,
-          is_active,
-          wallet_balance
-        `)
+        .select(MEMBER_DETAIL_COLUMNS)
         .eq('id', id)
         .maybeSingle();
 
@@ -474,29 +462,25 @@ const MemberDetails = () => {
         throw new Error('Member not found');
       }
       
-      const { data: dependantsData, error: dependantsError } = await supabase
-        .from('dependants')
-        .select('*')
-        .eq('member_id', id);
+      const [{ data: dependantsData, error: dependantsError }, { data: transactions, error: txError }] =
+        await Promise.all([
+          supabase.from('dependants').select(DEPENDANT_COLUMNS).eq('member_id', id),
+          supabase.from('transactions').select('amount, transaction_type').eq('member_id', id),
+        ]);
 
       if (dependantsError) {
         console.error('Error fetching dependants:', dependantsError);
         throw dependantsError;
       }
-      
-      const dbMember = memberData as DbMember;
-      const dependants = dependantsData as DbDependant[] || [];
-      const memberWithDependants = mapDbMemberToMember(dbMember, dependants);
-
-      // Fetch all transactions for this member and sum the amount
-      const { data: transactions, error: txError } = await supabase
-        .from('transactions')
-        .select('amount, transaction_type')
-        .eq('member_id', id);
       if (txError) {
         console.error('Error fetching transactions:', txError);
         throw txError;
       }
+
+      const dbMember = memberData as DbMember;
+      const dependants = dependantsData as DbDependant[] || [];
+      const memberWithDependants = mapDbMemberToMember(dbMember, dependants);
+
       // Prefer stored wallet_balance maintained by DB trigger; fall back to calculated sum for safety
       const calculatedBalance = (transactions || []).reduce((sum, tx: any) => {
         const amount = Number(tx.amount) || 0;
@@ -535,13 +519,13 @@ const MemberDetails = () => {
       try {
         const { data, error } = await supabase
           .from('cases')
-          .select('id, case_number, title, is_active')
+          .select('id, case_number, case_type, is_active')
           .eq('is_active', true);
         if (error) throw error;
         setAvailableCases((data || []).map((c: any) => ({
           id: c.id,
           case_number: c.case_number,
-          title: c.title,
+          title: c.case_type || c.case_number,
         })));
       } catch (error) {
         console.error('Error loading cases for deduction:', error);

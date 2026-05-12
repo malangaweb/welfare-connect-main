@@ -109,8 +109,8 @@ const Dashboard = () => {
       } else {
         // Fallback: simple count queries in parallel
         const [mc, cc] = await Promise.all([
-          supabase.from('members').select('*', { count: 'exact', head: true }),
-          supabase.from('cases').select('*', { count: 'exact', head: true }).eq('is_active', true),
+          supabase.from('members').select('id', { count: 'exact', head: true }),
+          supabase.from('cases').select('id', { count: 'exact', head: true }).eq('is_active', true),
         ]);
         totalMembers = mc.count || 0;
         activeCasesCount = cc.count || 0;

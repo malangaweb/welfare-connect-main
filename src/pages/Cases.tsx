@@ -26,6 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { persistentCache } from '@/lib/cache';
 import { Case, CaseType } from '@/lib/types';
 import { mapDbCaseToCase } from '@/lib/db-types';
+import { CASE_ROW_COLUMNS, MEMBER_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -127,7 +128,7 @@ const Cases = () => {
         // Get all cases from Supabase
         const { data: casesData, error: casesError } = await (supabase as any)
           .from('cases')
-          .select('*')
+          .select(CASE_ROW_COLUMNS)
           .order('created_at', { ascending: false });
 
         if (casesError) {
@@ -143,7 +144,9 @@ const Cases = () => {
         while (true) {
           const { data: membersBatch, error: membersError } = await supabase
             .from('members')
-            .select('*')
+            .select(MEMBER_LIST_COLUMNS)
+            .order('member_number_numeric', { ascending: true })
+            .order('member_number', { ascending: true })
             .range(from, from + pageSize - 1);
 
           if (membersError) {
@@ -183,71 +186,11 @@ const Cases = () => {
 
         setCases(mappedCases);
 
-        // Fetch cumulative collected from contribution transactions for each case (with pagination)
-        // NET amount = contributions - refunds
+        // Use case.actualAmount (backed by DB-side updates) instead of scanning transactions per case.
         const totals: { [caseNumber: string]: number } = {};
         for (const c of mappedCases) {
           if (!c.caseNumber) continue;
-
-          const pageSize = 1000;
-          let from = 0;
-          let totalContributions = 0;
-          let totalRefunds = 0;
-          const orFilter = buildCaseTransactionOrFilter(c.id, c.caseNumber);
-
-          // Get contributions - use case_id for accurate matching
-          while (true) {
-            const { data: contribTx, error: contribError } = await (supabase as any)
-              .from('transactions')
-              .select('amount, description, transaction_type, status')
-              .in('transaction_type', ['contribution', 'case_wallet_deduction'])
-              .or(orFilter)
-              .range(from, from + pageSize - 1);
-
-            if (contribError) {
-              totalContributions = 0;
-              break;
-            }
-
-            const batch = contribTx || [];
-            totalContributions += batch.reduce((sum, row) => {
-              if (row.status && row.status !== 'completed') return sum;
-              const amt = Number(row.amount) || 0;
-              return sum + (amt < 0 ? -amt : amt);
-            }, 0);
-
-            if (batch.length < pageSize) break;
-            from += pageSize;
-          }
-
-          // Get refunds - use case_id for accurate matching
-          from = 0;
-          while (true) {
-            const { data: refundTx, error: refundError } = await (supabase as any)
-              .from('transactions')
-              .select('amount, transaction_type, status')
-              .in('transaction_type', ['contribution_refund', 'case_wallet_refund'])
-              .or(orFilter)
-              .range(from, from + pageSize - 1);
-
-            if (refundError) {
-              totalRefunds = 0;
-              break;
-            }
-
-            const batch = refundTx || [];
-            totalRefunds += batch.reduce((sum, row) => {
-              if (row.status && row.status !== 'completed') return sum;
-              const amt = Number(row.amount) || 0;
-              return sum + (amt > 0 ? amt : 0); // Refunds are positive
-            }, 0);
-
-            if (batch.length < pageSize) break;
-            from += pageSize;
-          }
-
-          // NET collected = contributions - refunds
-          totals[c.caseNumber] = Math.max(0, totalContributions - totalRefunds);
+          totals[c.caseNumber] = Math.max(0, Number(c.actualAmount) || 0);
         }
 
         setMpesaCollectedByCase(totals);

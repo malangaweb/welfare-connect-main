@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { walletRowDelta } from "@/lib/walletEffect";
+import { CASE_ROW_COLUMNS, TRANSACTION_LIST_COLUMNS } from "@/lib/supabaseSelectColumns";
 
 const MemberCases = () => {
   const [cases, setCases] = useState<any[]>([]);
@@ -24,6 +25,12 @@ const MemberCases = () => {
   const [memberCount, setMemberCount] = useState(0);
   const navigate = useNavigate();
 
+  const myContributionTransactions = useMemo(() => {
+    const mid = typeof window !== "undefined" ? localStorage.getItem("member_member_id") : null;
+    if (!mid) return [];
+    return transactions.filter((t) => t.member_id === mid);
+  }, [transactions]);
+
   useEffect(() => {
     const member_id = localStorage.getItem("member_member_id");
     if (!member_id) {
@@ -33,26 +40,50 @@ const MemberCases = () => {
     
     const fetchData = async () => {
       try {
-        // Fetch ALL cases, not just those associated with this member
-        const { data: casesData } = await supabase
-          .from("cases")
-          .select("*")
-          .order("created_at", { ascending: false });
-        // Fetch all members to get count
-        const { data: membersData } = await supabase
+        const { count: memberTotal, error: memberCountErr } = await supabase
           .from("members")
-          .select("*");
-        setMemberCount((membersData || []).length);
-        // Fetch all transactions
-        const { data: transactionsData } = await supabase
+          .select("id", { count: "exact", head: true });
+        if (memberCountErr) throw memberCountErr;
+        const memberCountNum = memberTotal ?? 0;
+
+        const { data: casesData, error: casesErr } = await supabase
+          .from("cases")
+          .select(CASE_ROW_COLUMNS)
+          .order("created_at", { ascending: false });
+        if (casesErr) throw casesErr;
+
+        const affectedIds = Array.from(
+          new Set(
+            (casesData || [])
+              .map((c: { affected_member_id?: string }) => c.affected_member_id)
+              .filter(Boolean) as string[]
+          )
+        );
+        const namesByMemberId: Record<string, string> = {};
+        const idChunk = 120;
+        for (let i = 0; i < affectedIds.length; i += idChunk) {
+          const chunk = affectedIds.slice(i, i + idChunk);
+          const { data: nameRows, error: nameErr } = await supabase
+            .from("members")
+            .select("id, name")
+            .in("id", chunk);
+          if (nameErr) throw nameErr;
+          for (const row of nameRows || []) {
+            namesByMemberId[row.id] = row.name;
+          }
+        }
+
+        const { data: transactionsData, error: txErr } = await supabase
           .from("transactions")
-          .select("id, amount, description, case_id, created_at, transaction_type, status");
+          .select(TRANSACTION_LIST_COLUMNS);
+        if (txErr) throw txErr;
+
+        setMemberCount(memberCountNum);
         setTransactions(transactionsData || []);
         const caseNum = (cn: string | null | undefined) => String(cn || "").trim().toLowerCase();
         const isCompleted = (tx: { status?: string | null }) =>
           !tx.status || tx.status === "completed";
-        // Map cases to include calculated actual_amount and expected_amount
-        const mappedCases = (casesData || []).map(c => {
+        const mappedCases = (casesData || []).map((c: any) => {
           let collected = 0;
           if (transactionsData && c.case_number) {
             const cn = caseNum(c.case_number);
@@ -74,8 +105,9 @@ const MemberCases = () => {
           }
           return {
             ...c,
+            affected_name: namesByMemberId[c.affected_member_id] || "Unknown",
             actual_amount: Math.max(0, collected),
-            expected_amount: c.contribution_per_member * (membersData ? membersData.length : 0),
+            expected_amount: c.contribution_per_member * memberCountNum,
           };
         });
         setCases(mappedCases);
@@ -145,14 +177,17 @@ const MemberCases = () => {
     return <AlertCircle className="h-4 w-4 text-gray-600" />;
   };
 
-  // Check if member has contributed to this case
+  const sessionMemberId =
+    typeof window !== "undefined" ? localStorage.getItem("member_member_id") : null;
+
   const hasContributed = (caseId: string) => {
-    return transactions.some(t => t.case_id === caseId);
+    if (!sessionMemberId) return false;
+    return transactions.some((t) => t.case_id === caseId && t.member_id === sessionMemberId);
   };
 
-  // Get contributions for a case
   const getContributionsForCase = (caseId: string) => {
-    return transactions.filter(t => t.case_id === caseId);
+    if (!sessionMemberId) return [];
+    return transactions.filter((t) => t.case_id === caseId && t.member_id === sessionMemberId);
   };
 
   // Calculate progress for a case
@@ -333,7 +368,7 @@ const MemberCases = () => {
                   <CardDescription>Your contribution history across all cases</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {transactions.length === 0 ? (
+                  {myContributionTransactions.length === 0 ? (
                     <div className="text-center py-12 border rounded-lg bg-muted/10">
                       <CreditCard className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
                       <h3 className="text-lg font-medium mb-2">No Contributions Found</h3>
@@ -343,7 +378,7 @@ const MemberCases = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {transactions.map((t, index) => {
+                      {myContributionTransactions.map((t, index) => {
                         // Find the related case
                         const relatedCase = cases.find(c => c.id === t.case_id);
                         
