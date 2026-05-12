@@ -3,6 +3,25 @@
 // These types should match the database schema
 
 import { Member, Case, Gender, CaseType, Dependant, NextOfKin } from '@/lib/types';
+export type NormalizedMemberStatus = 'probation' | 'active' | 'inactive' | 'deceased';
+
+export function normalizeMemberStatus(
+  rawStatus: unknown,
+  isActiveFallback?: boolean | null
+): NormalizedMemberStatus {
+  const raw = String(rawStatus || '').trim().toLowerCase();
+
+  if (raw === 'probation' || raw === 'probabation') return 'probation';
+  if (raw === 'deceased' || raw === 'deaceased' || raw === 'dead') return 'deceased';
+  if (raw === 'inactive') return 'inactive';
+  if (raw === 'active') return 'active';
+
+  if (typeof isActiveFallback === 'boolean') {
+    return isActiveFallback ? 'active' : 'inactive';
+  }
+
+  return 'probation';
+}
 
 // Add email field to database user type
 export interface DbUser {
@@ -120,7 +139,7 @@ export function mapDbMemberToMember(dbMember: DbMember, dependants: any[] = []):
       probationEndDate: dbMember.probation_end_date ? new Date(dbMember.probation_end_date) : undefined,
       walletBalance: Number(dbMember.wallet_balance || 0),
       isActive: dbMember.is_active,
-      status: (dbMember.status as any) || 'probation',
+      status: normalizeMemberStatus(dbMember.status, dbMember.is_active),
       pinHash: dbMember.pin_hash,
       pinAttempts: dbMember.pin_attempts,
       pinLockedUntil: dbMember.pin_locked_until ? new Date(dbMember.pin_locked_until) : undefined,

@@ -23,7 +23,7 @@ import {
 import { Gender, Member } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
 import { persistentCache } from '@/lib/cache';
-import { mapDbMemberToMember } from '@/lib/db-types';
+import { mapDbMemberToMember, normalizeMemberStatus } from '@/lib/db-types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
 import * as XLSX from 'xlsx';
@@ -577,7 +577,7 @@ const Members = () => {
         }
 
         const wallet = Number(row.wallet_balance) || 0;
-        const status = String(row.status || '').toLowerCase();
+        const status = normalizeMemberStatus(row.status, row.is_active);
         const isEligibleByMemberState = Boolean(row.is_active) && (status === 'active' || status === 'probation');
         const netPaid = netPaidByMember.get(memberId) || 0;
         const isPaid = netPaid + 1e-6 >= requiredAmount;
@@ -636,13 +636,12 @@ const Members = () => {
 
         // Apply Server-Side Filters
         if (statusFilter !== 'all') {
-          if (statusFilter === 'active' || statusFilter === 'probation') {
+          if (statusFilter === 'probation') {
+            query = (query as any).in('status', ['probation', 'probabation']);
+          } else if (statusFilter === 'deceased') {
+            query = (query as any).in('status', ['deceased', 'deaceased']);
+          } else if (statusFilter === 'active' || statusFilter === 'inactive') {
             query = query.eq('status', statusFilter);
-          } else if (statusFilter === 'inactive' || statusFilter === 'deceased') {
-            query = query.eq('status', statusFilter);
-          } else {
-            const isActive = statusFilter === 'active';
-            query = query.eq('is_active', isActive);
           }
         }
 
@@ -1337,7 +1336,9 @@ const Members = () => {
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="probation">Probation</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="deceased">Deceased</SelectItem>
               </SelectContent>
             </Select>
 
