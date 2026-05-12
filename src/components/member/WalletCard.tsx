@@ -10,6 +10,7 @@ interface WalletCardProps {
   onViewTransactions: () => void;
   memberId?: string;
   memberName?: string;
+  memberNumber?: string;
   memberPhone?: string;
   onFundingSuccess?: () => void;
   showFundingOption?: boolean;
@@ -23,6 +24,7 @@ const WalletCard = ({
   onViewTransactions, 
   memberId, 
   memberName,
+  memberNumber,
   memberPhone,
   onFundingSuccess,
   showFundingOption = false,
@@ -51,6 +53,7 @@ const WalletCard = ({
                 <WalletFundingDialog 
                   memberId={memberId}
                   memberName={memberName}
+                  memberNumber={memberNumber}
                   memberPhone={memberPhone}
                   onFundingSuccess={onFundingSuccess}
                   mode="stk"
@@ -58,6 +61,7 @@ const WalletCard = ({
                 <WalletFundingDialog 
                   memberId={memberId}
                   memberName={memberName}
+                  memberNumber={memberNumber}
                   memberPhone={memberPhone}
                   onFundingSuccess={onFundingSuccess}
                   mode="manual"

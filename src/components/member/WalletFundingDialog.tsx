@@ -22,6 +22,7 @@ import { getAppToken } from "@/lib/appAuth";
 interface WalletFundingDialogProps {
   memberId: string;
   memberName: string;
+  memberNumber?: string;
   memberPhone?: string;
   onFundingSuccess: () => void;
   mode?: "stk" | "manual";
@@ -32,6 +33,7 @@ type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 const WalletFundingDialog = ({
   memberId,
   memberName,
+  memberNumber,
   memberPhone,
   onFundingSuccess,
   mode = "stk",
@@ -69,6 +71,8 @@ const WalletFundingDialog = ({
 
       if (isStkMode) {
         const normalizedPhone = String(phone || "").replace(/\D/g, "");
+        const memberRef = String(memberNumber || "").trim();
+        const effectiveAccountRef = accountReference || reference || memberRef || memberId;
         if (normalizedPhone.length < 10) {
           throw new Error("Enter a valid M-Pesa phone number.");
         }
@@ -94,8 +98,8 @@ const WalletFundingDialog = ({
             memberId,
             phone: normalizedPhone,
             amount: numAmount,
-            accountReference: accountReference || memberId,
-            transactionDesc: `Wallet top-up for ${memberName}`,
+            accountReference: effectiveAccountRef,
+            transactionDesc: `Wallet top-up for ${memberRef || memberId}`,
           }),
         });
 
@@ -147,8 +151,13 @@ const WalletFundingDialog = ({
       onFundingSuccess();
     } catch (error) {
       console.error("Error funding wallet:", error);
+      const message = error instanceof Error ? error.message : "Please try again.";
+      const authMismatch =
+        /signature verification failed|missing bearer token|unauthorized|jwt/i.test(message);
       toast.error("Failed to fund wallet", {
-        description: "Please try again.",
+        description: authMismatch
+          ? "Authorization failed. Re-login first. If it persists, backend APP_JWT_SECRET on javanet mlg host does not match app auth secret."
+          : message,
       });
     } finally {
       setIsSubmitting(false);

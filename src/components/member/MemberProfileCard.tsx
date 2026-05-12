@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Edit, UserMinus, Wallet, UserCog } from 'lucide-react';
+import { Edit, UserMinus, UserCog } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -65,10 +65,6 @@ const MemberProfileCard = ({ member }: MemberProfileCardProps) => {
             <Button>
               <Edit className="h-4 w-4 mr-2" />
               Edit Profile
-            </Button>
-            <Button variant="outline">
-              <Wallet className="h-4 w-4 mr-2" />
-              Fund Wallet
             </Button>
             {member.isActive ? (
               <Button 

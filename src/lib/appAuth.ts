@@ -10,7 +10,7 @@ const MEMBER_SESSION_KEYS = [
 ];
 
 export function getAppToken(): string | null {
-  return localStorage.getItem(APP_TOKEN_KEY);
+  return localStorage.getItem(APP_TOKEN_KEY) || localStorage.getItem("token");
 }
 
 export function setAppToken(token: string): void {
