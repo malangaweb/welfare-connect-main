@@ -72,7 +72,7 @@ const WalletFundingDialog = ({
       if (isStkMode) {
         const normalizedPhone = String(phone || "").replace(/\D/g, "");
         const memberRef = String(memberNumber || "").trim();
-        const effectiveAccountRef = accountReference || reference || memberRef || memberId;
+        const effectiveAccountRef = memberRef || memberId;
         if (normalizedPhone.length < 10) {
           throw new Error("Enter a valid M-Pesa phone number.");
         }
@@ -193,15 +193,17 @@ const WalletFundingDialog = ({
             />
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="reference">Reference (optional)</Label>
-            <Input 
-              id="reference"
-              placeholder="e.g. MPESA reference" 
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-            />
-          </div>
+          {!isStkMode && (
+            <div className="space-y-2">
+              <Label htmlFor="reference">Reference (optional)</Label>
+              <Input 
+                id="reference"
+                placeholder="e.g. MPESA reference" 
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+              />
+            </div>
+          )}
 
           {isStkMode && (
             <div className="space-y-2">
@@ -218,15 +220,17 @@ const WalletFundingDialog = ({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="accountReference">Account Reference (optional)</Label>
-            <Input
-              id="accountReference"
-              placeholder="e.g. member number / paybill account reference"
-              value={accountReference}
-              onChange={(e) => setAccountReference(e.target.value)}
-            />
-          </div>
+          {!isStkMode && (
+            <div className="space-y-2">
+              <Label htmlFor="accountReference">Account Reference (optional)</Label>
+              <Input
+                id="accountReference"
+                placeholder="e.g. member number / paybill account reference"
+                value={accountReference}
+                onChange={(e) => setAccountReference(e.target.value)}
+              />
+            </div>
+          )}
           
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
