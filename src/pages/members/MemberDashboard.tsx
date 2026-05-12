@@ -431,11 +431,7 @@ const MemberDashboard = () => {
         throw new Error("Session expired. Please login again.");
       }
 
-      const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
-      const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
-      const endpoint = normalizedBaseUrl
-        ? `${normalizedBaseUrl}/stk_push.php`
-        : "/mlg/stk_push.php";
+      const endpoint = "https://javanet.co.ke/mlg/stk_push.php";
 
       const extractErrorMessage = (payload: unknown): string => {
         if (!payload) return "";
