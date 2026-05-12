@@ -602,6 +602,7 @@ const MemberDetails = () => {
               onViewTransactions={handleViewTransactions}
               memberId={member.id}
               memberName={member.name}
+              memberPhone={member.phoneNumber}
               onFundingSuccess={handleFundingSuccess}
               onTransferSuccess={handleTransferSuccess}
               showFundingOption

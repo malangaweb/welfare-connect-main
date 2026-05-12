@@ -1,8 +1,6 @@
 import * as React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
 
 import {
   Dialog,
@@ -22,14 +20,14 @@ import { getAppToken } from "@/lib/appAuth";
 interface WalletFundingDialogProps {
   memberId: string;
   memberName: string;
+  memberPhone?: string;
   onFundingSuccess: () => void;
 }
-
-type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
 const WalletFundingDialog = ({
   memberId,
   memberName,
+  memberPhone,
   onFundingSuccess,
 }: WalletFundingDialogProps) => {
   const [open, setOpen] = useState(false);
@@ -38,6 +36,12 @@ const WalletFundingDialog = ({
   const [phone, setPhone] = useState("");
   const [reference, setReference] = useState("");
   const [accountReference, setAccountReference] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    if (phone.trim()) return;
+    setPhone(String(memberPhone || "").trim());
+  }, [open, memberPhone, phone]);
 
   const handleFundWallet = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,81 +61,51 @@ const WalletFundingDialog = ({
       const numAmount = parseFloat(amount);
 
       const normalizedPhone = String(phone || "").replace(/\D/g, "");
-      const useStkPush = normalizedPhone.length >= 10;
-
-      if (useStkPush) {
-        const appToken = getAppToken();
-        if (!appToken) {
-          throw new Error("Session expired. Please login again.");
-        }
-
-        const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
-        const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
-        const endpoint = normalizedBaseUrl
-          ? `${normalizedBaseUrl}/stk_push.php`
-          : "/mlg/stk_push.php";
-
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-app-token": appToken,
-          },
-          body: JSON.stringify({
-            memberId,
-            phone: normalizedPhone,
-            amount: numAmount,
-            accountReference: accountReference || memberId,
-            transactionDesc: `Wallet top-up for ${memberName}`,
-          }),
-        });
-
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message =
-            String((result as { error?: unknown }).error || "").trim() ||
-            `Request failed with status ${response.status}`;
-          throw new Error(message);
-        }
-
-        toast.success("STK Push sent", {
-          description: `Prompt sent to ${normalizedPhone}. Complete payment with M-Pesa PIN.`,
-        });
-      } else {
-        // Manual top-up fallback.
-        const transactionPayload: TransactionInsert = {
-          member_id: memberId,
-          amount: numAmount,
-          transaction_type: "wallet_funding",
-          payment_method: reference ? "mpesa" : "manual",
-          status: "completed",
-          mpesa_reference: reference || null,
-          reference: accountReference || null,
-          description: `Wallet funding - ${reference || "Manual addition by admin"}`,
-          created_at: new Date().toISOString(),
-          metadata: {
-            source: "manual",
-            entry_type: "wallet_funding_dialog",
-            mpesa_reference: reference || null,
-            account_reference: accountReference || null,
-          },
-        };
-
-        const { error: transactionError } = await (supabase.from("transactions") as any).insert(
-          transactionPayload
-        );
-
-        if (transactionError) throw transactionError;
-
-        toast.success("Wallet funded successfully", {
-          description: `KES ${numAmount.toLocaleString()} has been added to ${memberName}'s wallet.`,
-        });
+      if (normalizedPhone.length < 10) {
+        throw new Error("Enter a valid M-Pesa phone number.");
       }
+
+      const appToken = getAppToken();
+      if (!appToken) {
+        throw new Error("Session expired. Please login again.");
+      }
+
+      const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || "").trim();
+      const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, "");
+      const endpoint = normalizedBaseUrl
+        ? `${normalizedBaseUrl}/stk_push.php`
+        : "/mlg/stk_push.php";
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-app-token": appToken,
+        },
+        body: JSON.stringify({
+          memberId,
+          phone: normalizedPhone,
+          amount: numAmount,
+          accountReference: accountReference || memberId,
+          transactionDesc: `Wallet top-up for ${memberName}`,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          String((result as { error?: unknown }).error || "").trim() ||
+          `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      toast.success("STK Push sent", {
+        description: `Prompt sent to ${normalizedPhone}. Complete payment with M-Pesa PIN.`,
+      });
       
       // Reset form and close dialog
       setAmount("");
       setPhone("");
-      setReference("");
       setAccountReference("");
       setOpen(false);
       
@@ -185,7 +159,7 @@ const WalletFundingDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">M-Pesa Phone (optional)</Label>
+            <Label htmlFor="phone">M-Pesa Phone *</Label>
             <Input
               id="phone"
               placeholder="07xx xxx xxx or 2547xxxxxxxx"
@@ -193,7 +167,7 @@ const WalletFundingDialog = ({
               onChange={(e) => setPhone(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              If provided, an STK push will be sent. If empty, this is recorded as manual funding.
+              STK push will be sent to this phone number.
             </p>
           </div>
 
