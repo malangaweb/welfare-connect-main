@@ -141,8 +141,21 @@ export function SuspenseManagement() {
       setLoading(true)
     }
     try {
-      const response = await invokeWithAppToken<{ transactions: WrongMpesaTransaction[] }>('api-suspense-list', {})
-      setTransactions(response?.transactions || [])
+      const loadOnce = async () => {
+        const response = await invokeWithAppToken<{ transactions: WrongMpesaTransaction[] }>('api-suspense-list', {})
+        return response?.transactions || []
+      }
+
+      let rows: WrongMpesaTransaction[] = []
+      try {
+        rows = await loadOnce()
+      } catch (firstError) {
+        // Transient startup race (token/storage/network) can fail first call; retry once quietly.
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        rows = await loadOnce()
+      }
+
+      setTransactions(rows)
       setCurrentPage(1) // Reset to first page on fetch
     } catch (error: any) {
       toast.error('Error loading suspense transactions', {

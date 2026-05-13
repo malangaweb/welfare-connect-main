@@ -319,6 +319,7 @@ const Members = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [bulkSelecting, setBulkSelecting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const itemsPerPage = 20;
 
@@ -355,6 +356,73 @@ const Members = () => {
       else next.delete(memberId);
       return next;
     });
+  };
+
+  const buildMemberIdFilterQuery = () => {
+    let query = supabase.from('members').select('id');
+
+    if (debouncedSearch) {
+      query = query.or(`member_number.ilike.%${debouncedSearch}%,name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%`);
+    }
+
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'probation') {
+        query = (query as any).in('status', ['probation', 'probabation']);
+      } else if (statusFilter === 'deceased') {
+        query = (query as any).in('status', ['deceased', 'deaceased']);
+      } else if (statusFilter === 'active' || statusFilter === 'inactive') {
+        query = query.eq('status', statusFilter);
+      }
+    }
+
+    if (locationFilter !== 'all') {
+      query = query.eq('residence', locationFilter);
+    }
+
+    if (defaultersFilter) query = query.lt('wallet_balance', 0);
+    if (positiveBalanceFilter) query = query.gte('wallet_balance', 0);
+
+    return query;
+  };
+
+  const fetchAllFilteredMemberIds = async (): Promise<string[]> => {
+    const ids: string[] = [];
+    const batchSize = 1000;
+
+    for (let from = 0; ; from += batchSize) {
+      const { data, error } = await buildMemberIdFilterQuery().range(from, from + batchSize - 1);
+      if (error) throw error;
+      const batch = (data as Array<{ id: string }> | null) || [];
+      ids.push(...batch.map((row) => row.id).filter(Boolean));
+      if (batch.length < batchSize) break;
+    }
+
+    return ids;
+  };
+
+  const toggleSelectAllFiltered = async (checked: boolean) => {
+    setBulkSelecting(true);
+    try {
+      const filteredIds = await fetchAllFilteredMemberIds();
+      setSelectedMemberIds((prev) => {
+        const next = new Set(prev);
+        if (checked) {
+          filteredIds.forEach((id) => next.add(id));
+        } else {
+          filteredIds.forEach((id) => next.delete(id));
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error('Error toggling select all:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Selection failed',
+        description: error instanceof Error ? error.message : 'Could not update selection.',
+      });
+    } finally {
+      setBulkSelecting(false);
+    }
   };
 
   const openDeductDialog = async () => {
@@ -1530,21 +1598,14 @@ const Members = () => {
                         <TableHead className="w-10 px-2">
                           <Checkbox
                             checked={
-                              members.length > 0 &&
-                              members.every((m) => selectedMemberIds.has(m.id))
+                              totalCount > 0 &&
+                              selectedMemberIds.size >= totalCount
                             }
                             onCheckedChange={(v) => {
                               const checked = v === true;
-                              setSelectedMemberIds((prev) => {
-                                const next = new Set(prev);
-                                if (checked) {
-                                  members.forEach((m) => next.add(m.id));
-                                } else {
-                                  members.forEach((m) => next.delete(m.id));
-                                }
-                                return next;
-                              });
+                              void toggleSelectAllFiltered(checked);
                             }}
+                            disabled={bulkSelecting || totalCount === 0}
                             aria-label="Select all filtered members"
                           />
                         </TableHead>
