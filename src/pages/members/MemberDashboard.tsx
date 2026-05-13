@@ -162,25 +162,15 @@ const MemberDashboard = () => {
       setIsSubmitting(true);
       
       const referenceValue = `Transfer to ${selectedMember.member_number}`;
-      const primaryArgs = {
-        from_member_id: member.id,
-        to_member_id: selectedMember.id,
-        amount: numAmount,
-        // Try `reference_text` first (some deployments may use this)
-        reference_text: referenceValue,
-      } as any;
-      const fallbackArgs = {
+      const rpcArgs = {
         from_member_id: member.id,
         to_member_id: selectedMember.id,
         amount: numAmount,
         reference: referenceValue,
       } as any;
 
-      const { error: primaryError } = await (supabase.rpc as any)('transfer_funds', primaryArgs);
-      if (primaryError) {
-        const { error: fallbackError } = await (supabase.rpc as any)('transfer_funds', fallbackArgs);
-        if (fallbackError) throw fallbackError;
-      }
+      const { error: transferError } = await (supabase.rpc as any)('transfer_funds', rpcArgs);
+      if (transferError) throw transferError;
 
       toast({
         title: "Transfer successful",
