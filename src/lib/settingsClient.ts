@@ -70,7 +70,17 @@ export async function fetchSafeSettings(): Promise<SafeSettings | null> {
 
       if (dbError) {
         // When anonymous role lacks permission, stop retrying direct reads for this session.
-        if (dbError.code === '42501' || /permission denied/i.test(String(dbError.message || ''))) {
+        const dbStatus = Number((dbError as any).status || 0);
+        const dbCode = String((dbError as any).code || '');
+        const dbMessage = String((dbError as any).message || '');
+        const deniedByRole =
+          dbCode === '42501' ||
+          dbCode.startsWith('PGRST') ||
+          dbStatus === 401 ||
+          dbStatus === 403 ||
+          /permission denied|not permitted|unauthorized|forbidden/i.test(dbMessage);
+
+        if (deniedByRole) {
           directReadAllowed = false;
           if (!warnedDirectReadFailure) {
             console.warn('Direct settings read is not permitted for this role; using defaults.');

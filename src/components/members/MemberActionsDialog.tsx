@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -105,6 +105,8 @@ export function MemberActionsDialog({
       active = false
     }
   }, [open, member])
+
+  const blockers = precheck?.blockers || []
 
   if (!member) {
     return null
@@ -239,7 +241,6 @@ export function MemberActionsDialog({
 
   const canDelete = member.walletBalance === 0
   const isInactive = String(member.status || '').toLowerCase() === 'inactive'
-  const blockers = useMemo(() => precheck?.blockers || [], [precheck])
 
   return (
     <>
