@@ -54,7 +54,7 @@ export function authorizeQuery(options: QueryAuthOptions): void {
     case 'transaction':
       // Admins can access all transactions
       // Members can access their own transactions
-      if (user && (user.role === 'super_admin' || user.role === 'treasurer')) {
+      if (user && (user.role === 'super_admin' || user.role === 'treasurer' || user.role === 'secretary')) {
         return;
       }
 
@@ -123,7 +123,7 @@ export function buildAuthFilter(
   }
 
   // If admin, no filter needed (can access all)
-  if (user && (user.role === 'super_admin' || user.role === 'treasurer')) {
+  if (user && (user.role === 'super_admin' || user.role === 'treasurer' || user.role === 'secretary')) {
     return null;
   }
 

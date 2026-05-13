@@ -15,6 +15,7 @@ import {
   MEMBER_MANAGEMENT_ROLES,
   REPORTS_ROLES,
   SETTINGS_ROLES,
+  TRANSACTION_VIEW_ROLES,
   USER_MANAGEMENT_ROLES,
 } from "@/lib/rbac";
 
@@ -132,7 +133,7 @@ const App = () => (
           <Route
             path="/transactions"
             element={
-              <ProtectedRoute allowedRoles={FINANCE_ROLES}>
+              <ProtectedRoute allowedRoles={TRANSACTION_VIEW_ROLES}>
                 <Transactions />
               </ProtectedRoute>
             }

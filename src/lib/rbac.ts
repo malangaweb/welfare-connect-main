@@ -19,6 +19,12 @@ export const FINANCE_ROLES: UserRole[] = [
   UserRole.TREASURER,
 ];
 
+export const TRANSACTION_VIEW_ROLES: UserRole[] = [
+  UserRole.SUPER_ADMIN,
+  UserRole.TREASURER,
+  UserRole.SECRETARY,
+];
+
 export const REPORTS_ROLES: UserRole[] = [
   UserRole.SUPER_ADMIN,
   UserRole.CHAIRPERSON,
@@ -45,7 +51,7 @@ const ROUTE_ACCESS_RULES: Array<{ matcher: RegExp; roles: UserRole[] }> = [
   { matcher: /^\/cases\/new$/, roles: MEMBER_MANAGEMENT_ROLES },
   { matcher: /^\/cases\/[^/]+$/, roles: MEMBER_MANAGEMENT_ROLES },
   { matcher: /^\/cases\/[^/]+\/edit$/, roles: MEMBER_MANAGEMENT_ROLES },
-  { matcher: /^\/transactions$/, roles: FINANCE_ROLES },
+  { matcher: /^\/transactions$/, roles: TRANSACTION_VIEW_ROLES },
   { matcher: /^\/accounts$/, roles: FINANCE_ROLES },
   { matcher: /^\/reports$/, roles: REPORTS_ROLES },
   { matcher: /^\/reports\/fiscal$/, roles: FINANCE_ROLES },
@@ -68,4 +74,3 @@ export function canAccessPath(pathname: string, role: UserRole | null | undefine
   if (!role) return false;
   return getAllowedRolesForPath(pathname).includes(role);
 }
-
