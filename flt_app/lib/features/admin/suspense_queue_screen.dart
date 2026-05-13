@@ -21,11 +21,16 @@ class _SuspenseQueueScreenState extends ConsumerState<SuspenseQueueScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _service.fetchSuspenseQueue();
+    _future = _loadQueue();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadQueue() {
+    final appToken = ref.read(authControllerProvider).appToken;
+    return _service.fetchSuspenseQueue(appToken: appToken);
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _service.fetchSuspenseQueue());
+    setState(() => _future = _loadQueue());
     await _future;
   }
 

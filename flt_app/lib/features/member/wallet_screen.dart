@@ -286,9 +286,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     final auth = ref.read(authControllerProvider);
     if ((auth.memberId ?? '').isEmpty || (auth.appToken ?? '').isEmpty) return;
 
-    final cases = await _service.fetchMemberCases(
+    final cases = await _service.fetchPayableCases(
       memberId: auth.memberId!,
-      appToken: auth.appToken!,
     );
     final pending = cases.where((c) => !c.paid).toList();
     if (!mounted) return;
@@ -299,71 +298,124 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       return;
     }
 
-    String selectedId = pending.first.id;
+    final selectedIds = <String>{};
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Pay To Case'),
-        content: DropdownButtonFormField<String>(
-          initialValue: selectedId,
-          items: pending
-              .map(
-                (c) => DropdownMenuItem<String>(
-                  value: c.id,
-                  child: Text(
-                      '#${c.caseNumber} • KES ${c.contributionPerMember.toStringAsFixed(2)}'),
-                ),
-              )
-              .toList(),
-          onChanged: (v) {
-            if (v != null) selectedId = v;
-          },
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              final c = pending.firstWhere((e) => e.id == selectedId);
-              if (snapshot.walletBalance < c.contributionPerMember) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Insufficient wallet balance.'),
-                      backgroundColor: Colors.red),
-                );
-                return;
-              }
-              setState(() => _busy = true);
-              try {
-                await _service.payToCase(
-                  memberId: auth.memberId!,
-                  caseId: c.id,
-                  caseNumber: c.caseNumber,
-                  amount: c.contributionPerMember,
-                );
-                if (!mounted) return;
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Case paid successfully.'),
-                      backgroundColor: Colors.green),
-                );
-                setState(() => _future = _load());
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text('Failed: $e'),
-                        backgroundColor: Colors.red),
-                  );
-                }
-              } finally {
-                if (mounted) setState(() => _busy = false);
-              }
-            },
-            child: const Text('Pay'),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocalState) {
+          final selectedCases =
+              pending.where((c) => selectedIds.contains(c.id)).toList();
+          final selectedTotal = selectedCases.fold<double>(
+            0,
+            (sum, c) => sum + c.contributionPerMember,
+          );
+          return AlertDialog(
+            title: const Text('Pay To Case'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Select Cases*'),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 240,
+                    child: ListView.builder(
+                      itemCount: pending.length,
+                      itemBuilder: (_, i) {
+                        final c = pending[i];
+                        final checked = selectedIds.contains(c.id);
+                        return CheckboxListTile(
+                          dense: true,
+                          value: checked,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            '#${c.caseNumber} • KES ${c.contributionPerMember.toStringAsFixed(2)}',
+                          ),
+                          subtitle: c.isFinalized
+                              ? const Text('Finalized case (posts as arrears)')
+                              : null,
+                          onChanged: (v) {
+                            setLocalState(() {
+                              if (v == true) {
+                                selectedIds.add(c.id);
+                              } else {
+                                selectedIds.remove(c.id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (selectedIds.isNotEmpty)
+                    Text(
+                      'Selected: ${selectedIds.length} case(s) • Required total: KES ${selectedTotal.toStringAsFixed(2)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        final toPay =
+                            pending.where((c) => selectedIds.contains(c.id)).toList();
+                        if (toPay.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content:
+                                  Text('Choose one or more cases to pay first.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+
+                        setState(() => _busy = true);
+                        try {
+                          final result = await _service.payToCases(
+                            memberId: auth.memberId!,
+                            selectedCases: toPay,
+                            walletBalance: snapshot.walletBalance,
+                          );
+                          if (!mounted) return;
+                          Navigator.of(context).pop();
+                          final count = (result['count'] as num?)?.toInt() ?? 0;
+                          final total = (result['total'] as num?)?.toDouble() ?? 0;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Paid $count case(s), total KES ${total.toStringAsFixed(2)}.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          setState(() => _future = _load());
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Failed: $e'),
+                                  backgroundColor: Colors.red),
+                            );
+                          }
+                        } finally {
+                          if (mounted) setState(() => _busy = false);
+                        }
+                      },
+                child: Text(_busy ? 'Paying...' : 'Pay'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

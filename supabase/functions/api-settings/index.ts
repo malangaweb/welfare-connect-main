@@ -29,6 +29,16 @@ function toPositiveNumber(value: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object") {
+    const anyErr = error as Record<string, unknown>;
+    const msg = String(anyErr.message || anyErr.error || anyErr.details || "").trim();
+    if (msg) return msg;
+  }
+  return "Error";
+}
+
 function buildSettingsPayload(input: Record<string, unknown>, existing: Record<string, any> | null) {
   const payload: Record<string, unknown> = {
     registration_fee: Number(input.registration_fee ?? existing?.registration_fee ?? 500),
@@ -105,9 +115,7 @@ serve(async (req) => {
     const fetchExisting = async () => {
       const { data, error } = await supabase
         .from("settings")
-        .select(
-          "id, organization_name, organization_email, organization_phone, registration_fee, renewal_fee, penalty_amount, paybill_number, member_id_start, case_id_start, mpesa_consumer_key, mpesa_consumer_secret, mpesa_passkey, mpesa_shortcode, mpesa_initiator_name, mpesa_initiator_password, mpesa_env, created_at, updated_at",
-        )
+        .select("*")
         .order("id", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -166,7 +174,7 @@ serve(async (req) => {
       settings: saved ? sanitizeSettings(saved) : null,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
+    const msg = getErrorMessage(e);
     const status = msg === "Forbidden" ? 403 : msg.toLowerCase().includes("token") ? 401 : 500;
     return jsonResponse(status, { error: msg });
   }

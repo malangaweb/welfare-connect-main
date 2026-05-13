@@ -16,6 +16,25 @@ function asSafeString(value: unknown, fallback: string): string {
   return str || fallback;
 }
 
+function asNullableUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed
+    : null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object") {
+    const anyErr = error as Record<string, unknown>;
+    const msg = String(anyErr.message || anyErr.error || anyErr.details || "").trim();
+    if (msg) return msg;
+  }
+  return "Error";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" });
@@ -27,7 +46,7 @@ serve(async (req) => {
     const action = asSafeString(body?.action, "CLIENT_EVENT");
     const tableName = asSafeString(body?.table_name, "system");
     const status = asSafeString(body?.status, "info");
-    const recordId = body?.record_id ? String(body.record_id) : null;
+    const recordId = asNullableUuid(body?.record_id);
     const metadata = body?.metadata && typeof body.metadata === "object" ? body.metadata : null;
 
     const supabase = createClient(
@@ -40,8 +59,8 @@ serve(async (req) => {
       table_name: tableName,
       record_id: recordId,
       status,
-      user_id: claims?.sub ? String(claims.sub) : null,
-      member_id: claims?.member_id ? String(claims.member_id) : null,
+      user_id: asNullableUuid(claims?.sub),
+      member_id: asNullableUuid(claims?.member_id),
       metadata,
     });
 
@@ -49,9 +68,8 @@ serve(async (req) => {
 
     return jsonResponse(200, { success: true });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error";
+    const msg = getErrorMessage(e);
     const status = msg === "Forbidden" ? 403 : msg.toLowerCase().includes("token") ? 401 : 500;
     return jsonResponse(status, { error: msg });
   }
 });
-

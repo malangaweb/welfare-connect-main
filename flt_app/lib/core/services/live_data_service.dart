@@ -29,6 +29,7 @@ class MemberCaseSnapshot {
   final String caseNumber;
   final String caseType;
   final double contributionPerMember;
+  final bool isFinalized;
   final bool paid;
 
   const MemberCaseSnapshot({
@@ -36,6 +37,7 @@ class MemberCaseSnapshot {
     required this.caseNumber,
     required this.caseType,
     required this.contributionPerMember,
+    required this.isFinalized,
     required this.paid,
   });
 }
@@ -178,9 +180,76 @@ class LiveDataService {
               caseNumber: (c['case_number'] ?? 'N/A').toString(),
               caseType: (c['case_type'] ?? 'unknown').toString(),
               contributionPerMember: _toDouble(c['contribution_per_member']),
+              isFinalized: c['is_finalized'] == true,
               paid: c['paid'] == true,
             ))
         .toList();
+  }
+
+  Future<List<MemberCaseSnapshot>> fetchPayableCases({
+    required String memberId,
+  }) async {
+    final rows = await _client
+        .from('cases')
+        .select(
+            'id, case_number, case_type, contribution_per_member, is_active, is_finalized')
+        .or('is_active.eq.true,is_finalized.eq.true');
+    final raw = (rows as List)
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+
+    if (raw.isEmpty) return const [];
+
+    final caseIds = raw.map((r) => '${r['id']}').toList();
+    final existing = await _client
+        .from('transactions')
+        .select('case_id, status, amount, transaction_type')
+        .eq('member_id', memberId)
+        .inFilter('case_id', caseIds)
+        .inFilter('transaction_type', [
+      'contribution',
+      'case_wallet_deduction',
+      'arrears',
+      'contribution_refund',
+      'case_wallet_refund',
+    ]);
+
+    final paidByCase = <String, double>{};
+    for (final row in (existing as List).whereType<Map>()) {
+      final status = (row['status'] ?? '').toString();
+      if (status.isNotEmpty && status != 'completed') continue;
+      final caseId = (row['case_id'] ?? '').toString();
+      if (caseId.isEmpty) continue;
+      final txType = (row['transaction_type'] ?? '').toString();
+      final txAmount = _toDouble(row['amount']).abs();
+      final current = paidByCase[caseId] ?? 0;
+      if (txType == 'contribution' ||
+          txType == 'case_wallet_deduction' ||
+          txType == 'arrears') {
+        paidByCase[caseId] = current + txAmount;
+      } else if (txType == 'contribution_refund' ||
+          txType == 'case_wallet_refund') {
+        paidByCase[caseId] = current - txAmount;
+      }
+    }
+
+    final mapped = raw.map((r) {
+      final caseId = (r['id'] ?? '').toString();
+      final required = _toDouble(r['contribution_per_member']);
+      final netPaid = (paidByCase[caseId] ?? 0).clamp(0, double.infinity);
+      return MemberCaseSnapshot(
+        id: caseId,
+        caseNumber: (r['case_number'] ?? 'N/A').toString(),
+        caseType: (r['case_type'] ?? 'unknown').toString(),
+        contributionPerMember: required,
+        isFinalized: r['is_finalized'] == true,
+        paid: netPaid >= required && required > 0,
+      );
+    }).toList();
+
+    mapped.sort((a, b) => a.caseNumber.compareTo(b.caseNumber));
+    return mapped;
   }
 
   Future<List<Map<String, dynamic>>> fetchMemberTransactions({
@@ -363,6 +432,99 @@ class LiveDataService {
     });
   }
 
+  Future<Map<String, dynamic>> payToCases({
+    required String memberId,
+    required List<MemberCaseSnapshot> selectedCases,
+    required double walletBalance,
+  }) async {
+    if (selectedCases.isEmpty) {
+      throw Exception('Choose one or more cases to pay first.');
+    }
+
+    final caseIds = selectedCases.map((c) => c.id).toList();
+    final existing = await _client
+        .from('transactions')
+        .select('case_id, status, amount, transaction_type')
+        .eq('member_id', memberId)
+        .inFilter('case_id', caseIds)
+        .inFilter('transaction_type', [
+      'contribution',
+      'case_wallet_deduction',
+      'arrears',
+      'contribution_refund',
+      'case_wallet_refund',
+    ]);
+
+    final paidByCase = <String, double>{};
+    for (final row in (existing as List).whereType<Map>()) {
+      final status = (row['status'] ?? '').toString();
+      if (status.isNotEmpty && status != 'completed') continue;
+      final caseId = (row['case_id'] ?? '').toString();
+      if (caseId.isEmpty) continue;
+      final txType = (row['transaction_type'] ?? '').toString();
+      final txAmount = _toDouble(row['amount']).abs();
+      final current = paidByCase[caseId] ?? 0;
+      if (txType == 'contribution' ||
+          txType == 'case_wallet_deduction' ||
+          txType == 'arrears') {
+        paidByCase[caseId] = current + txAmount;
+      } else if (txType == 'contribution_refund' ||
+          txType == 'case_wallet_refund') {
+        paidByCase[caseId] = current - txAmount;
+      }
+    }
+
+    final rows = <Map<String, dynamic>>[];
+    for (final c in selectedCases) {
+      final requiredAmount = c.contributionPerMember;
+      if (requiredAmount <= 0) {
+        throw Exception('Case #${c.caseNumber} has no valid contribution amount.');
+      }
+      final netPaid = (paidByCase[c.id] ?? 0).clamp(0, double.infinity);
+      if (netPaid >= requiredAmount) {
+        throw Exception('Already settled: #${c.caseNumber}.');
+      }
+      final remainingAmount = (requiredAmount - netPaid).clamp(0, double.infinity);
+      if (remainingAmount <= 0) continue;
+      final isLate = c.isFinalized;
+      rows.add({
+        'member_id': memberId,
+        'case_id': c.id,
+        'amount': remainingAmount,
+        'transaction_type': isLate ? 'arrears' : 'case_wallet_deduction',
+        'status': 'completed',
+        'description': isLate
+            ? 'Late case payment (default account) for case #${c.caseNumber} (member portal)'
+            : 'Case wallet deduction for case #${c.caseNumber} (member portal)',
+        'metadata': {
+          'source': 'member_portal_pay_to_case',
+          'late_case_payment': isLate,
+          'paid_case_number': c.caseNumber,
+          'required_amount': requiredAmount,
+          'net_paid_before': netPaid,
+          'remaining_amount': remainingAmount,
+        },
+      });
+    }
+
+    final totalRequired = rows.fold<double>(
+      0,
+      (sum, row) => sum + _toDouble(row['amount']),
+    );
+    if (totalRequired <= 0) {
+      throw Exception('All selected cases are already settled.');
+    }
+    if (totalRequired > walletBalance) {
+      throw Exception('Required KES ${totalRequired.toStringAsFixed(2)}, but wallet has KES ${walletBalance.toStringAsFixed(2)}.');
+    }
+
+    await _client.from('transactions').insert(rows);
+    return {
+      'count': rows.length,
+      'total': totalRequired,
+    };
+  }
+
   Future<void> updateMemberPin({
     required String memberId,
     required String oldPin,
@@ -523,11 +685,38 @@ class LiveDataService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchSuspenseQueue({int limit = 150}) async {
+  Future<List<Map<String, dynamic>>> fetchSuspenseQueue({
+    int limit = 150,
+    String? appToken,
+  }) async {
+    // Prefer backend API path used by web/admin auth model (service-role read).
+    if (appToken != null && appToken.isNotEmpty) {
+      try {
+        final response = await _supabaseService.invokeFunction(
+          'api-suspense-list',
+          body: {'limit': limit},
+          headers: {'x-app-token': appToken},
+        );
+        if (response.status >= 200 && response.status < 300) {
+          final payload =
+              (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+          final list = (payload['transactions'] as List?)
+                  ?.whereType<Map>()
+                  .map((e) => e.cast<String, dynamic>())
+                  .toList() ??
+              const <Map<String, dynamic>>[];
+          if (list.isNotEmpty) return list;
+        }
+      } catch (_) {
+        // Fall back to direct query below.
+      }
+    }
+
     final rows = await _client
         .from('wrong_mpesa_transactions')
-        .select('id, amount, phone_number, reference, mpesa_receipt_number, transaction_date, status, intended_case_id')
-        .eq('status', 'pending')
+        .select(
+            'id, amount, phone_number, reference, mpesa_receipt_number, transaction_date, status, intended_case_id')
+        .inFilter('status', ['pending', 'PENDING_REVIEW'])
         .order('transaction_date', ascending: false)
         .limit(limit);
     return (rows as List)
