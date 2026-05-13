@@ -7,30 +7,39 @@ import { Button } from '@/components/ui/button';
 import { Member } from '@/lib/types';
 import { toast } from '@/components/ui/use-toast';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
+import { invokeWithAppToken } from '@/lib/appAuth';
 
 interface MemberProfileCardProps {
   member: Member;
+  onRefresh?: () => Promise<void> | void;
+  onEdit?: () => void;
 }
 
-const MemberProfileCard = ({ member }: MemberProfileCardProps) => {
+const MemberProfileCard = ({ member, onRefresh, onEdit }: MemberProfileCardProps) => {
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const isInactive = String(member.status || '').toLowerCase() === 'inactive';
+  const nextStatus = isInactive ? 'active' : 'inactive';
 
   const handleStatusChange = async () => {
     try {
       setIsDeactivating(true);
-      // API call to update member status would go here
-      
-      toast({
-        title: member.isActive ? "Member Deactivated" : "Member Reactivated",
-        description: `${member.name} has been ${member.isActive ? "deactivated" : "reactivated"} successfully.`,
+      await invokeWithAppToken('api-member-status-update', {
+        member_id: member.id,
+        status: nextStatus,
       });
       
-      // For demo purposes - in real app would reload member data after API call
+      toast({
+        title: isInactive ? "Member Reactivated" : "Member Deactivated",
+        description: `${member.name} has been ${isInactive ? "reactivated" : "deactivated"} successfully.`,
+      });
+      if (onRefresh) {
+        await onRefresh();
+      }
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to update member status.",
+        description: error instanceof Error ? error.message : "Failed to update member status.",
       });
     } finally {
       setIsDeactivating(false);
@@ -62,11 +71,11 @@ const MemberProfileCard = ({ member }: MemberProfileCardProps) => {
           </div>
           
           <div className="mt-6 flex flex-col gap-2 w-full">
-            <Button>
+            <Button onClick={onEdit}>
               <Edit className="h-4 w-4 mr-2" />
               Edit Profile
             </Button>
-            {member.isActive ? (
+            {!isInactive ? (
               <Button 
                 variant="outline" 
                 className="text-red-500 hover:text-red-600 hover:bg-red-50"

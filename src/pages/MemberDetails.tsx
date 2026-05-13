@@ -580,7 +580,11 @@ const MemberDetails = () => {
 
         <div className="flex flex-col md:flex-row gap-6">
           <div className="md:w-1/3">
-            <MemberProfileCard member={member} />
+            <MemberProfileCard
+              member={member}
+              onRefresh={fetchMember}
+              onEdit={handleEditClick}
+            />
             <WalletCard 
               balance={member.walletBalance}
               onViewTransactions={handleViewTransactions}
