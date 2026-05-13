@@ -58,7 +58,7 @@ const MemberDetails = () => {
   const [isDeducting, setIsDeducting] = useState(false);
   const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string; contribution_per_member: number; is_finalized: boolean }[]>([]);
   const [payCaseDialogOpen, setPayCaseDialogOpen] = useState(false);
-  const [payCaseId, setPayCaseId] = useState<string>('');
+  const [selectedPayCaseIds, setSelectedPayCaseIds] = useState<string[]>([]);
   const [isPayingCase, setIsPayingCase] = useState(false);
 
   const handleAddDependant = () => {
@@ -245,31 +245,31 @@ const MemberDetails = () => {
 
   const handlePayToCase = async () => {
     if (!id || !member) return;
-    if (!payCaseId) {
+    if (selectedPayCaseIds.length === 0) {
       toast({
         variant: 'destructive',
-        title: 'Select a case',
-        description: 'Choose a case to pay first.',
+        title: 'Select cases',
+        description: 'Choose one or more cases to pay first.',
       });
       return;
     }
 
-    const selectedCase = availableCases.find((c) => c.id === payCaseId);
-    if (!selectedCase) {
+    const selectedCases = availableCases.filter((c) => selectedPayCaseIds.includes(c.id));
+    if (selectedCases.length === 0) {
       toast({
         variant: 'destructive',
-        title: 'Case not found',
-        description: 'Please refresh and select the case again.',
+        title: 'Cases not found',
+        description: 'Please refresh and select the cases again.',
       });
       return;
     }
 
-    const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
-    if (requiredAmount <= 0) {
+    const invalidAmountCases = selectedCases.filter((c) => (Number(c.contribution_per_member) || 0) <= 0);
+    if (invalidAmountCases.length > 0) {
       toast({
         variant: 'destructive',
         title: 'Invalid case amount',
-        description: `Case #${selectedCase.case_number} has no valid contribution amount.`,
+        description: `Case(s) ${invalidAmountCases.map((c) => `#${c.case_number}`).join(', ')} have no valid contribution amount.`,
       });
       return;
     }
@@ -279,73 +279,98 @@ const MemberDetails = () => {
 
       const { data: existingPayment, error: checkError } = await supabase
         .from('transactions')
-        .select('status, amount, transaction_type')
+        .select('case_id, status, amount, transaction_type')
         .eq('member_id', id)
-        .eq('case_id', payCaseId)
+        .in('case_id', selectedPayCaseIds)
         .in('transaction_type', ['contribution', 'case_wallet_deduction', 'arrears', 'contribution_refund', 'case_wallet_refund']);
 
       if (checkError) throw checkError;
 
-      const netPaid = (existingPayment || []).reduce((sum: number, tx: any) => {
-        if (tx.status && tx.status !== 'completed') return sum;
+      const paidByCase = new Map<string, number>();
+      (existingPayment || []).forEach((tx: any) => {
+        if (tx.status && tx.status !== 'completed') return;
+        const caseId = String(tx.case_id || '');
+        if (!caseId) return;
         const txType = String(tx.transaction_type || '');
         const amount = Number(tx.amount) || 0;
+        const current = paidByCase.get(caseId) || 0;
         if (txType === 'contribution' || txType === 'case_wallet_deduction' || txType === 'arrears') {
-          return sum + Math.abs(amount);
+          paidByCase.set(caseId, current + Math.abs(amount));
+          return;
         }
         if (txType === 'contribution_refund' || txType === 'case_wallet_refund') {
-          return sum - Math.abs(amount);
+          paidByCase.set(caseId, current - Math.abs(amount));
+          return;
         }
-        return sum;
-      }, 0);
+      });
 
-      const remainingAmount = Math.max(0, requiredAmount - Math.max(0, netPaid));
-      if (remainingAmount <= 0) {
+      const alreadyPaidCases = selectedCases.filter((c) => {
+        const requiredAmount = Number(c.contribution_per_member) || 0;
+        const netPaid = Math.max(0, paidByCase.get(c.id) || 0);
+        return netPaid >= requiredAmount;
+      });
+      if (alreadyPaidCases.length > 0) {
         toast({
           title: 'Already paid',
-          description: `Member has already settled case #${selectedCase.case_number}.`,
+          description: `Already settled: ${alreadyPaidCases.map((c) => `#${c.case_number}`).join(', ')}.`,
         });
         return;
       }
 
-      if (remainingAmount > (member.walletBalance || 0)) {
+      const rows = selectedCases.map((selectedCase) => {
+        const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
+        const netPaid = Math.max(0, paidByCase.get(selectedCase.id) || 0);
+        const remainingAmount = Math.max(0, requiredAmount - netPaid);
+        const isLatePayment = Boolean(selectedCase.is_finalized);
+        return {
+          member_id: id,
+          case_id: selectedCase.id,
+          amount: remainingAmount,
+          transaction_type: isLatePayment ? 'arrears' : 'case_wallet_deduction',
+          status: 'completed',
+          description: isLatePayment
+            ? `Late case payment (default account) for case #${selectedCase.case_number} (admin portal)`
+            : `Case wallet deduction for case #${selectedCase.case_number} (admin portal)`,
+          metadata: {
+            source: 'admin_member_details_pay_to_case',
+            late_case_payment: isLatePayment,
+            paid_case_number: selectedCase.case_number,
+            required_amount: requiredAmount,
+            net_paid_before: netPaid,
+            remaining_amount: remainingAmount,
+          },
+        };
+      }).filter((r) => (Number(r.amount) || 0) > 0);
+
+      const totalRequired = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+      if (totalRequired <= 0) {
+        toast({
+          title: 'Nothing to pay',
+          description: 'All selected cases are already settled.',
+        });
+        return;
+      }
+
+      if (totalRequired > (member.walletBalance || 0)) {
         toast({
           variant: 'destructive',
           title: 'Insufficient funds',
-          description: `Required KES ${remainingAmount.toLocaleString()}, but wallet has KES ${Number(member.walletBalance || 0).toLocaleString()}.`,
+          description: `Required KES ${totalRequired.toLocaleString()}, but wallet has KES ${Number(member.walletBalance || 0).toLocaleString()}.`,
         });
         return;
       }
 
-      const isLatePayment = Boolean(selectedCase.is_finalized);
-      const { error: insertError } = await supabase.from('transactions').insert({
-        member_id: id,
-        case_id: payCaseId,
-        amount: remainingAmount,
-        transaction_type: isLatePayment ? 'arrears' : 'case_wallet_deduction',
-        status: 'completed',
-        description: isLatePayment
-          ? `Late case payment (default account) for case #${selectedCase.case_number} (admin portal)`
-          : `Case wallet deduction for case #${selectedCase.case_number} (admin portal)`,
-        metadata: {
-          source: 'admin_member_details_pay_to_case',
-          late_case_payment: isLatePayment,
-          paid_case_number: selectedCase.case_number,
-          required_amount: requiredAmount,
-          net_paid_before: netPaid,
-          remaining_amount: remainingAmount,
-        },
-      } as any);
+      const { error: insertError } = await supabase.from('transactions').insert(rows as any);
 
       if (insertError) throw insertError;
 
       toast({
         title: 'Payment successful',
-        description: `Paid KES ${remainingAmount.toLocaleString()} to case #${selectedCase.case_number}.`,
+        description: `Paid ${rows.length} case(s), total KES ${totalRequired.toLocaleString()}.`,
       });
 
       setPayCaseDialogOpen(false);
-      setPayCaseId('');
+      setSelectedPayCaseIds([]);
       await handleFundingSuccess();
     } catch (error) {
       console.error('Pay to case error:', error);
@@ -727,7 +752,10 @@ const MemberDetails = () => {
             <div className="mt-3">
               <Button
                 className="w-full mb-2"
-                onClick={() => setPayCaseDialogOpen(true)}
+                onClick={() => {
+                  setSelectedPayCaseIds([]);
+                  setPayCaseDialogOpen(true);
+                }}
               >
                 Pay to Case
               </Button>
@@ -965,23 +993,40 @@ const MemberDetails = () => {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label>Select Case*</label>
-              <Select value={payCaseId} onValueChange={setPayCaseId}>
-                <SelectTrigger><SelectValue placeholder="Choose a case" /></SelectTrigger>
-                <SelectContent>
-                  {availableCases.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      #{c.case_number} — KES {Number(c.contribution_per_member || 0).toLocaleString()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label>Select Cases*</label>
+              <div className="max-h-56 overflow-y-auto border rounded-md p-2 space-y-1">
+                {availableCases.map((c) => {
+                  const checked = selectedPayCaseIds.includes(c.id);
+                  return (
+                    <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer p-1 rounded hover:bg-muted/40">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedPayCaseIds((prev) => {
+                            if (e.target.checked) return [...prev, c.id];
+                            return prev.filter((id) => id !== c.id);
+                          });
+                        }}
+                      />
+                      <span>#{c.case_number} — KES {Number(c.contribution_per_member || 0).toLocaleString()}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-            {payCaseId && (
+            {selectedPayCaseIds.length > 0 && (
               <div className="text-sm text-muted-foreground">
-                Required amount:{" "}
+                Selected:{" "}
                 <strong>
-                  KES {Number(availableCases.find(c => c.id === payCaseId)?.contribution_per_member || 0).toLocaleString()}
+                  {selectedPayCaseIds.length} case(s)
+                </strong>
+                {" "}· Required total:{" "}
+                <strong>
+                  KES {availableCases
+                    .filter((c) => selectedPayCaseIds.includes(c.id))
+                    .reduce((sum, c) => sum + (Number(c.contribution_per_member) || 0), 0)
+                    .toLocaleString()}
                 </strong>
               </div>
             )}
