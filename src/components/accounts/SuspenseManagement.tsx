@@ -114,31 +114,15 @@ export function SuspenseManagement() {
 
   const checkTableExists = async () => {
     try {
-      const { data, error } = await supabase
-        .from('wrong_mpesa_transactions')
-        .select('id')
-        .limit(1)
-
-      if (error) {
-        if (error.code === '42P01') {
-          // Table doesn't exist
-          setTableExists(false)
-          return false
-        }
-        // Log RLS or permission errors
-        if (error.code === '42501' || error.message.includes('permission')) {
-          toast.error('Permission denied', {
-            description: 'You need super_admin role to view suspense transactions',
-          })
-        }
-        // For any other error, assume table exists but we can't access it
-        setTableExists(true)
-        return true
-      }
-
+      await invokeWithAppToken<any>('api-suspense-list', {})
       setTableExists(true)
       return true
     } catch (error: any) {
+      const msg = String(error?.message || '')
+      if (msg.includes('42P01') || msg.toLowerCase().includes('does not exist')) {
+        setTableExists(false)
+        return false
+      }
       setTableExists(true)
       return true
     }
@@ -157,46 +141,8 @@ export function SuspenseManagement() {
       setLoading(true)
     }
     try {
-      const { data, error } = await supabase
-        .from('wrong_mpesa_transactions')
-        .select(`
-          id,
-          mpesa_receipt_number,
-          phone_number,
-          amount,
-          sender_name,
-          transaction_date,
-          status,
-          reference,
-          matched_member_id,
-          intended_case_id,
-          intended_member_id,
-          created_at,
-          matched_member:matched_member_id (
-            id,
-            name,
-            member_number
-          ),
-          intended_case:intended_case_id (
-            id,
-            case_number,
-            case_type,
-            contribution_per_member
-          ),
-          intended_member:intended_member_id (
-            id,
-            name,
-            member_number
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(1500)
-
-      if (error) {
-        throw error
-      }
-
-      setTransactions(data || [])
+      const response = await invokeWithAppToken<{ transactions: WrongMpesaTransaction[] }>('api-suspense-list', {})
+      setTransactions(response?.transactions || [])
       setCurrentPage(1) // Reset to first page on fetch
     } catch (error: any) {
       toast.error('Error loading suspense transactions', {
