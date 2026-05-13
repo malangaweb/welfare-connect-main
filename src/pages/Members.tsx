@@ -53,6 +53,7 @@ import {
 } from '@/components/ui/tooltip';
 import type { Database } from '@/integrations/supabase/types';
 import { loadXlsx } from '@/lib/reportExportLibs';
+import { logSystemEvent } from '@/lib/systemLog';
 
 const getMemberNumberValue = (memberNumber?: string) => {
   if (!memberNumber) return Number.MAX_SAFE_INTEGER;
@@ -99,6 +100,11 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
   selected?: boolean
   onToggleSelect?: (memberId: string, checked: boolean) => void
 }) => {
+  const memberName = String(member?.name || '').trim() || 'Unknown Member';
+  const memberNumber = String(member?.memberNumber || '-');
+  const walletBalance = Number(member?.walletBalance || 0);
+  const initials = memberName.slice(0, 2).toUpperCase();
+
   return (
     <TableRow
       className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group h-14 md:h-16"
@@ -108,17 +114,17 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
           <Checkbox
             checked={!!selected}
             onCheckedChange={(v) => onToggleSelect?.(member.id, v === true)}
-            aria-label={`Select member ${member.memberNumber}`}
+            aria-label={`Select member ${memberNumber}`}
           />
         </TableCell>
       )}
-      <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">#{member.memberNumber}</TableCell>
+      <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">#{memberNumber}</TableCell>
       <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <div className="h-7 w-7 md:h-8 md:w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
-            {member.name.substring(0, 2).toUpperCase()}
+            {initials}
           </div>
-          <span className="truncate max-w-[120px] md:max-w-none">{member.name}</span>
+          <span className="truncate max-w-[120px] md:max-w-none">{memberName}</span>
         </div>
       </TableCell>
       <TableCell className="text-slate-600 font-medium text-xs md:text-sm py-3 px-2 md:px-4 whitespace-nowrap">
@@ -157,14 +163,14 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
       <TableCell className="py-3 px-2 md:px-4 text-right whitespace-nowrap">
         <span
           className={`font-semibold text-xs md:text-sm ${
-            member.walletBalance < 0
+            walletBalance < 0
               ? 'text-red-600'
-              : member.walletBalance > 0
+              : walletBalance > 0
                 ? 'text-green-600'
                 : 'text-slate-600'
           }`}
         >
-          KES {member.walletBalance?.toLocaleString() || '0'}
+          KES {walletBalance.toLocaleString()}
         </span>
       </TableCell>
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap">
@@ -687,6 +693,26 @@ const Members = () => {
 
     } catch (error) {
       console.error('Error fetching members:', error);
+      void logSystemEvent({
+        action: 'MEMBERS_LIST_FETCH_FAILED',
+        tableName: 'members',
+        status: 'error',
+        metadata: {
+          source: 'Members.fetchMembers',
+          message: error instanceof Error ? error.message : String(error),
+          search: debouncedSearch,
+          status_filter: statusFilter,
+          location_filter: locationFilter,
+          defaulters_filter: defaultersFilter,
+          positive_filter: positiveBalanceFilter,
+          page: currentPage,
+        },
+      });
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load members',
+        description: 'The system could not load members right now. Please retry shortly.',
+      });
     } finally {
       setLoading(false);
     }

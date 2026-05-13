@@ -1,5 +1,6 @@
 import { invokeWithAppToken } from '@/lib/appAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { logSystemEvent } from '@/lib/systemLog';
 
 export interface SafeSettings {
   registration_fee: number;
@@ -54,6 +55,15 @@ export async function fetchSafeSettings(): Promise<SafeSettings | null> {
         return value;
       } catch (error) {
         apiRetryAfter = Date.now() + API_RETRY_BACKOFF_MS;
+        void logSystemEvent({
+          action: 'SETTINGS_API_FETCH_FAILED',
+          tableName: 'settings',
+          status: 'warning',
+          metadata: {
+            source: 'fetchSafeSettings',
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
         if (!warnedApiFailure) {
           console.warn('api-settings failed; retrying later and using fallback/defaults.', error);
           warnedApiFailure = true;
@@ -82,6 +92,17 @@ export async function fetchSafeSettings(): Promise<SafeSettings | null> {
 
         if (deniedByRole) {
           directReadAllowed = false;
+          void logSystemEvent({
+            action: 'SETTINGS_DIRECT_READ_DENIED',
+            tableName: 'settings',
+            status: 'warning',
+            metadata: {
+              source: 'fetchSafeSettings',
+              code: dbCode || null,
+              status: dbStatus || null,
+              message: dbMessage || null,
+            },
+          });
           if (!warnedDirectReadFailure) {
             console.warn('Direct settings read is not permitted for this role; using defaults.');
             warnedDirectReadFailure = true;

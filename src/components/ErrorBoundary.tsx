@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react';
 import { AlertCircle, RefreshCw, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { logSystemEvent } from '@/lib/systemLog';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -56,6 +57,18 @@ export class ErrorBoundary extends React.Component<
     try {
       const user = localStorage.getItem('currentUser');
       console.error('User when error occurred:', user);
+      void logSystemEvent({
+        action: 'UI_ERROR_BOUNDARY_TRIGGERED',
+        tableName: 'system',
+        status: 'error',
+        metadata: {
+          message: error?.message || 'Unknown error',
+          stack: error?.stack || null,
+          component_stack: errorInfo?.componentStack || null,
+          user: user ? JSON.parse(user) : null,
+          path: typeof window !== 'undefined' ? window.location.pathname : null,
+        },
+      });
     } catch (e) {
       // Ignore
     }
