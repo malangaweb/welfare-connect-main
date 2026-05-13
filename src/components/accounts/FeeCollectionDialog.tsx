@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
 import { invokeWithAppToken } from "@/lib/appAuth";
 
 import {
@@ -67,7 +66,6 @@ type Member = {
   member_number: string;
 };
 
-type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 const FeeCollectionDialog = ({
   feeType,
   buttonLabel,
@@ -143,41 +141,13 @@ const FeeCollectionDialog = ({
       
       // Convert amount to a number
       const amount = parseFloat(values.amount);
-      const transactionAmount = (feeType === "registration" || feeType === "renewal" || feeType === "penalty")
-        ? -Math.abs(amount)
-        : amount;
-      
-      // Create a transaction record
-      const transactionPayload: TransactionInsert = {
+      await invokeWithAppToken("api-collect-fee", {
         member_id: values.memberId,
-        amount: transactionAmount,
-        transaction_type: feeType,
-        payment_method: values.reference ? "mpesa" : "manual",
-        status: "completed",
-        mpesa_reference: values.reference || null,
+        fee_type: feeType,
+        amount,
         reference: values.reference || null,
         description: values.description,
-        created_at: new Date().toISOString(),
-        metadata: {
-          source: "manual",
-          entry_type: "fee_collection_dialog",
-          fee_type: feeType,
-          mpesa_reference: values.reference || null,
-        },
-      };
-      const { error: transactionError } = await (supabase.from("transactions") as any).insert(
-        transactionPayload
-      );
-
-      if (transactionError) throw transactionError;
-      
-      // If collecting a penalty or registration fee, also reactivate member status.
-      if (feeType === "penalty" || feeType === "registration") {
-        await invokeWithAppToken("api-member-status-update", {
-          member_id: values.memberId,
-          status: "active",
-        });
-      }
+      });
       
       toast.success("Fee collected successfully", {
         description: `${titleMap[feeType]} of KES ${Math.abs(amount).toLocaleString()} has been collected.`,
