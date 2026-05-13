@@ -56,7 +56,10 @@ const MemberDetails = () => {
   const [deductTarget, setDeductTarget] = useState<'arrears' | 'registration' | 'case'>('arrears');
   const [deductCaseId, setDeductCaseId] = useState<string>('');
   const [isDeducting, setIsDeducting] = useState(false);
-  const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string }[]>([]);
+  const [availableCases, setAvailableCases] = useState<{ id: string; case_number: string; title: string; contribution_per_member: number; is_finalized: boolean }[]>([]);
+  const [payCaseDialogOpen, setPayCaseDialogOpen] = useState(false);
+  const [payCaseId, setPayCaseId] = useState<string>('');
+  const [isPayingCase, setIsPayingCase] = useState(false);
 
   const handleAddDependant = () => {
     setAddDependantOpen(true);
@@ -237,6 +240,122 @@ const MemberDetails = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePayToCase = async () => {
+    if (!id || !member) return;
+    if (!payCaseId) {
+      toast({
+        variant: 'destructive',
+        title: 'Select a case',
+        description: 'Choose a case to pay first.',
+      });
+      return;
+    }
+
+    const selectedCase = availableCases.find((c) => c.id === payCaseId);
+    if (!selectedCase) {
+      toast({
+        variant: 'destructive',
+        title: 'Case not found',
+        description: 'Please refresh and select the case again.',
+      });
+      return;
+    }
+
+    const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
+    if (requiredAmount <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid case amount',
+        description: `Case #${selectedCase.case_number} has no valid contribution amount.`,
+      });
+      return;
+    }
+
+    try {
+      setIsPayingCase(true);
+
+      const { data: existingPayment, error: checkError } = await supabase
+        .from('transactions')
+        .select('status, amount, transaction_type')
+        .eq('member_id', id)
+        .eq('case_id', payCaseId)
+        .in('transaction_type', ['contribution', 'case_wallet_deduction', 'arrears', 'contribution_refund', 'case_wallet_refund']);
+
+      if (checkError) throw checkError;
+
+      const netPaid = (existingPayment || []).reduce((sum: number, tx: any) => {
+        if (tx.status && tx.status !== 'completed') return sum;
+        const txType = String(tx.transaction_type || '');
+        const amount = Number(tx.amount) || 0;
+        if (txType === 'contribution' || txType === 'case_wallet_deduction' || txType === 'arrears') {
+          return sum + Math.abs(amount);
+        }
+        if (txType === 'contribution_refund' || txType === 'case_wallet_refund') {
+          return sum - Math.abs(amount);
+        }
+        return sum;
+      }, 0);
+
+      const remainingAmount = Math.max(0, requiredAmount - Math.max(0, netPaid));
+      if (remainingAmount <= 0) {
+        toast({
+          title: 'Already paid',
+          description: `Member has already settled case #${selectedCase.case_number}.`,
+        });
+        return;
+      }
+
+      if (remainingAmount > (member.walletBalance || 0)) {
+        toast({
+          variant: 'destructive',
+          title: 'Insufficient funds',
+          description: `Required KES ${remainingAmount.toLocaleString()}, but wallet has KES ${Number(member.walletBalance || 0).toLocaleString()}.`,
+        });
+        return;
+      }
+
+      const isLatePayment = Boolean(selectedCase.is_finalized);
+      const { error: insertError } = await supabase.from('transactions').insert({
+        member_id: id,
+        case_id: payCaseId,
+        amount: remainingAmount,
+        transaction_type: isLatePayment ? 'arrears' : 'case_wallet_deduction',
+        status: 'completed',
+        description: isLatePayment
+          ? `Late case payment (default account) for case #${selectedCase.case_number} (admin portal)`
+          : `Case wallet deduction for case #${selectedCase.case_number} (admin portal)`,
+        metadata: {
+          source: 'admin_member_details_pay_to_case',
+          late_case_payment: isLatePayment,
+          paid_case_number: selectedCase.case_number,
+          required_amount: requiredAmount,
+          net_paid_before: netPaid,
+          remaining_amount: remainingAmount,
+        },
+      } as any);
+
+      if (insertError) throw insertError;
+
+      toast({
+        title: 'Payment successful',
+        description: `Paid KES ${remainingAmount.toLocaleString()} to case #${selectedCase.case_number}.`,
+      });
+
+      setPayCaseDialogOpen(false);
+      setPayCaseId('');
+      await handleFundingSuccess();
+    } catch (error) {
+      console.error('Pay to case error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Payment failed',
+        description: error instanceof Error ? error.message : 'Could not pay to case.',
+      });
+    } finally {
+      setIsPayingCase(false);
     }
   };
 
@@ -519,24 +638,27 @@ const MemberDetails = () => {
 
   useEffect(() => {
     const loadCases = async () => {
-      if (!deductDialogOpen || deductTarget !== 'case') return;
+      const needsForDeduct = deductDialogOpen && deductTarget === 'case';
+      if (!needsForDeduct && !payCaseDialogOpen) return;
       try {
         const { data, error } = await supabase
           .from('cases')
-          .select('id, case_number, case_type, is_active')
-          .eq('is_active', true);
+          .select('id, case_number, case_type, contribution_per_member, is_active, is_finalized')
+          .or('is_active.eq.true,is_finalized.eq.true');
         if (error) throw error;
         setAvailableCases((data || []).map((c: any) => ({
           id: c.id,
           case_number: c.case_number,
           title: c.case_type || c.case_number,
+          contribution_per_member: Number(c.contribution_per_member) || 0,
+          is_finalized: Boolean(c.is_finalized),
         })));
       } catch (error) {
         console.error('Error loading cases for deduction:', error);
       }
     };
     loadCases();
-  }, [deductDialogOpen, deductTarget]);
+  }, [deductDialogOpen, deductTarget, payCaseDialogOpen]);
 
   if (loading) {
     return (
@@ -603,6 +725,12 @@ const MemberDetails = () => {
               onBalanceUpdate={handleFundingSuccess}
             />
             <div className="mt-3">
+              <Button
+                className="w-full mb-2"
+                onClick={() => setPayCaseDialogOpen(true)}
+              >
+                Pay to Case
+              </Button>
               <Button
                 variant="destructive"
                 className="w-full"
@@ -821,6 +949,56 @@ const MemberDetails = () => {
               disabled={isDeducting}
             >
               {isDeducting ? 'Saving...' : 'Deduct'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pay to Case Dialog (Admin) */}
+      <Dialog open={payCaseDialogOpen} onOpenChange={setPayCaseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pay to Case</DialogTitle>
+            <DialogDescription>
+              Deduct this member&apos;s wallet using the case contribution amount. Finalized cases are recorded as late payments in arrears.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label>Select Case*</label>
+              <Select value={payCaseId} onValueChange={setPayCaseId}>
+                <SelectTrigger><SelectValue placeholder="Choose a case" /></SelectTrigger>
+                <SelectContent>
+                  {availableCases.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      #{c.case_number} — KES {Number(c.contribution_per_member || 0).toLocaleString()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {payCaseId && (
+              <div className="text-sm text-muted-foreground">
+                Required amount:{" "}
+                <strong>
+                  KES {Number(availableCases.find(c => c.id === payCaseId)?.contribution_per_member || 0).toLocaleString()}
+                </strong>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPayCaseDialogOpen(false)}
+              disabled={isPayingCase}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePayToCase}
+              disabled={isPayingCase}
+            >
+              {isPayingCase ? 'Paying...' : 'Pay'}
             </Button>
           </DialogFooter>
         </DialogContent>
