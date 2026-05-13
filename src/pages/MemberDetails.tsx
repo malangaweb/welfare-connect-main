@@ -175,11 +175,15 @@ const MemberDetails = () => {
       };
 
       if (deductTarget === 'case') {
-        transactionType = 'contribution';
+        // Case deductions from this screen are wallet debits, not neutral case contribution records.
+        transactionType = 'case_wallet_deduction';
         transactionPayload = {
           ...transactionPayload,
           transaction_type: transactionType,
           case_id: deductCaseId,
+          description: deductReason?.trim()
+            ? `Case wallet deduction - ${deductReason.trim()}`
+            : 'Case wallet deduction',
         };
       }
 

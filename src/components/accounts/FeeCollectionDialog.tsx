@@ -6,6 +6,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { invokeWithAppToken } from "@/lib/appAuth";
 
 import {
   Dialog,
@@ -67,8 +68,6 @@ type Member = {
 };
 
 type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
-type MemberUpdate = Database["public"]["Tables"]["members"]["Update"];
-
 const FeeCollectionDialog = ({
   feeType,
   buttonLabel,
@@ -172,14 +171,12 @@ const FeeCollectionDialog = ({
 
       if (transactionError) throw transactionError;
       
-      // If collecting a penalty or registration fee, should also update the member's status
+      // If collecting a penalty or registration fee, also reactivate member status.
       if (feeType === "penalty" || feeType === "registration") {
-        const memberUpdate: MemberUpdate = { is_active: true };
-        const { error: updateError } = await (supabase.from("members") as any)
-          .update(memberUpdate)
-          .eq("id", values.memberId);
-
-        if (updateError) throw updateError;
+        await invokeWithAppToken("api-member-status-update", {
+          member_id: values.memberId,
+          status: "active",
+        });
       }
       
       toast.success("Fee collected successfully", {
