@@ -82,7 +82,7 @@ export function SuspenseManagement() {
   const [refreshing, setRefreshing] = useState(false)
   const [searchReceipt, setSearchReceipt] = useState('')
   const [isMatching, setIsMatching] = useState(false)
-  const [tableExists, setTableExists] = useState(false)
+  const [tableExists, setTableExists] = useState(true)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -112,28 +112,10 @@ export function SuspenseManagement() {
   })
   const [isInserting, setIsInserting] = useState(false)
 
-  const checkTableExists = async () => {
-    try {
-      await invokeWithAppToken<any>('api-suspense-list', {})
-      setTableExists(true)
-      return true
-    } catch (error: any) {
-      const msg = String(error?.message || '')
-      if (msg.includes('42P01') || msg.toLowerCase().includes('does not exist')) {
-        setTableExists(false)
-        return false
-      }
-      setTableExists(true)
-      return true
-    }
-  }
+  const checkTableExists = async () => true
 
   const fetchSuspenseTransactions = async (showRefreshing = false) => {
-    const exists = await checkTableExists()
-    if (!exists) {
-      setLoading(false)
-      return
-    }
+    await checkTableExists()
 
     if (showRefreshing) {
       setRefreshing(true)
