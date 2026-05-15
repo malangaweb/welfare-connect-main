@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#263143",
+                    "secondary-fixed-dim": "#bec6e0",
+                    "on-primary-fixed-variant": "#2e4e2b",
+                    "outline-variant": "#c3c8bd",
+                    "inverse-on-surface": "#ecf1ff",
+                    "on-surface": "#111c2d",
+                    "on-secondary-fixed": "#131b2e",
+                    "error-container": "#ffdad6",
+                    "secondary-container": "#dae2fd",
+                    "surface": "#f9f9ff",
+                    "on-surface-variant": "#434840",
+                    "on-error-container": "#93000a",
+                    "background": "#f9f9ff",
+                    "surface-container-highest": "#d8e3fb",
+                    "surface-bright": "#f9f9ff",
+                    "inverse-primary": "#abd0a3",
+                    "on-tertiary": "#ffffff",
+                    "on-tertiary-container": "#eaad64",
+                    "primary-container": "#31512e",
+                    "on-primary-fixed": "#022105",
+                    "tertiary-fixed-dim": "#f9ba70",
+                    "tertiary-container": "#6a4000",
+                    "on-secondary-fixed-variant": "#3f465c",
+                    "surface-container-high": "#dee8ff",
+                    "on-primary": "#ffffff",
+                    "surface-container-low": "#f0f3ff",
+                    "tertiary-fixed": "#ffddb9",
+                    "surface-tint": "#456641",
+                    "primary": "#1b3a19",
+                    "on-tertiary-fixed-variant": "#663e00",
+                    "tertiary-fixed": "#ffddb9",
+                    "tertiary": "#4b2c00",
+                    "surface-container": "#e7eeff",
+                    "primary-fixed-dim": "#abd0a3",
+                    "on-tertiary-fixed": "#2b1700",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-fixed": "#c7edbe",
+                    "surface-variant": "#d8e3fb",
+                    "error": "#ba1a1a",
+                    "on-secondary": "#ffffff",
+                    "on-primary-container": "#9ec396",
+                    "secondary-fixed": "#dae2fd",
+                    "on-secondary-container": "#5c647a",
+                    "secondary": "#565e74",
+                    "on-background": "#111c2d",
+                    "surface-dim": "#cfdaf2",
+                    "outline": "#73796f",
+                    "on-error": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "section_gap": "32px",
+                    "base_unit": "8px",
+                    "card_padding": "20px",
+                    "gutter": "16px",
+                    "margin_edge": "24px"
+            },
+            "fontFamily": {
+                    "headline-lg": ["Manrope"],
+                    "label-lg": ["Manrope"],
+                    "label-sm": ["Manrope"],
+                    "body-md": ["Manrope"],
+                    "title-lg": ["Manrope"],
+                    "headline-md": ["Manrope"],
+                    "display-lg": ["Manrope"],
+                    "body-lg": ["Manrope"]
+            },
+            "fontSize": {
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                    "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.1px", "fontWeight": "600"}],
+                    "label-sm": ["11px", {"lineHeight": "16px", "letterSpacing": "0.5px", "fontWeight": "500"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background: linear-gradient(135deg, #0E171F 0%, #385943 100%);
+            min-height: 100vh;
+        }
+        .glass-effect {
+            backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="flex items-center justify-center p-6">
+<div class="w-full max-w-md flex flex-col gap-6">
+<!-- Hero Banner Component -->
+<header class="relative overflow-hidden bg-gradient-to-br from-[#0F172A] to-[#065F46] rounded-[30px] p-8 shadow-2xl">
+<!-- Decorative Background Element -->
+<div class="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+<div class="relative z-10 flex flex-col gap-2">
+<div class="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-2">
+<span class="material-symbols-outlined text-white text-3xl" data-icon="nature_people">nature_people</span>
+</div>
+<h1 class="font-display-lg text-display-lg text-white leading-tight">
+                    Malanga Welfare Companion
+                </h1>
+<p class="font-body-md text-body-md text-white/80">
+                    Member and Admin Access
+                </p>
+</div>
+<img alt="Decorative Tree" class="absolute bottom-0 right-0 w-32 h-32 opacity-20 pointer-events-none" data-alt="stylized 3D deciduous tree with lush green foliage and clean geometric lines on a dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAaszG87ccneesl27ZijVAyAiwWdqbk4Xd7pQyq1rbV3XNVeend5deYSk0UeqiKcZ9QBBU0WJXjMA8dlX3GVpqPx4Iok59wBC720WgUxadsJbhbVi5c1wH2KrFuDk2iSgkVd4dFCvBJKqDF7ZnMTi2qJzNQ8eeYwu1OlRuA6P0FOOAASCKynly7zXrTEvXvS5kTliJtWnSqHgnPAflV1dL4dghTrcyoTCqDT4eKyGAp5vXvaOBw_8j2wy4W1ZWWR-HJ-ZXQ_Ii6X0o"/>
+</header>
+<!-- Login Card Component -->
+<main class="bg-[#EEF1F5] rounded-[26px] p-8 shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
+<!-- Segmented Control -->
+<div class="flex p-1.5 bg-slate-200/50 rounded-2xl mb-8">
+<button class="flex-1 py-3 px-4 rounded-xl font-label-lg text-label-lg transition-all duration-300 bg-white text-on-surface shadow-sm">
+                    Member Portal
+                </button>
+<button class="flex-1 py-3 px-4 rounded-xl font-label-lg text-label-lg transition-all duration-300 text-on-surface-variant hover:bg-white/40">
+                    Admin Portal
+                </button>
+</div>
+<form class="flex flex-col gap-5">
+<!-- Member Number Field -->
+<div class="flex flex-col gap-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant ml-2">Member Number</label>
+<div class="relative flex items-center">
+<div class="absolute left-4 text-on-surface-variant">
+<span class="material-symbols-outlined text-xl" data-icon="badge">badge</span>
+</div>
+<input class="w-full bg-slate-400/5 border-none rounded-2xl py-4 pl-12 pr-4 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary-container transition-all placeholder:text-slate-400" placeholder="Enter your member ID" type="text"/>
+</div>
+</div>
+<!-- Phone Number Field -->
+<div class="flex flex-col gap-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant ml-2">Phone Number</label>
+<div class="relative flex items-center">
+<div class="absolute left-4 text-on-surface-variant">
+<span class="material-symbols-outlined text-xl" data-icon="call">call</span>
+</div>
+<input class="w-full bg-slate-400/5 border-none rounded-2xl py-4 pl-12 pr-4 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary-container transition-all placeholder:text-slate-400" placeholder="+1 (555) 000-0000" type="tel"/>
+</div>
+</div>
+<!-- Options -->
+<div class="flex items-center justify-between mt-1 px-2">
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="w-5 h-5 rounded border-slate-300 text-primary-container focus:ring-primary-container" type="checkbox"/>
+<span class="font-label-sm text-label-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Remember me</span>
+</label>
+<a class="font-label-sm text-label-sm text-primary-container font-semibold hover:underline" href="#">Forgot ID?</a>
+</div>
+<!-- Submit Button -->
+<button class="mt-4 bg-[#111827] text-white rounded-[16px] py-4 px-6 font-headline-md text-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg" type="submit">
+                    Sign In
+                    <span class="material-symbols-outlined" data-icon="login">login</span>
+</button>
+</form>
+<!-- Secondary Action -->
+<div class="mt-8 pt-6 border-t border-slate-200 text-center">
+<p class="font-body-md text-body-md text-on-surface-variant">
+                    Not a member yet? 
+                    <a class="text-primary-container font-bold hover:underline" href="#">Apply for Welfare</a>
+</p>
+</div>
+</main>
+<!-- Support Footer -->
+<footer class="flex flex-col items-center gap-4 py-4">
+<div class="flex gap-6">
+<a class="font-label-sm text-label-sm text-white/60 hover:text-white transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-white/60 hover:text-white transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-white/60 hover:text-white transition-colors" href="#">Contact Support</a>
+</div>
+<p class="font-label-sm text-[10px] text-white/40 tracking-[0.2em] uppercase">
+                © 2024 Malanga Welfare Trust
+            </p>
+</footer>
+</div>
+</body></html>

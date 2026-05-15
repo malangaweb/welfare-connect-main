@@ -73,10 +73,22 @@ if (file_exists($configPath)) {
 }
 
 if ($supabaseUrl === '' || $supabaseServiceRoleKey === '' || $MLG_INTERNAL_BULK_KEY === '') {
+    $missing = [];
+    if ($supabaseUrl === '') {
+        $missing[] = 'SUPABASE_URL';
+    }
+    if ($supabaseServiceRoleKey === '') {
+        $missing[] = 'SUPABASE_SERVICE_ROLE_KEY';
+    }
+    if ($MLG_INTERNAL_BULK_KEY === '') {
+        $missing[] = 'MLG_INTERNAL_BULK_KEY';
+    }
+
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'error' => 'Server misconfigured: missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or MLG_INTERNAL_BULK_KEY',
+        'missing' => $missing,
     ]);
     exit;
 }

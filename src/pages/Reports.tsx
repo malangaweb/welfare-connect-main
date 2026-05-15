@@ -45,7 +45,6 @@ import { createReportFilename, exportRowsToCSV, exportRowsToXLSX } from '@/lib/r
 import { invokeWithAppToken } from '@/lib/appAuth';
 import {
   CASE_ROW_COLUMNS,
-  MEMBER_LIST_COLUMNS,
   REPORT_TRANSACTION_COLUMNS,
 } from '@/lib/supabaseSelectColumns';
 import { normalizeMemberStatus } from '@/lib/db-types';
@@ -177,6 +176,14 @@ interface DisciplineReportResponse {
     description: string | null;
     created_at: string;
   }>;
+}
+
+interface MembersListApiResponse {
+  members: Array<Record<string, unknown>>;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 }
 
 interface HeaderMap {
@@ -389,13 +396,30 @@ const Reports = () => {
     }
 
     try {
-      const [summaryRes, membersRes, casesRes, reportTransactions] = await Promise.all([
+      const fetchMembersViaApi = async () => {
+        const rows: Array<Record<string, unknown>> = [];
+        const limit = 300;
+        let offset = 0;
+
+        for (;;) {
+          const result = await invokeWithAppToken<MembersListApiResponse>('api-members-list', {
+            search: '',
+            status: 'all',
+            limit,
+            offset,
+          });
+          const batch = Array.isArray(result?.members) ? result.members : [];
+          rows.push(...batch);
+          if (!result?.has_more || batch.length === 0) break;
+          offset += limit;
+        }
+
+        return rows;
+      };
+
+      const [summaryRes, memberRows, casesRes, reportTransactions] = await Promise.all([
         (supabase.rpc as any)('get_dashboard_summary'),
-        supabase
-          .from('members')
-          .select(MEMBER_LIST_COLUMNS)
-          .order('member_number_numeric', { ascending: true })
-          .order('member_number', { ascending: true }),
+        fetchMembersViaApi(),
         supabase.from('cases').select(CASE_ROW_COLUMNS),
         fetchReportTransactionsBatched(),
       ]);
@@ -406,7 +430,7 @@ const Reports = () => {
         persistentCache.set('reports-summary', s, 10 * 60 * 1000);
       }
 
-      const mappedMembers: Member[] = (membersRes.data || []).map((m: any) => ({
+      const mappedMembers: Member[] = (memberRows || []).map((m: any) => ({
         ...m,
         id: m.id,
         memberNumber: m.member_number,

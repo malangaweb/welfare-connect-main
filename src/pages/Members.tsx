@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { clearAppToken, getAppToken, isAppTokenExpired } from '@/lib/appAuth';
+import { clearAppToken, getAppToken, invokeWithAppToken, isAppTokenExpired } from '@/lib/appAuth';
 import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
@@ -77,7 +77,16 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
+type MembersListApiResponse = {
+  members: Array<Record<string, unknown>>;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+};
+
 type DeductPreviewStatus = 'eligible' | 'paid' | 'insufficient' | 'ineligible' | 'unknown';
+type MemberStatusFilter = 'all' | 'active' | 'inactive' | 'probation' | 'deceased';
 type DeductPreviewRow = {
   member_id: string;
   member_number: string;
@@ -786,70 +795,60 @@ const Members = () => {
     }
   };
 
-  const fetchMembersForExport = async (mode: 'all' | 'defaulters' | 'positive') => {
-    const buildExportQuery = () => {
-      let query = supabase.from('members').select(MEMBER_DETAIL_COLUMNS);
+  const fetchMembersForExport = async (
+    mode: 'all' | 'defaulters' | 'positive',
+    statusOverride?: MemberStatusFilter,
+  ) => {
+    const effectiveStatusFilter = statusOverride ?? (statusFilter as MemberStatusFilter);
 
-      if (debouncedSearch) {
-        query = query.or(`member_number.ilike.%${debouncedSearch}%,name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%`);
-      }
-
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'probation') {
-          query = (query as any).in('status', ['probation', 'probabation']);
-        } else if (statusFilter === 'deceased') {
-          query = (query as any).in('status', ['deceased', 'deaceased']);
-        } else if (statusFilter === 'active' || statusFilter === 'inactive') {
-          query = query.eq('status', statusFilter);
-        }
-      }
-
-      if (locationFilter !== 'all') {
-        query = query.eq('residence', locationFilter);
-      }
-
-      // Keep page-level toggles applied for "all"
-      if (mode === 'all') {
-        if (defaultersFilter) query = query.lt('wallet_balance', 0);
-        if (positiveBalanceFilter) query = query.gte('wallet_balance', 0);
-      }
-
-      if (mode === 'defaulters') query = query.lt('wallet_balance', 0);
-      if (mode === 'positive') query = query.gte('wallet_balance', 0);
-
-      const sortColumnMap: Record<SortKey, string> = {
-        memberNumber: 'member_number_numeric',
-        name: 'name',
-        gender: 'gender',
-        residence: 'residence',
-        walletBalance: 'wallet_balance',
-        registrationDate: 'registration_date',
-      };
-
-      return query
-        .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
-        .order('member_number', { ascending: true });
+    const statusMatchesFilter = (member: Member) => {
+      if (effectiveStatusFilter === 'all') return true;
+      const normalized = normalizeMemberStatus((member as any).status, (member as any).is_active);
+      if (effectiveStatusFilter === 'probation') return normalized === 'probation';
+      if (effectiveStatusFilter === 'deceased') return normalized === 'deceased';
+      if (effectiveStatusFilter === 'inactive') return normalized === 'inactive';
+      if (effectiveStatusFilter === 'active') return normalized === 'active';
+      return true;
     };
 
-    const rows: any[] = [];
-    const batchSize = 1000;
+    const rows: Array<Record<string, unknown>> = [];
+    const limit = 300;
+    let offset = 0;
 
-    for (let from = 0; ; from += batchSize) {
-      const { data, error } = await buildExportQuery().range(from, from + batchSize - 1);
-      if (error) throw error;
-      const batch = (data as any[]) || [];
+    for (;;) {
+      const result = await invokeWithAppToken<MembersListApiResponse>('api-members-list', {
+        search: debouncedSearch || '',
+        status: 'all',
+        limit,
+        offset,
+      });
+
+      const batch = Array.isArray(result?.members) ? result.members : [];
       rows.push(...batch);
-      if (batch.length < batchSize) break;
+      if (!result?.has_more || batch.length === 0) break;
+      offset += limit;
     }
 
-    return rows.map((m: any) => {
-      const baseMember = mapDbMemberToMember(m);
-      return {
-        ...baseMember,
-        walletBalance: Number(m.wallet_balance) || 0,
-        dependants: [],
-      };
-    }) as Member[];
+    const exportedMembers = rows
+      .map((m: any) => {
+        const baseMember = mapDbMemberToMember(m);
+        return {
+          ...baseMember,
+          walletBalance: Number(m.wallet_balance) || 0,
+          dependants: [],
+        };
+      })
+      .filter((member) => statusMatchesFilter(member))
+      .filter((member) => locationFilter === 'all' || (member.residence || '').toLowerCase() === locationFilter.toLowerCase())
+      .filter((member) => {
+        if (mode === 'defaulters') return member.walletBalance < 0;
+        if (mode === 'positive') return member.walletBalance >= 0;
+        if (defaultersFilter) return member.walletBalance < 0;
+        if (positiveBalanceFilter) return member.walletBalance >= 0;
+        return true;
+      });
+
+    return sortMembers(exportedMembers, sortConfig);
   };
 
   useEffect(() => {
@@ -1299,6 +1298,52 @@ const Members = () => {
     }
   };
 
+  const handleExportMembersByStatus = async (targetStatus: Exclude<MemberStatusFilter, 'all'>) => {
+    try {
+      setExporting(true);
+      const XLSX = await loadXlsx();
+      const filteredMembers = await fetchMembersForExport('all', targetStatus);
+
+      if (filteredMembers.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Members Found",
+          description: `There are no ${targetStatus} members to export.`,
+        });
+        return;
+      }
+
+      const exportData = filteredMembers.map(member => ({
+        'Member Number': member.memberNumber,
+        'Name': member.name,
+        'Phone Number': member.phoneNumber || 'N/A',
+        'Status': targetStatus,
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, ws, `${targetStatus[0].toUpperCase()}${targetStatus.slice(1)}`);
+
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `members_${targetStatus}_${currentDate}.xlsx`;
+      XLSX.writeFile(wb, filename);
+
+      toast({
+        title: "Export Successful",
+        description: `${filteredMembers.length} ${targetStatus} members exported to ${filename}`,
+      });
+    } catch (error) {
+      console.error(`Error exporting ${targetStatus} members:`, error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: `Failed to export ${targetStatus} members data. Please try again.`,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleExportDefaulters = async () => {
     try {
       setExporting(true);
@@ -1527,6 +1572,23 @@ const Members = () => {
                   <DropdownMenuItem onClick={handleExportPositiveBalance} className="cursor-pointer" disabled={exporting}>
                     <Download className="h-4 w-4 mr-2" />
                     Positive Balance
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void handleExportMembersByStatus('active')} className="cursor-pointer" disabled={exporting}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Active Members
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExportMembersByStatus('inactive')} className="cursor-pointer" disabled={exporting}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Inactive Members
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExportMembersByStatus('probation')} className="cursor-pointer" disabled={exporting}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Probation Members
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExportMembersByStatus('deceased')} className="cursor-pointer" disabled={exporting}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Deceased Members
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
