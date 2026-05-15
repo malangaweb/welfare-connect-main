@@ -58,40 +58,76 @@ const formatDate = (date: Date | string | null | undefined): string => {
   }).format(dateObj);
 };
 
-const buildCaseDescriptionPatterns = (caseNumber: string) => {
-  const patterns = new Set<string>();
-  const trimmed = String(caseNumber || '').trim();
-  const isNumericOnly = /^\d+$/.test(trimmed);
-
-  if (trimmed && !isNumericOnly) {
-    patterns.add(trimmed);
-  }
-
-  const digitsRaw = trimmed.replace(/\D/g, '');
-  const parsedDigits = digitsRaw ? parseInt(digitsRaw, 10) : NaN;
-  const digits = !isNaN(parsedDigits) && parsedDigits > 0 ? String(parsedDigits) : '';
-
-  if (digits) {
-    patterns.add(`Case ${digits}`);
-    patterns.add(`Case #${digits}`);
-    patterns.add(`#${digits}`);
-  }
-
-  return Array.from(patterns);
-};
-
-const buildCaseTransactionOrFilter = (caseId: string, caseNumber: string) => {
-  const patterns = buildCaseDescriptionPatterns(caseNumber);
-  const clauses = [`case_id.eq.${caseId}`];
-  for (const pattern of patterns) {
-    clauses.push(`description.ilike.%${pattern}%`);
-  }
-  return clauses.join(',');
-};
-
 const invalidateCaseCaches = () => {
   persistentCache.invalidate('cases-list');
   persistentCache.invalidate('cases-mpesa-v2');
+};
+
+const CASE_TX_PAGE_SIZE = 1000;
+
+const fetchCaseContributionTransactions = async (caseId: string) => {
+  const rows: Array<{
+    amount: number | null;
+    transaction_type: string | null;
+    status: string | null;
+  }> = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await (supabase as any)
+      .from('transactions')
+      .select('amount, transaction_type, status')
+      .in('transaction_type', [
+        'contribution',
+        'contribution_refund',
+        'case_wallet_deduction',
+        'case_wallet_refund',
+      ])
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + CASE_TX_PAGE_SIZE - 1);
+
+    if (error) throw error;
+    const batch = (data || []) as Array<{
+      amount: number | null;
+      transaction_type: string | null;
+      status: string | null;
+    }>;
+
+    rows.push(...batch);
+    if (batch.length < CASE_TX_PAGE_SIZE) break;
+    from += CASE_TX_PAGE_SIZE;
+  }
+
+  return rows;
+};
+
+const calculateCollectedNet = (
+  transactions: Array<{ amount: number | null; transaction_type: string | null; status: string | null }>
+) => {
+  let totalContributions = 0;
+  let totalRefunds = 0;
+
+  for (const tx of transactions) {
+    if (tx.status && tx.status !== 'completed') continue;
+    const amount = Number(tx.amount) || 0;
+    const type = String(tx.transaction_type || '').toLowerCase();
+
+    if (type === 'contribution' || type === 'case_wallet_deduction') {
+      totalContributions += Math.abs(amount);
+      continue;
+    }
+
+    if (type === 'contribution_refund' || type === 'case_wallet_refund') {
+      if (amount > 0) {
+        totalRefunds += amount;
+      } else {
+        totalContributions += amount;
+      }
+    }
+  }
+
+  return Math.max(0, totalContributions - totalRefunds);
 };
 
 const Cases = () => {
@@ -186,11 +222,11 @@ const Cases = () => {
 
         setCases(mappedCases);
 
-        // Use case.actualAmount (backed by DB-side updates) instead of scanning transactions per case.
         const totals: { [caseNumber: string]: number } = {};
         for (const c of mappedCases) {
           if (!c.caseNumber) continue;
-          totals[c.caseNumber] = Math.max(0, Number(c.actualAmount) || 0);
+          const txRows = await fetchCaseContributionTransactions(c.id);
+          totals[c.caseNumber] = calculateCollectedNet(txRows);
         }
 
         setMpesaCollectedByCase(totals);
