@@ -1850,7 +1850,7 @@ const Members = () => {
 
       {/* Edit Member Modal */}
       <Dialog open={editMemberOpen} onOpenChange={setEditMemberOpen}>
-        <DialogContent className="max-w-2xl max-h-screen overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Edit Member</DialogTitle>
           </DialogHeader>

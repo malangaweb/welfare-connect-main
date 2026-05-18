@@ -131,7 +131,7 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-8 pb-24 sm:pb-0">
         <div className="grid gap-6 md:grid-cols-2">
           <PersonalInfoSection control={form.control} isLoadingMemberId={isLoadingMemberId} />
           <ResidenceSection control={form.control} />
@@ -147,11 +147,13 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
           <CredentialsSection control={form.control} memberNumber={form.watch("memberNumber")} />
         </div>
 
-        <div className="flex justify-end space-x-4">
-          <Button type="button" variant="outline">Cancel</Button>
-          <Button type="submit" disabled={isSubmitting || isLoadingMemberId}>
+        <div className="sticky bottom-0 z-10 -mx-2 border-t bg-card/95 px-2 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/85 sm:static sm:z-auto sm:mx-0 sm:border-t-0 sm:bg-transparent sm:px-0 sm:py-0">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-4">
+            <Button type="button" variant="outline" className="w-full sm:w-auto">Cancel</Button>
+            <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingMemberId}>
             {isSubmitting ? 'Registering...' : 'Register Member'}
-          </Button>
+            </Button>
+          </div>
         </div>
       </form>
     </Form>
