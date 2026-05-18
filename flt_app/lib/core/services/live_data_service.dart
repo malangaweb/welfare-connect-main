@@ -29,6 +29,9 @@ class MemberCaseSnapshot {
   final String caseNumber;
   final String caseType;
   final double contributionPerMember;
+  final double amountPaid;
+  final double remainingAmount;
+  final double progress;
   final bool isFinalized;
   final bool paid;
 
@@ -37,6 +40,9 @@ class MemberCaseSnapshot {
     required this.caseNumber,
     required this.caseType,
     required this.contributionPerMember,
+    required this.amountPaid,
+    required this.remainingAmount,
+    required this.progress,
     required this.isFinalized,
     required this.paid,
   });
@@ -174,16 +180,30 @@ class LiveDataService {
             .toList() ??
         const <Map<String, dynamic>>[];
 
-    return cases
-        .map((c) => MemberCaseSnapshot(
-              id: (c['id'] ?? '').toString(),
-              caseNumber: (c['case_number'] ?? 'N/A').toString(),
-              caseType: (c['case_type'] ?? 'unknown').toString(),
-              contributionPerMember: _toDouble(c['contribution_per_member']),
-              isFinalized: c['is_finalized'] == true,
-              paid: c['paid'] == true,
-            ))
-        .toList();
+    return cases.map((c) {
+      final required = _toDouble(c['contribution_per_member']);
+      final amountPaid = _toDouble(c['amount_paid']);
+      final remaining = _toDouble(c['remaining_amount']);
+      final normalizedPaid = amountPaid
+          .clamp(0, required > 0 ? required : double.infinity)
+          .toDouble();
+      final progress = required <= 0
+          ? ((c['paid'] == true) ? 1.0 : 0.0)
+          : (normalizedPaid / required).clamp(0.0, 1.0).toDouble();
+      return MemberCaseSnapshot(
+        id: (c['id'] ?? '').toString(),
+        caseNumber: (c['case_number'] ?? 'N/A').toString(),
+        caseType: (c['case_type'] ?? 'unknown').toString(),
+        contributionPerMember: required,
+        amountPaid: normalizedPaid,
+        remainingAmount: remaining > 0
+            ? remaining
+            : (required - normalizedPaid).clamp(0, double.infinity).toDouble(),
+        progress: progress,
+        isFinalized: c['is_finalized'] == true,
+        paid: c['paid'] == true || (required > 0 && normalizedPaid >= required),
+      );
+    }).toList();
   }
 
   Future<List<MemberCaseSnapshot>> fetchPayableCases({
@@ -237,12 +257,18 @@ class LiveDataService {
     final mapped = raw.map((r) {
       final caseId = (r['id'] ?? '').toString();
       final required = _toDouble(r['contribution_per_member']);
-      final netPaid = (paidByCase[caseId] ?? 0).clamp(0, double.infinity);
+      final netPaid =
+          (paidByCase[caseId] ?? 0).clamp(0, double.infinity).toDouble();
       return MemberCaseSnapshot(
         id: caseId,
         caseNumber: (r['case_number'] ?? 'N/A').toString(),
         caseType: (r['case_type'] ?? 'unknown').toString(),
         contributionPerMember: required,
+        amountPaid: netPaid,
+        remainingAmount:
+            (required - netPaid).clamp(0, double.infinity).toDouble(),
+        progress:
+            required <= 0 ? 0 : (netPaid / required).clamp(0.0, 1.0).toDouble(),
         isFinalized: r['is_finalized'] == true,
         paid: netPaid >= required && required > 0,
       );
@@ -478,13 +504,15 @@ class LiveDataService {
     for (final c in selectedCases) {
       final requiredAmount = c.contributionPerMember;
       if (requiredAmount <= 0) {
-        throw Exception('Case #${c.caseNumber} has no valid contribution amount.');
+        throw Exception(
+            'Case #${c.caseNumber} has no valid contribution amount.');
       }
       final netPaid = (paidByCase[c.id] ?? 0).clamp(0, double.infinity);
       if (netPaid >= requiredAmount) {
         throw Exception('Already settled: #${c.caseNumber}.');
       }
-      final remainingAmount = (requiredAmount - netPaid).clamp(0, double.infinity);
+      final remainingAmount =
+          (requiredAmount - netPaid).clamp(0, double.infinity);
       if (remainingAmount <= 0) continue;
       final isLate = c.isFinalized;
       rows.add({
@@ -515,7 +543,8 @@ class LiveDataService {
       throw Exception('All selected cases are already settled.');
     }
     if (totalRequired > walletBalance) {
-      throw Exception('Required KES ${totalRequired.toStringAsFixed(2)}, but wallet has KES ${walletBalance.toStringAsFixed(2)}.');
+      throw Exception(
+          'Required KES ${totalRequired.toStringAsFixed(2)}, but wallet has KES ${walletBalance.toStringAsFixed(2)}.');
     }
 
     await _client.from('transactions').insert(rows);
@@ -544,14 +573,14 @@ class LiveDataService {
     }
   }
 
-  Future<AdminDashboardSnapshot> fetchAdminDashboard() async {
+  Future<AdminDashboardSnapshot> fetchAdminDashboard({String? appToken}) async {
     final members = await _client.from('members').select('id');
     final activeCases =
         await _client.from('cases').select('id').eq('is_active', true);
-    final suspenseRows = await _client
-        .from('wrong_mpesa_transactions')
-        .select('amount, status')
-        .eq('status', 'pending');
+    final suspenseRows = await fetchSuspenseQueue(
+      limit: 500,
+      appToken: appToken,
+    );
 
     final recentTx = await _client
         .from('transactions')
@@ -582,35 +611,33 @@ class LiveDataService {
     int page = 1,
     int pageSize = 25,
     String search = '',
+    String status = 'all',
+    String active = 'all',
   }) async {
-    var query = _client
-        .from('members')
-        .select(
-            'id, member_number, name, phone_number, wallet_balance, status, is_active');
+    final from = (page - 1) * pageSize;
+    final to = from + pageSize - 1;
+    var query = _client.from('members').select(
+        'id, member_number, name, phone_number, wallet_balance, status, is_active');
     if (search.trim().isNotEmpty) {
       final q = search.trim();
       query = query.or(
         'name.ilike.%$q%,member_number.ilike.%$q%,phone_number.ilike.%$q%',
       );
     }
-    final rows = await query.limit(5000);
-    final mapped = (rows as List)
+    if (status != 'all') {
+      query = query.eq('status', status);
+    }
+    if (active == 'active') {
+      query = query.eq('is_active', true);
+    } else if (active == 'inactive') {
+      query = query.eq('is_active', false);
+    }
+    final rows =
+        await query.order('member_number', ascending: true).range(from, to);
+    return (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
-    mapped.sort((a, b) {
-      final aNum = _memberNumberOrder((a['member_number'] ?? '').toString());
-      final bNum = _memberNumberOrder((b['member_number'] ?? '').toString());
-      final numCmp = aNum.compareTo(bNum);
-      if (numCmp != 0) return numCmp;
-      return (a['member_number'] ?? '')
-          .toString()
-          .compareTo((b['member_number'] ?? '').toString());
-    });
-    final from = (page - 1) * pageSize;
-    if (from >= mapped.length) return const [];
-    final to = (from + pageSize).clamp(0, mapped.length);
-    return mapped.sublist(from, to);
   }
 
   Future<List<Map<String, dynamic>>> fetchAdminCases({int limit = 200}) async {
@@ -626,7 +653,8 @@ class LiveDataService {
         .toList();
   }
 
-  Future<void> finalizeCase({required String caseId, required double actualAmount}) async {
+  Future<void> finalizeCase(
+      {required String caseId, required double actualAmount}) async {
     await _client.from('cases').update({
       'is_finalized': true,
       'is_active': false,
@@ -648,10 +676,8 @@ class LiveDataService {
   }) async {
     final from = (page - 1) * pageSize;
     final to = from + pageSize - 1;
-    var query = _client
-        .from('transactions')
-        .select(
-            'id, member_id, amount, transaction_type, status, payment_method, description, created_at');
+    var query = _client.from('transactions').select(
+        'id, member_id, amount, transaction_type, status, payment_method, description, created_at');
     if (search.trim().isNotEmpty) {
       final q = search.trim();
       query = query.or(
@@ -673,15 +699,18 @@ class LiveDataService {
   }) async {
     final response = await (_client.rpc as dynamic)('revert_transaction', {
       'p_transaction_id': transactionId,
-      'p_admin_id': (adminUserId != null && adminUserId.isNotEmpty) ? adminUserId : null,
+      'p_admin_id':
+          (adminUserId != null && adminUserId.isNotEmpty) ? adminUserId : null,
       'p_reason': reason,
     });
     if (response.error != null) {
-      throw Exception(response.error.message ?? 'Failed to reverse transaction');
+      throw Exception(
+          response.error.message ?? 'Failed to reverse transaction');
     }
     final data = response.data as Map<String, dynamic>?;
     if (data != null && data['success'] == false) {
-      throw Exception((data['message'] ?? 'Failed to reverse transaction').toString());
+      throw Exception(
+          (data['message'] ?? 'Failed to reverse transaction').toString());
     }
   }
 
@@ -726,7 +755,8 @@ class LiveDataService {
   }
 
   Future<void> autoMatchSuspense() async {
-    final response = await (_client.rpc as dynamic)('match_suspense_transactions');
+    final response =
+        await (_client.rpc as dynamic)('match_suspense_transactions');
     if (response.error != null) {
       throw Exception(response.error.message ?? 'Auto-match failed');
     }
@@ -759,11 +789,11 @@ class LiveDataService {
   }) async {
     await _client
         .from('wrong_mpesa_transactions')
-        .update({'status': status})
-        .eq('id', suspenseId);
+        .update({'status': status}).eq('id', suspenseId);
   }
 
-  Future<Map<String, dynamic>?> fetchSettings({required String appToken}) async {
+  Future<Map<String, dynamic>?> fetchSettings(
+      {required String appToken}) async {
     final response = await _supabaseService.invokeFunction(
       'api-settings',
       body: {'action': 'get'},
@@ -771,9 +801,11 @@ class LiveDataService {
     );
     if (response.status < 200 || response.status >= 300) {
       final payload = (response.data as Map?)?.cast<String, dynamic>();
-      throw Exception(payload?['error']?.toString() ?? 'Failed to load settings');
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to load settings');
     }
-    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
     return (payload['settings'] as Map?)?.cast<String, dynamic>();
   }
 
@@ -788,21 +820,325 @@ class LiveDataService {
     );
     if (response.status < 200 || response.status >= 300) {
       final payload = (response.data as Map?)?.cast<String, dynamic>();
-      throw Exception(payload?['error']?.toString() ?? 'Failed to update settings');
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to update settings');
     }
-    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
     return (payload['settings'] as Map?)?.cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> fetchReportsSummary({
+    required String appToken,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-reports-summary',
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to load reports summary');
+    }
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAdminUsers({
+    required String appToken,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {'action': 'list'},
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Failed to load users');
+    }
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['users'] as List?)
+            ?.whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList() ??
+        const <Map<String, dynamic>>[];
+  }
+
+  Future<void> updateAdminUserStatus({
+    required String appToken,
+    required String userId,
+    required bool isActive,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {
+        'action': 'update_status',
+        'user_id': userId,
+        'is_active': isActive,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to update status');
+    }
+  }
+
+  Future<void> updateAdminUserRole({
+    required String appToken,
+    required String userId,
+    required String role,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {
+        'action': 'update_role',
+        'user_id': userId,
+        'role': role,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Failed to update role');
+    }
+  }
+
+  Future<String?> resetAdminUserPassword({
+    required String appToken,
+    required String userId,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {
+        'action': 'reset_password',
+        'user_id': userId,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to reset password');
+    }
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final temp = payload['temporary_password'];
+    return temp?.toString();
+  }
+
+  Future<void> createAdminUser({
+    required String appToken,
+    required String username,
+    required String name,
+    required String password,
+    required String role,
+    String? email,
+    String? memberId,
+    bool isActive = true,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {
+        'action': 'create',
+        'username': username,
+        'name': name,
+        'password': password,
+        'role': role,
+        'email': email,
+        'member_id': memberId,
+        'is_active': isActive,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Failed to create user');
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchAdminMemberDetails({
+    required String appToken,
+    required String memberId,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-member-details',
+      body: {'member_id': memberId},
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to load member details');
+    }
+    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<Map<String, dynamic>> fetchAdminCaseDetails({
+    required String appToken,
+    required String caseId,
+  }) async {
+    // Kept for compatibility with existing callers.
+    // ignore: unused_local_variable
+    final unusedAppToken = appToken;
+
+    final caseRef = caseId.trim();
+    final normalizedCaseNumber =
+        caseRef.startsWith('#') ? caseRef.substring(1).trim() : caseRef;
+    if (caseRef.isEmpty) {
+      throw Exception('Case reference is required');
+    }
+
+    var direct = await _client
+        .from('cases')
+        .select(
+            'id, case_number, case_type, affected_member_id, dependant_id, contribution_per_member, expected_amount, actual_amount, start_date, end_date, is_active, is_finalized, created_at, updated_at')
+        .or('id.eq.$caseRef,case_number.eq.$caseRef')
+        .maybeSingle();
+    if (direct == null && normalizedCaseNumber.isNotEmpty) {
+      direct = await _client
+          .from('cases')
+          .select(
+              'id, case_number, case_type, affected_member_id, dependant_id, contribution_per_member, expected_amount, actual_amount, start_date, end_date, is_active, is_finalized, created_at, updated_at')
+          .eq('case_number', normalizedCaseNumber)
+          .maybeSingle();
+    }
+    if (direct == null) {
+      throw Exception(
+          'Case not found (case_ref: $caseRef, normalized_case_number: $normalizedCaseNumber)');
+    }
+
+    final caseMap = (direct as Map).cast<String, dynamic>();
+    final txRows = await _client
+        .from('transactions')
+        .select('id, member_id, amount, transaction_type, status, created_at')
+        .eq('case_id', (caseMap['id'] ?? '').toString())
+        .inFilter('transaction_type', [
+      'contribution',
+      'contribution_refund',
+      'case_wallet_deduction',
+      'case_wallet_refund',
+    ]).order('created_at', ascending: false);
+    final txList = (txRows as List)
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .where((t) {
+      final s = (t['status'] ?? '').toString();
+      return s.isEmpty || s == 'completed';
+    }).toList();
+
+    final contributions = txList
+        .where((t) => (t['transaction_type'] == 'contribution' ||
+            t['transaction_type'] == 'case_wallet_deduction'))
+        .fold<double>(0, (sum, t) => sum + _toDouble(t['amount']).abs());
+    final refunds = txList
+        .where((t) => (t['transaction_type'] == 'contribution_refund' ||
+            t['transaction_type'] == 'case_wallet_refund'))
+        .fold<double>(0,
+            (sum, t) => sum + _toDouble(t['amount']).clamp(0, double.infinity));
+    final actualAmount =
+        (contributions - refunds).clamp(0, double.infinity).toDouble();
+
+    return {
+      'case': {
+        ...caseMap,
+        'actual_amount': actualAmount,
+        'paid': null,
+      },
+      'transactions': txList,
+    };
+  }
+
+  Future<Map<String, dynamic>> fetchAccountsSummary({
+    required String appToken,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-accounts-summary',
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to load accounts summary');
+    }
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['accounts'] as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<Map<String, dynamic>> bulkDeductCase({
+    required String appToken,
+    required String caseId,
+    required List<String> memberIds,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-case-bulk-deduct',
+      body: {
+        'case_id': caseId,
+        'member_ids': memberIds,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Bulk deduction failed');
+    }
+    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<Map<String, dynamic>> updateMemberStatus({
+    required String appToken,
+    required String memberId,
+    required String status,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-member-status-update',
+      body: {
+        'member_id': memberId,
+        'status': status,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to update member status');
+    }
+    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<Map<String, dynamic>> collectMemberFee({
+    required String appToken,
+    required String memberId,
+    required String feeType,
+    required double amount,
+    String? reference,
+    String? description,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-collect-fee',
+      body: {
+        'member_id': memberId,
+        'fee_type': feeType,
+        'amount': amount,
+        'reference': reference,
+        'description': description,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Failed to collect fee');
+    }
+    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
   }
 
   double _toDouble(dynamic value) {
     if (value == null) return 0;
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString()) ?? 0;
-  }
-
-  int _memberNumberOrder(String memberNumber) {
-    final match = RegExp(r'\d+').firstMatch(memberNumber);
-    if (match == null) return 1 << 30;
-    return int.tryParse(match.group(0)!) ?? (1 << 30);
   }
 }

@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
@@ -19,6 +24,8 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
   int _page = 1;
   bool _hasMore = false;
   String _search = '';
+  String _statusFilter = 'all';
+  String _activeFilter = 'all';
   late Future<List<Map<String, dynamic>>> _future;
 
   @override
@@ -38,6 +45,8 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
       page: _page,
       pageSize: _pageSize,
       search: _search,
+      status: _statusFilter,
+      active: _activeFilter,
     );
     _hasMore = rows.length == _pageSize;
     return rows;
@@ -46,6 +55,60 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
   Future<void> _refresh() async {
     setState(() => _future = _loadPage());
     await _future;
+  }
+
+  Future<void> _exportFilteredMembers() async {
+    try {
+      final allRows = await _service.fetchAdminMembers(
+        page: 1,
+        pageSize: 5000,
+        search: _search,
+        status: _statusFilter,
+        active: _activeFilter,
+      );
+      final now = DateTime.now();
+      final filename =
+          'members_export_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.csv';
+      allRows.sort((a, b) {
+        final aNum = _memberNumberOrder((a['member_number'] ?? '').toString());
+        final bNum = _memberNumberOrder((b['member_number'] ?? '').toString());
+        final numCmp = aNum.compareTo(bNum);
+        if (numCmp != 0) return numCmp;
+        return (a['member_number'] ?? '')
+            .toString()
+            .compareTo((b['member_number'] ?? '').toString());
+      });
+      final lines = <String>[
+        'member_number,name,phone_number,status,is_active,wallet_balance'
+      ];
+      for (final r in allRows) {
+        final memberNumber = _csv('${r['member_number'] ?? ''}');
+        final name = _csv('${r['name'] ?? ''}');
+        final phone = _csv('${r['phone_number'] ?? ''}');
+        final status = _csv('${r['status'] ?? ''}');
+        final isActive = r['is_active'] == true ? 'TRUE' : 'FALSE';
+        final wallet = _toDouble(r['wallet_balance']).toStringAsFixed(2);
+        lines.add('$memberNumber,$name,$phone,$status,$isActive,$wallet');
+      }
+      final csv = lines.join('\n');
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsString(csv);
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Exported ${allRows.length} rows. Saved: ${file.path} (also copied to clipboard).',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e')),
+      );
+    }
   }
 
   @override
@@ -59,7 +122,12 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
       title: 'Members',
       currentIndex: 1,
       actions: [
-        IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))
+        IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
+        IconButton(
+          onPressed: _exportFilteredMembers,
+          icon: const Icon(Icons.download),
+          tooltip: 'Export filtered members (CSV)',
+        ),
       ],
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,
@@ -71,6 +139,16 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
             return Center(child: Text(snapshot.error.toString()));
           }
           final rows = snapshot.data ?? const [];
+          final sortedRows = [...rows];
+          sortedRows.sort((a, b) {
+            final aNum = _memberNumberOrder((a['member_number'] ?? '').toString());
+            final bNum = _memberNumberOrder((b['member_number'] ?? '').toString());
+            final numCmp = aNum.compareTo(bNum);
+            if (numCmp != 0) return numCmp;
+            return (a['member_number'] ?? '')
+                .toString()
+                .compareTo((b['member_number'] ?? '').toString());
+          });
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
@@ -90,7 +168,7 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                '${rows.length} members • Page $_page',
+                '${sortedRows.length} shown • Page $_page',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF64748B),
                     ),
@@ -123,22 +201,70 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
                   });
                 },
               ),
-              const SizedBox(height: 14),
-              ...rows.map((r) {
-                final active = r['is_active'] == true;
-                final balance = (r['wallet_balance'] as num?)?.toDouble() ?? 0;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _activeFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Active Filter',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All')),
+                        DropdownMenuItem(value: 'active', child: Text('Active')),
+                        DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                      ],
+                      onChanged: (v) =>
+                          setState(() {
+                            _activeFilter = v ?? 'all';
+                            _page = 1;
+                            _future = _loadPage();
+                          }),
+                    ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _statusFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Status Filter',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All statuses')),
+                        DropdownMenuItem(value: 'active', child: Text('ACTIVE')),
+                        DropdownMenuItem(value: 'inactive', child: Text('INACTIVE')),
+                        DropdownMenuItem(value: 'probation', child: Text('PROBATION')),
+                        DropdownMenuItem(value: 'deceased', child: Text('DECEASED')),
+                      ],
+                      onChanged: (v) =>
+                          setState(() {
+                            _statusFilter = v ?? 'all';
+                            _page = 1;
+                            _future = _loadPage();
+                          }),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ...sortedRows.map((r) {
+                final active = r['is_active'] == true;
+                final balance = _toDouble(r['wallet_balance']);
+                return InkWell(
+                  onTap: () => context.go('/admin/members/${r['id']}'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                    ),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                         CircleAvatar(
                           radius: 20,
                           backgroundColor: const Color(0xFFE2E8F0),
@@ -196,7 +322,7 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
                             color: Color(0xFF0F172A),
                           ),
                         ),
-                      ],
+                        ],
                     ),
                   ),
                 );
@@ -257,5 +383,22 @@ class _AdminMembersScreenState extends State<AdminMembersScreen> {
         ),
       ),
     );
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
+  }
+
+  String _csv(String input) {
+    final escaped = input.replaceAll('"', '""');
+    return '"$escaped"';
+  }
+
+  int _memberNumberOrder(String memberNumber) {
+    final match = RegExp(r'\d+').firstMatch(memberNumber);
+    if (match == null) return 1 << 30;
+    return int.tryParse(match.group(0)!) ?? (1 << 30);
   }
 }

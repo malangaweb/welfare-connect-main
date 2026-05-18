@@ -479,14 +479,33 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
-                final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
-                if (selected == null ||
-                    amount <= 0 ||
-                    (auth.memberId ?? '').isEmpty) {
-                  return;
-                }
-                setState(() => _busy = true);
                 try {
+                  final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                  if (selected == null ||
+                      amount <= 0 ||
+                      (auth.memberId ?? '').isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Choose a member and enter a valid amount.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  final currentWallet = (await _future).walletBalance;
+                  if (amount > currentWallet) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Insufficient funds. Wallet balance is KES ${currentWallet.toStringAsFixed(2)}.',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  setState(() => _busy = true);
                   await _service.transferFunds(
                     fromMemberId: auth.memberId!,
                     toMemberId: '${selected!['id']}',
@@ -556,8 +575,19 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           ElevatedButton(
             onPressed: () async {
               if ((auth.memberId ?? '').isEmpty) return;
-              if (newCtrl.text != confirmCtrl.text ||
-                  newCtrl.text.length != 6) {
+              final oldPin = oldCtrl.text.trim();
+              final newPin = newCtrl.text.trim();
+              final confirmPin = confirmCtrl.text.trim();
+              if (oldPin.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Old PIN is required.'),
+                      backgroundColor: Colors.red),
+                );
+                return;
+              }
+              final isSixDigits = RegExp(r'^\d{6}$').hasMatch(newPin);
+              if (newPin != confirmPin || !isSixDigits) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                       content:
@@ -570,8 +600,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
               try {
                 await _service.updateMemberPin(
                   memberId: auth.memberId!,
-                  oldPin: oldCtrl.text.trim(),
-                  newPin: newCtrl.text.trim(),
+                  oldPin: oldPin,
+                  newPin: newPin,
                 );
                 if (!mounted) return;
                 Navigator.of(context).pop();

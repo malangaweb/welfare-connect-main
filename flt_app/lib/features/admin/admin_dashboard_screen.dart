@@ -1,30 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/services/live_data_service.dart';
+import '../auth/auth_controller.dart';
 import 'admin_shell.dart';
 
-class AdminDashboardScreen extends StatefulWidget {
+class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+  ConsumerState<AdminDashboardScreen> createState() =>
+      _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   final _service = LiveDataService();
   late Future<AdminDashboardSnapshot> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = _service.fetchAdminDashboard();
+    _future = _loadDashboard();
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _service.fetchAdminDashboard());
+    setState(() => _future = _loadDashboard());
     await _future;
+  }
+
+  Future<AdminDashboardSnapshot> _loadDashboard() {
+    final token = ref.read(authControllerProvider).appToken;
+    return _service.fetchAdminDashboard(appToken: token);
   }
 
   @override

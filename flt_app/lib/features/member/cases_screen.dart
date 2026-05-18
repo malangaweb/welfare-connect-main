@@ -17,11 +17,19 @@ class CasesScreen extends ConsumerStatefulWidget {
 class _CasesScreenState extends ConsumerState<CasesScreen> {
   final _service = LiveDataService();
   late Future<List<MemberCaseSnapshot>> _future;
+  final _searchCtrl = TextEditingController();
+  String _statusFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<List<MemberCaseSnapshot>> _load() {
@@ -60,90 +68,158 @@ class _CasesScreenState extends ConsumerState<CasesScreen> {
           }
 
           final cases = snapshot.data ?? const <MemberCaseSnapshot>[];
-          if (cases.isEmpty) {
-            return const Center(child: Text('No active cases found.'));
-          }
+          final query = _searchCtrl.text.trim().toLowerCase();
+          final filtered = cases.where((c) {
+            if (_statusFilter == 'paid' && !c.paid) return false;
+            if (_statusFilter == 'pending' && c.paid) return false;
+            if (_statusFilter == 'finalized' && !c.isFinalized) return false;
+            if (_statusFilter == 'open' && c.isFinalized) return false;
+            if (query.isEmpty) return true;
+            return c.caseNumber.toLowerCase().contains(query) ||
+                c.caseType.toLowerCase().contains(query);
+          }).toList();
 
           final paidCount = cases.where((c) => c.paid).length;
           final pendingCount = cases.length - paidCount;
+          final finalizedCount = cases.where((c) => c.isFinalized).length;
+          final contributionCount = cases.where((c) => c.amountPaid > 0).length;
+          final totalContributed = cases.fold<double>(
+            0,
+            (sum, c) => sum + c.amountPaid,
+          );
 
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
               Row(
                 children: [
-                  Expanded(
-                      child: _SummaryBox(
-                          label: 'Total', value: '${cases.length}')),
+                  Expanded(child: _SummaryBox(label: 'Total', value: '${cases.length}')),
                   const SizedBox(width: 10),
-                  Expanded(
-                      child: _SummaryBox(label: 'Paid', value: '$paidCount')),
+                  Expanded(child: _SummaryBox(label: 'Paid', value: '$paidCount')),
                   const SizedBox(width: 10),
-                  Expanded(
-                      child: _SummaryBox(
-                          label: 'Pending', value: '$pendingCount')),
+                  Expanded(child: _SummaryBox(label: 'Pending', value: '$pendingCount')),
                 ],
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                      child:
+                          _SummaryBox(label: 'Finalized Cases', value: '$finalizedCount')),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: _SummaryBox(
+                          label: 'Contribution Count', value: '$contributionCount')),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _SummaryBox(
+                label: 'Total Contributed',
+                value: money.format(totalContributed),
+              ),
               const SizedBox(height: 12),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFE7EDF7),
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Row(
-                  children: [
-                    Expanded(
-                        flex: 3,
-                        child: Text('Case',
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                    Expanded(
-                        flex: 2,
-                        child: Text('Required',
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                    Expanded(
-                        flex: 2,
-                        child: Text('Status',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                  ],
+              TextField(
+                controller: _searchCtrl,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Search by case number/type',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchCtrl.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() {});
+                          },
+                        ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
-              ...cases.map((c) => Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _statusFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All statuses')),
+                  DropdownMenuItem(value: 'pending', child: Text('Pending only')),
+                  DropdownMenuItem(value: 'paid', child: Text('Paid only')),
+                  DropdownMenuItem(value: 'open', child: Text('Open only')),
+                  DropdownMenuItem(value: 'finalized', child: Text('Finalized only')),
+                ],
+                onChanged: (v) => setState(() => _statusFilter = v ?? 'all'),
+                decoration: const InputDecoration(
+                  labelText: 'Filter',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (filtered.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: Text('No cases match current filters.')),
+                )
+              else
+                ...filtered.map((c) {
+                  final required = c.contributionPerMember;
+                  final progress = c.progress.clamp(0.0, 1.0);
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFFDCE3EE)),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                            flex: 3,
-                            child: Text(
-                                '#${c.caseNumber}  ${c.caseType.toUpperCase()}')),
-                        Expanded(
-                            flex: 2,
-                            child: Text(money.format(c.contributionPerMember))),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            c.paid ? 'PAID' : 'PENDING',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: c.paid
-                                  ? const Color(0xFF0A7C2F)
-                                  : const Color(0xFFB34700),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '#${c.caseNumber} • ${c.caseType.toUpperCase()}',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
                             ),
-                          ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: c.paid ? const Color(0xFFE8F5ED) : const Color(0xFFFFF1EA),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                c.paid ? 'PAID' : 'PENDING',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: c.paid ? const Color(0xFF0A7C2F) : const Color(0xFFB34700),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 6),
+                        Text('Required: ${money.format(required)}'),
+                        Text('Paid: ${money.format(c.amountPaid)}'),
+                        Text('Remaining: ${money.format(c.remainingAmount)}'),
+                        if (c.isFinalized)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Text('Finalized case (late payment applies)'),
+                          ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        const SizedBox(height: 4),
+                        Text('Progress: ${(progress * 100).toStringAsFixed(0)}%'),
                       ],
                     ),
-                  )),
+                  );
+                }),
             ],
           );
         },
@@ -172,8 +248,7 @@ class _SummaryBox extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: 3),
           Text(value,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
         ],
       ),
     );

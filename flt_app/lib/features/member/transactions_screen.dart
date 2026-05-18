@@ -19,11 +19,20 @@ class _MemberTransactionsScreenState
     extends ConsumerState<MemberTransactionsScreen> {
   final _service = LiveDataService();
   late Future<List<Map<String, dynamic>>> _future;
+  final _searchCtrl = TextEditingController();
+  String _typeFilter = 'all';
+  String _statusFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _load() {
@@ -63,87 +72,250 @@ class _MemberTransactionsScreenState
           }
 
           final items = snapshot.data ?? const <Map<String, dynamic>>[];
-          if (items.isEmpty) {
-            return const Center(child: Text('No transactions found.'));
+          final search = _searchCtrl.text.trim().toLowerCase();
+          final filtered = items.where((tx) {
+            final type = '${tx['transaction_type'] ?? ''}'.toLowerCase();
+            final status = '${tx['status'] ?? ''}'.toLowerCase();
+            final desc = '${tx['description'] ?? ''}'.toLowerCase();
+            if (_typeFilter != 'all' && type != _typeFilter) return false;
+            if (_statusFilter != 'all' && status != _statusFilter) return false;
+            if (search.isEmpty) return true;
+            return type.contains(search) || desc.contains(search);
+          }).toList();
+
+          double totalCredit = 0;
+          double totalDebit = 0;
+          for (final tx in items) {
+            final status = '${tx['status'] ?? ''}'.toLowerCase();
+            if (status.isNotEmpty && status != 'completed') continue;
+            final type = '${tx['transaction_type'] ?? ''}'.toLowerCase();
+            final amount = _toDouble(tx['amount']).abs();
+            if (type == 'wallet_funding' ||
+                type == 'deposit' ||
+                type == 'contribution_refund' ||
+                type == 'case_wallet_refund') {
+              totalCredit += amount;
+            } else if (type == 'contribution' ||
+                type == 'case_wallet_deduction' ||
+                type == 'arrears' ||
+                type == 'penalty' ||
+                type == 'registration' ||
+                type == 'renewal' ||
+                type == 'disbursement') {
+              totalDebit += amount;
+            }
           }
 
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE7EDF7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  children: [
-                    Expanded(
-                        flex: 4,
-                        child: Text('Description',
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                    Expanded(
-                        flex: 3,
-                        child: Text('Date',
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                    Expanded(
-                        flex: 2,
-                        child: Text('Amount',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                  ],
+              Row(
+                children: [
+                  Expanded(child: _stat('Total', '${items.length}')),
+                  const SizedBox(width: 8),
+                  Expanded(child: _stat('Credits', money.format(totalCredit))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _stat('Debits', money.format(totalDebit))),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _searchCtrl,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Search description/type',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchCtrl.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() {});
+                          },
+                        ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
-              ...items.map((tx) {
-                final createdAt = DateTime.tryParse('${tx['created_at']}');
-                final amount = (tx['amount'] as num?)?.toDouble() ??
-                    double.tryParse('${tx['amount']}') ??
-                    0;
-                final type = '${tx['transaction_type'] ?? 'transaction'}'
-                    .replaceAll('_', ' ');
-                final description = '${tx['description'] ?? ''}'.trim();
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _typeFilter,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All types')),
+                        DropdownMenuItem(value: 'wallet_funding', child: Text('Wallet funding')),
+                        DropdownMenuItem(value: 'contribution', child: Text('Contribution')),
+                        DropdownMenuItem(value: 'case_wallet_deduction', child: Text('Case deduction')),
+                        DropdownMenuItem(value: 'arrears', child: Text('Arrears')),
+                        DropdownMenuItem(value: 'penalty', child: Text('Penalty')),
+                      ],
+                      onChanged: (v) => setState(() => _typeFilter = v ?? 'all'),
+                      decoration: const InputDecoration(
+                        labelText: 'Type',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _statusFilter,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All statuses')),
+                        DropdownMenuItem(value: 'completed', child: Text('Completed')),
+                        DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                        DropdownMenuItem(value: 'reversed', child: Text('Reversed')),
+                        DropdownMenuItem(value: 'failed', child: Text('Failed')),
+                      ],
+                      onChanged: (v) => setState(() => _statusFilter = v ?? 'all'),
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (filtered.isEmpty)
+                const Center(child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('No transactions match current filters.'),
+                ))
+              else
+                ...filtered.map((tx) {
+                  final createdAt = DateTime.tryParse('${tx['created_at']}');
+                  final amount = _toDouble(tx['amount']);
+                  final absAmount = amount.abs();
+                  final type = '${tx['transaction_type'] ?? 'transaction'}';
+                  final status = '${tx['status'] ?? '-'}';
+                  final description = '${tx['description'] ?? ''}'.trim();
+                  final isCredit = _isCredit(type);
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFDCE3EE)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFDCE3EE)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
                           flex: 4,
-                          child: Text(description.isEmpty ? type : description,
-                              maxLines: 2, overflow: TextOverflow.ellipsis)),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                            createdAt == null
-                                ? '-'
-                                : DateFormat('MMM d, yyyy')
-                                    .format(createdAt.toLocal()),
-                            style: const TextStyle(color: Color(0xFF5E6B7A))),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(money.format(amount.abs()),
-                            textAlign: TextAlign.right,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(description.isEmpty ? type.replaceAll('_', ' ') : description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text(
+                                createdAt == null
+                                    ? '-'
+                                    : DateFormat('MMM d, yyyy • h:mm a')
+                                        .format(createdAt.toLocal()),
+                                style: const TextStyle(color: Color(0xFF5E6B7A), fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${isCredit ? '+' : '-'}${money.format(absAmount)}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: isCredit
+                                      ? const Color(0xFF0A7C2F)
+                                      : const Color(0xFFB34700),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: _statusColor(status),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  status.toUpperCase(),
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
             ],
           );
         },
       ),
     );
+  }
+
+  Widget _stat(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFDCE3EE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
+  }
+
+  bool _isCredit(String type) {
+    final t = type.toLowerCase();
+    return t == 'wallet_funding' ||
+        t == 'deposit' ||
+        t == 'contribution_refund' ||
+        t == 'case_wallet_refund';
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return const Color(0xFFE8F5ED);
+      case 'pending':
+        return const Color(0xFFFFF1EA);
+      case 'reversed':
+        return const Color(0xFFEAEFF5);
+      case 'failed':
+      case 'cancelled':
+      case 'canceled':
+      case 'error':
+        return const Color(0xFFFFE8E8);
+      default:
+        return const Color(0xFFF0F2F5);
+    }
   }
 }

@@ -9,13 +9,20 @@ import '../../features/admin/admin_cases_screen.dart';
 import '../../features/admin/admin_transactions_screen.dart';
 import '../../features/admin/admin_settings_screen.dart';
 import '../../features/admin/suspense_queue_screen.dart';
+import '../../features/admin/admin_reports_screen.dart';
+import '../../features/admin/admin_users_screen.dart';
+import '../../features/admin/admin_member_details_screen.dart';
+import '../../features/admin/admin_case_details_screen.dart';
+import '../../features/admin/admin_accounts_screen.dart';
 import '../../features/member/wallet_screen.dart';
+import '../../features/member/dashboard_screen.dart';
 import '../../features/member/summary_screen.dart';
 import '../../features/member/cases_screen.dart';
 import '../../features/member/payments_screen.dart';
 import '../../features/member/transactions_screen.dart';
 import '../../features/member/report_screen.dart';
 import '../../features/auth/auth_controller.dart';
+import '../auth/role_access.dart';
 
 /// Router configuration with auth state awareness
 final routerProvider = Provider<GoRouter>((ref) {
@@ -36,12 +43,15 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // If logged in
       if (isLoginRoute) {
-        return authState.isAdmin ? '/admin/dashboard' : '/member/wallet';
+        return authState.isAdmin ? '/admin/dashboard' : '/member/dashboard';
       }
 
       // Protect admin routes
       if (isAdminRoute && !authState.isAdmin) {
-        return '/member/wallet';
+        return '/member/dashboard';
+      }
+      if (isAdminRoute && !canAccessAdminPath(state.matchedLocation, authState.role)) {
+        return '/admin/dashboard';
       }
 
       return null;
@@ -79,8 +89,34 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/admin/settings',
         builder: (context, state) => const AdminSettingsScreen(),
       ),
+      GoRoute(
+        path: '/admin/reports',
+        builder: (context, state) => const AdminReportsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/users',
+        builder: (context, state) => const AdminUsersScreen(),
+      ),
+      GoRoute(
+        path: '/admin/accounts',
+        builder: (context, state) => const AdminAccountsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/members/:memberId',
+        builder: (context, state) =>
+            AdminMemberDetailsScreen(memberId: state.pathParameters['memberId'] ?? ''),
+      ),
+      GoRoute(
+        path: '/admin/cases/:caseId',
+        builder: (context, state) =>
+            AdminCaseDetailsScreen(caseId: state.pathParameters['caseId'] ?? ''),
+      ),
 
       // Member Routes
+      GoRoute(
+        path: '/member/dashboard',
+        builder: (context, state) => const MemberDashboardScreen(),
+      ),
       GoRoute(
         path: '/member/wallet',
         builder: (context, state) => const WalletScreen(),
@@ -136,7 +172,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 authState.isAuthenticated
                     ? (authState.isAdmin
                         ? '/admin/dashboard'
-                        : '/member/wallet')
+                        : '/member/dashboard')
                     : '/login',
               ),
               child: const Text('Go Home'),

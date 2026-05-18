@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -15,6 +16,7 @@ class AdminCasesScreen extends StatefulWidget {
 class _AdminCasesScreenState extends State<AdminCasesScreen> {
   final _service = LiveDataService();
   late Future<List<Map<String, dynamic>>> _future;
+  String _statusFilter = 'all';
 
   @override
   void initState() {
@@ -80,6 +82,18 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
             return Center(child: Text(snapshot.error.toString()));
           }
           final rows = snapshot.data ?? const [];
+          final filtered = rows.where((r) {
+            final isFinalized = r['is_finalized'] == true;
+            final isActive = r['is_active'] == true;
+            if (_statusFilter == 'all') return true;
+            if (_statusFilter == 'finalized') return isFinalized;
+            if (_statusFilter == 'active') return isActive && !isFinalized;
+            if (_statusFilter == 'draft') return !isActive && !isFinalized;
+            return true;
+          }).toList();
+          final finalizedCount = rows.where((r) => r['is_finalized'] == true).length;
+          final activeCount = rows.where((r) => r['is_active'] == true && r['is_finalized'] != true).length;
+          final draftCount = rows.where((r) => r['is_active'] != true && r['is_finalized'] != true).length;
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
@@ -89,21 +103,41 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                       fontWeight: FontWeight.w800,
                     ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Total ${rows.length} • Active $activeCount • Draft $draftCount • Finalized $finalizedCount',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _statusFilter,
+                decoration: const InputDecoration(
+                  labelText: 'Filter',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All')),
+                  DropdownMenuItem(value: 'active', child: Text('Active')),
+                  DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                  DropdownMenuItem(value: 'finalized', child: Text('Finalized')),
+                ],
+                onChanged: (v) => setState(() => _statusFilter = v ?? 'all'),
+              ),
               const SizedBox(height: 14),
-              ...rows.map((r) {
+              ...filtered.map((r) {
                 final isFinalized = r['is_finalized'] == true;
                 final isActive = r['is_active'] == true;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: Color(0xFFE2E8F0)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
+                return InkWell(
+                  onTap: () => context.go('/admin/cases/${r['id']}'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                    ),
                     child: Row(
-                      children: [
+                        children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,21 +156,15 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                                   color: Color(0xFF475569),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              _statusChip(
+                              const SizedBox(height: 4),
+                              Text(
                                 isFinalized
-                                    ? 'Finalized'
-                                    : (isActive ? 'Active' : 'Draft'),
-                                isFinalized
-                                    ? const Color(0xFFDCFCE7)
-                                    : (isActive
-                                        ? const Color(0xFFDBEAFE)
-                                        : const Color(0xFFE2E8F0)),
-                                isFinalized
-                                    ? const Color(0xFF166534)
-                                    : (isActive
-                                        ? const Color(0xFF1D4ED8)
-                                        : const Color(0xFF334155)),
+                                    ? 'Status: Finalized'
+                                    : (isActive ? 'Status: Active' : 'Status: Draft'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF334155),
+                                ),
                               ),
                             ],
                           ),
@@ -146,7 +174,7 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                           onPressed: () => _toggleCase(r),
                           child: Text(isFinalized ? 'Reopen' : 'Finalize'),
                         ),
-                      ],
+                        ],
                     ),
                   ),
                 );
@@ -154,24 +182,6 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _statusChip(String label, Color bg, Color fg) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
       ),
     );
   }

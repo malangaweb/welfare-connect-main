@@ -52,6 +52,7 @@ class MemberShell extends ConsumerWidget {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
             onSelected: (v) {
+              if (v == 'dashboard') context.go('/member/dashboard');
               if (v == 'summary') context.go('/member/summary');
               if (v == 'report') context.go('/member/report');
               if (v == 'logout') {
@@ -60,6 +61,7 @@ class MemberShell extends ConsumerWidget {
               }
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'dashboard', child: Text('Dashboard')),
               PopupMenuItem(value: 'summary', child: Text('My Profile')),
               PopupMenuItem(value: 'report', child: Text('My Report')),
               PopupMenuItem(value: 'logout', child: Text('Logout')),

@@ -272,80 +272,93 @@ class _SuspenseQueueScreenState extends ConsumerState<SuspenseQueueScreen> {
                   final amount = (row['amount'] as num?)?.toDouble() ??
                       double.tryParse('${row['amount']}') ??
                       0;
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  final phoneText = '${row['phone_number'] ?? ''}'.trim();
+                  final rawRefText = '${row['reference'] ?? ''}'.trim();
+                  final refText = _isHiddenHashRef(rawRefText) ? '' : rawRefText;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.phone_iphone, size: 18),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  '${row['phone_number'] ?? '-'}',
-                                  style: const TextStyle(fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                              Text(
-                                money.format(amount),
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: phoneText.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : Text(
+                                      phoneText,
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                            ),
+                            Text(
+                              money.format(amount),
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                        if (refText.isNotEmpty) ...[
+                          const SizedBox(height: 2),
                           Text(
-                            '${row['reference'] ?? row['mpesa_receipt_number'] ?? '-'}',
+                            refText,
                             style: const TextStyle(
                               color: Color(0xFF1E293B),
                               fontWeight: FontWeight.w600,
+                              fontSize: 12,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            date == null
-                                ? '-'
-                                : DateFormat('MMM d, yyyy • h:mm a')
-                                    .format(date.toLocal()),
-                            style: const TextStyle(color: Color(0xFF64748B)),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              OutlinedButton.icon(
-                                onPressed: () => _setStatus(
-                                  (row['id'] ?? '').toString(),
-                                  'ignored',
-                                ),
-                                icon: const Icon(Icons.block, size: 16),
-                                label: const Text('Ignore'),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () => _setStatus(
-                                  (row['id'] ?? '').toString(),
-                                  'reversed',
-                                ),
-                                icon: const Icon(Icons.undo, size: 16),
-                                label: const Text('Reverse'),
-                              ),
-                              FilledButton.icon(
-                                onPressed: () => _manualMatch(row),
-                                icon: const Icon(Icons.person_search, size: 16),
-                                label: const Text('Manual Match'),
-                              ),
-                            ],
-                          )
                         ],
-                      ),
+                        const SizedBox(height: 2),
+                        if (date != null)
+                          Text(
+                            DateFormat('MMM d, yyyy • h:mm a').format(date.toLocal()),
+                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            OutlinedButton(
+                              onPressed: () => _setStatus(
+                                (row['id'] ?? '').toString(),
+                                'ignored',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                              ),
+                              child: const Text('Ignore'),
+                            ),
+                            OutlinedButton(
+                              onPressed: () => _setStatus(
+                                (row['id'] ?? '').toString(),
+                                'reversed',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                              ),
+                              child: const Text('Reverse'),
+                            ),
+                            FilledButton(
+                              onPressed: () => _manualMatch(row),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                              ),
+                              child: const Text('Match'),
+                            ),
+                          ],
+                        )
+                      ],
                     ),
                   );
                 }),
@@ -354,5 +367,10 @@ class _SuspenseQueueScreenState extends ConsumerState<SuspenseQueueScreen> {
         },
       ),
     );
+  }
+
+  bool _isHiddenHashRef(String value) {
+    final normalized = value.trim().toLowerCase();
+    return normalized.startsWith('hasg_') || normalized.startsWith('hash_');
   }
 }

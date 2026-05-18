@@ -23,6 +23,7 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
-rootProject.name = "malanga_welfare_companion_android"
+// Keep Android project name unique so IDE Gradle import does not collide.
+rootProject.name = "malanga_welfare_companion_flt_android"
 
 include(":app")

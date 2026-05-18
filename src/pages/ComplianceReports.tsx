@@ -65,6 +65,7 @@ interface ReversalEntry {
 const ITEMS_PER_PAGE = 15
 const MAX_EXPORT_ENTRIES = 200
 const FAILED_TRANSACTION_STATUSES = ['failed', 'error', 'cancelled', 'canceled', 'reversed', 'voided']
+const COMPLIANCE_MEMBER_STATUSES = ['active', 'probation']
 
 const severityColorMap: Record<string, string> = {
   critical: 'bg-destructive',
@@ -146,7 +147,8 @@ const ComplianceReports = () => {
         supabase
           .from('members')
           .select('id, member_number, name', { count: 'exact' })
-          .is('phone_number', null),
+          .is('phone_number', null)
+          .in('status', COMPLIANCE_MEMBER_STATUSES),
         supabase
           .from('active_defaulters')
           .select('id, member_number, name, wallet_balance'),
@@ -160,8 +162,9 @@ const ComplianceReports = () => {
           .gt('days_overdue', 0),
         supabase
           .from('transactions')
-          .select('id, member_id, amount, mpesa_reference, created_at', { count: 'exact' })
-          .in('status', FAILED_TRANSACTION_STATUSES),
+          .select('id, member_id, amount, mpesa_reference, created_at, members!inner(status)', { count: 'exact' })
+          .in('status', FAILED_TRANSACTION_STATUSES)
+          .in('members.status', COMPLIANCE_MEMBER_STATUSES),
       ])
 
       if (noPhone && noPhone.length > 0) {
@@ -181,7 +184,7 @@ const ComplianceReports = () => {
           id: 'defaulters',
           issue_type: 'Outstanding Balances',
           severity: 'high',
-          description: 'Active members with negative wallet balance',
+          description: 'Active and probation members with negative wallet balance',
           affected_count: defaulters.length,
           recommendation: 'Follow up with members to clear outstanding balances',
           details: defaulters.map((entry: any) => {
@@ -229,7 +232,7 @@ const ComplianceReports = () => {
           id: 'failed-transactions',
           issue_type: 'Failed Transactions',
           severity: 'medium',
-          description: 'Transactions that failed to complete',
+          description: 'Transactions that failed to complete for active/probation members',
           affected_count: failedTx.length,
           recommendation: 'Review failed transactions and retry or refund as necessary',
           details: failedTx.map((entry: any) => {

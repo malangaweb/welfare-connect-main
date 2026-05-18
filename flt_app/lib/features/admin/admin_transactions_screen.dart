@@ -23,6 +23,10 @@ class _AdminTransactionsScreenState
   int _page = 1;
   bool _hasMore = false;
   String _search = '';
+  String _typeFilter = 'all';
+  String _statusFilter = 'all';
+  final Set<String> _selected = <String>{};
+  bool _bulkBusy = false;
   late Future<List<Map<String, dynamic>>> _future;
 
   @override
@@ -98,6 +102,57 @@ class _AdminTransactionsScreenState
     }
   }
 
+  Future<void> _bulkReverse() async {
+    if (_selected.isEmpty || _bulkBusy) return;
+    final reasonCtrl = TextEditingController(text: 'Bulk reversal');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Bulk Reverse'),
+        content: TextField(
+          controller: reasonCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Reason'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Run')),
+        ],
+      ),
+    );
+    if (ok != true || reasonCtrl.text.trim().isEmpty) return;
+
+    setState(() => _bulkBusy = true);
+    int success = 0;
+    int failed = 0;
+    final adminId = ref.read(authControllerProvider).user?.id;
+    final currentRows = await _future;
+    for (final tx in currentRows) {
+      final id = '${tx['id'] ?? ''}';
+      final reversed = '${tx['status']}'.toLowerCase() == 'reversed';
+      if (!_selected.contains(id) || reversed) continue;
+      try {
+        await _service.reverseTransaction(
+          transactionId: id,
+          reason: reasonCtrl.text.trim(),
+          adminUserId: adminId,
+        );
+        success += 1;
+      } catch (_) {
+        failed += 1;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _selected.clear();
+      _bulkBusy = false;
+      _future = _loadPage();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Bulk reverse done. Success: $success, Failed: $failed')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final money = NumberFormat.currency(
@@ -106,7 +161,12 @@ class _AdminTransactionsScreenState
       title: 'Transactions',
       currentIndex: 3,
       actions: [
-        IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))
+        IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
+        IconButton(
+          onPressed: _selected.isEmpty || _bulkBusy ? null : _bulkReverse,
+          icon: const Icon(Icons.rule_folder),
+          tooltip: 'Bulk Reverse',
+        ),
       ],
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,
@@ -118,6 +178,13 @@ class _AdminTransactionsScreenState
             return Center(child: Text(snapshot.error.toString()));
           }
           final rows = snapshot.data ?? const [];
+          final filteredRows = rows.where((r) {
+            final type = '${r['transaction_type'] ?? ''}'.toLowerCase();
+            final status = '${r['status'] ?? ''}'.toLowerCase();
+            if (_typeFilter != 'all' && type != _typeFilter) return false;
+            if (_statusFilter != 'all' && status != _statusFilter) return false;
+            return true;
+          }).toList();
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
@@ -168,25 +235,96 @@ class _AdminTransactionsScreenState
                   });
                 },
               ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _typeFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Type Filter',
+                        isDense: true,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Types')),
+                        DropdownMenuItem(
+                            value: 'wallet_funding', child: Text('Wallet funding')),
+                        DropdownMenuItem(
+                            value: 'case_wallet_deduction',
+                            child: Text('Case deduction')),
+                        DropdownMenuItem(value: 'contribution', child: Text('Contribution')),
+                        DropdownMenuItem(value: 'arrears', child: Text('Arrears')),
+                        DropdownMenuItem(value: 'penalty', child: Text('Penalty')),
+                        DropdownMenuItem(value: 'disbursement', child: Text('Disbursement')),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _typeFilter = value);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _statusFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Status Filter',
+                        isDense: true,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Status')),
+                        DropdownMenuItem(value: 'completed', child: Text('Completed')),
+                        DropdownMenuItem(value: 'pending', child: Text('Pending')),
+                        DropdownMenuItem(value: 'reversed', child: Text('Reversed')),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _statusFilter = value);
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 14),
-              ...rows.map((r) {
+              if (filteredRows.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'No transactions match current filters.',
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  ),
+                ),
+              ...filteredRows.map((r) {
                 final date = DateTime.tryParse('${r['created_at']}');
                 final amount = (r['amount'] as num?)?.toDouble() ??
                     double.tryParse('${r['amount']}') ??
                     0;
                 final reversed = '${r['status']}'.toLowerCase() == 'reversed';
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                final txId = '${r['id'] ?? ''}';
+                return Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
+                  child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Checkbox(
+                          value: _selected.contains(txId),
+                          onChanged: reversed
+                              ? null
+                              : (v) {
+                                  setState(() {
+                                    if (v == true) {
+                                      _selected.add(txId);
+                                    } else {
+                                      _selected.remove(txId);
+                                    }
+                                  });
+                                },
+                        ),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,7 +382,6 @@ class _AdminTransactionsScreenState
                         ),
                       ],
                     ),
-                  ),
                 );
               }),
               const SizedBox(height: 8),
