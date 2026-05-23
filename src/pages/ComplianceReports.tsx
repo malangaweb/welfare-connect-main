@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Download, Shield, CheckCircle, AlertTriangle, FileCheck, UserCheck, Filter, Search, X, CalendarIcon } from 'lucide-react'
+import { Download, Shield, CheckCircle, AlertTriangle, FileCheck, UserCheck, Filter, Search, X, CalendarIcon, FileSpreadsheet } from 'lucide-react'
 import DashboardLayout from '@/layouts/DashboardLayout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/integrations/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import ReportsSubnav from '@/components/reports/ReportsSubnav'
-import { createReportFilename } from '@/lib/reportExport'
+import { createReportFilename, exportRowsToCSV } from '@/lib/reportExport'
 import { loadJsPdfWithAutotable, loadXlsx } from '@/lib/reportExportLibs'
 import {
   AUDIT_LOG_LIST_COLUMNS,
@@ -62,10 +62,69 @@ interface ReversalEntry {
   original_amount: number
 }
 
+interface CasePaymentCase {
+  id: string
+  case_number: string
+  case_type: string
+  contribution_per_member: number
+  is_active: boolean
+  is_finalized: boolean
+}
+
+interface CasePaymentMember {
+  id: string
+  member_number: string
+  name: string
+  status: 'active' | 'probation'
+}
+
+interface CasePaymentTransaction {
+  member_id: string
+  case_id: string
+  transaction_type: string
+  amount: number
+}
+
+interface CasePaymentComplianceRow {
+  id: string
+  case_id: string
+  case_number: string
+  case_type: string
+  case_status: string
+  member_id: string
+  member_number: string
+  member_name: string
+  member_status: string
+  expected_amount: number
+  gross_paid: number
+  total_refunded: number
+  net_paid: number
+  outstanding_amount: number
+  payment_compliance: 'paid' | 'partial' | 'unpaid'
+}
+
+interface CasePaymentSummaryRow {
+  case_id: string
+  case_number: string
+  case_type: string
+  case_status: string
+  eligible_members: number
+  paid_members: number
+  partial_members: number
+  unpaid_members: number
+  expected_total: number
+  net_paid_total: number
+  outstanding_total: number
+  paid_amount_percent: number
+  paid_members_percent: number
+}
+
 const ITEMS_PER_PAGE = 15
 const MAX_EXPORT_ENTRIES = 200
 const FAILED_TRANSACTION_STATUSES = ['failed', 'error', 'cancelled', 'canceled', 'reversed', 'voided']
 const COMPLIANCE_MEMBER_STATUSES = ['active', 'probation']
+const CASE_PAYMENT_TYPES = ['contribution', 'case_wallet_deduction', 'contribution_refund', 'case_wallet_refund']
+const CASE_PAYMENT_TRANSACTION_PAGE_SIZE = 1000
 
 const severityColorMap: Record<string, string> = {
   critical: 'bg-destructive',
@@ -74,9 +133,37 @@ const severityColorMap: Record<string, string> = {
   low: 'bg-primary',
 }
 
+const fetchCasePaymentTransactionRows = async (memberStatuses: string[]) => {
+  const rows: any[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('id, member_id, case_id, transaction_type, amount, status, created_at, members!inner(status)')
+      .in('transaction_type', CASE_PAYMENT_TYPES)
+      .in('members.status', memberStatuses)
+      .or('status.is.null,status.in.(completed,success)')
+      .not('member_id', 'is', null)
+      .not('case_id', 'is', null)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + CASE_PAYMENT_TRANSACTION_PAGE_SIZE - 1)
+
+    if (error) throw error
+
+    const batch = data || []
+    rows.push(...batch)
+    if (batch.length < CASE_PAYMENT_TRANSACTION_PAGE_SIZE) break
+    from += CASE_PAYMENT_TRANSACTION_PAGE_SIZE
+  }
+
+  return rows
+}
+
 const ComplianceReports = () => {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState('audit')
+  const [activeTab, setActiveTab] = useState('case-payments')
   const [loading, setLoading] = useState(true)
   const [auditPage, setAuditPage] = useState(1)
   const [auditSearch, setAuditSearch] = useState('')
@@ -88,6 +175,15 @@ const ComplianceReports = () => {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
   const [reversals, setReversals] = useState<ReversalEntry[]>([])
   const [complianceIssues, setComplianceIssues] = useState<ComplianceIssue[]>([])
+  const [casePaymentCases, setCasePaymentCases] = useState<CasePaymentCase[]>([])
+  const [casePaymentMembers, setCasePaymentMembers] = useState<CasePaymentMember[]>([])
+  const [casePaymentTransactions, setCasePaymentTransactions] = useState<CasePaymentTransaction[]>([])
+  const [casePaymentCaseSearch, setCasePaymentCaseSearch] = useState('')
+  const [casePaymentMemberSearch, setCasePaymentMemberSearch] = useState('')
+  const [casePaymentCaseStatus, setCasePaymentCaseStatus] = useState<'all' | 'active' | 'finalized' | 'closed'>('all')
+  const [casePaymentCaseType, setCasePaymentCaseType] = useState('all')
+  const [casePaymentStatusFilter, setCasePaymentStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all')
+  const [casePaymentPage, setCasePaymentPage] = useState(1)
   const [stats, setStats] = useState<any>(null)
 
   const fetchAuditLogs = async () => {
@@ -270,6 +366,61 @@ const ComplianceReports = () => {
     }
   }
 
+  const fetchCasePaymentComplianceData = async () => {
+    try {
+      const [{ data: cases }, { data: members }, transactions] = await Promise.all([
+        supabase
+          .from('cases')
+          .select('id, case_number, case_type, contribution_per_member, is_active, is_finalized')
+          .order('case_number', { ascending: false })
+          .range(0, 49999),
+        supabase
+          .from('members')
+          .select('id, member_number, name, status')
+          .in('status', COMPLIANCE_MEMBER_STATUSES)
+          .order('member_number')
+          .range(0, 49999),
+        fetchCasePaymentTransactionRows(COMPLIANCE_MEMBER_STATUSES),
+      ])
+
+      setCasePaymentCases(
+        ((cases || []) as any[]).map((c) => ({
+          id: String(c.id),
+          case_number: String(c.case_number || ''),
+          case_type: String(c.case_type || ''),
+          contribution_per_member: Number(c.contribution_per_member || 0),
+          is_active: Boolean(c.is_active),
+          is_finalized: Boolean(c.is_finalized),
+        }))
+      )
+      setCasePaymentMembers(
+        ((members || []) as any[])
+          .filter((member) => COMPLIANCE_MEMBER_STATUSES.includes(String(member.status)))
+          .map((member) => ({
+            id: String(member.id),
+            member_number: String(member.member_number || ''),
+            name: String(member.name || 'Unknown member'),
+            status: String(member.status) as 'active' | 'probation',
+          }))
+      )
+      setCasePaymentTransactions(
+        ((transactions || []) as any[]).map((tx) => ({
+          member_id: String(tx.member_id),
+          case_id: String(tx.case_id),
+          transaction_type: String(tx.transaction_type || ''),
+          amount: Number(tx.amount || 0),
+        }))
+      )
+    } catch (error: any) {
+      console.error('Error fetching case payment compliance:', error)
+      toast({
+        title: 'Error fetching case payment compliance',
+        description: error.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
@@ -278,6 +429,7 @@ const ComplianceReports = () => {
         fetchReversals(),
         checkCompliance(),
         fetchStats(),
+        fetchCasePaymentComplianceData(),
       ])
       setLoading(false)
     }
@@ -329,6 +481,154 @@ const ComplianceReports = () => {
     if (severityFilter === 'all') return complianceIssues
     return complianceIssues.filter(i => i.severity === severityFilter)
   }, [complianceIssues, severityFilter])
+
+  const casePaymentCaseTypeOptions = useMemo(() => {
+    return Array.from(new Set(casePaymentCases.map((c) => c.case_type).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [casePaymentCases])
+
+  const filteredCasePaymentCases = useMemo(() => {
+    const term = casePaymentCaseSearch.trim().toLowerCase()
+    return casePaymentCases.filter((c) => {
+      const searchMatch =
+        term === '' ||
+        c.case_number.toLowerCase().includes(term) ||
+        c.case_type.toLowerCase().includes(term)
+      const statusMatch =
+        casePaymentCaseStatus === 'all' ||
+        (casePaymentCaseStatus === 'active' && c.is_active) ||
+        (casePaymentCaseStatus === 'finalized' && c.is_finalized) ||
+        (casePaymentCaseStatus === 'closed' && !c.is_active && !c.is_finalized)
+      const typeMatch = casePaymentCaseType === 'all' || c.case_type === casePaymentCaseType
+      return searchMatch && statusMatch && typeMatch
+    })
+  }, [casePaymentCases, casePaymentCaseSearch, casePaymentCaseStatus, casePaymentCaseType])
+
+  const casePaymentRows = useMemo(() => {
+    const netByMemberCase = new Map<string, { gross_paid: number; total_refunded: number; net_paid: number }>()
+
+    casePaymentTransactions.forEach((tx) => {
+      const key = `${tx.member_id}:${tx.case_id}`
+      const existing = netByMemberCase.get(key) || { gross_paid: 0, total_refunded: 0, net_paid: 0 }
+      const amount = Math.abs(Number(tx.amount || 0))
+      if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction') {
+        existing.gross_paid += amount
+        existing.net_paid += amount
+      }
+      if (tx.transaction_type === 'contribution_refund' || tx.transaction_type === 'case_wallet_refund') {
+        existing.total_refunded += amount
+        existing.net_paid -= amount
+      }
+      netByMemberCase.set(key, existing)
+    })
+
+    return filteredCasePaymentCases.flatMap((caseItem) => {
+      const expectedAmount = Number(caseItem.contribution_per_member || 0)
+      const caseStatus = caseItem.is_finalized ? 'finalized' : caseItem.is_active ? 'active' : 'closed'
+
+      return casePaymentMembers.map((member) => {
+        const payment = netByMemberCase.get(`${member.id}:${caseItem.id}`) || { gross_paid: 0, total_refunded: 0, net_paid: 0 }
+        const netPaid = Number(payment.net_paid || 0)
+        const outstandingAmount = Math.max(expectedAmount - netPaid, 0)
+        const paymentCompliance: CasePaymentComplianceRow['payment_compliance'] =
+          netPaid >= expectedAmount ? 'paid' : netPaid > 0 ? 'partial' : 'unpaid'
+
+        return {
+          id: `${caseItem.id}:${member.id}`,
+          case_id: caseItem.id,
+          case_number: caseItem.case_number,
+          case_type: caseItem.case_type,
+          case_status: caseStatus,
+          member_id: member.id,
+          member_number: member.member_number,
+          member_name: member.name,
+          member_status: member.status,
+          expected_amount: expectedAmount,
+          gross_paid: Number(payment.gross_paid || 0),
+          total_refunded: Number(payment.total_refunded || 0),
+          net_paid: netPaid,
+          outstanding_amount: outstandingAmount,
+          payment_compliance: paymentCompliance,
+        }
+      })
+    })
+  }, [casePaymentMembers, casePaymentTransactions, filteredCasePaymentCases])
+
+  const casePaymentSummaryRows = useMemo(() => {
+    const grouped = new Map<string, CasePaymentSummaryRow>()
+
+    casePaymentRows.forEach((row) => {
+      const existing =
+        grouped.get(row.case_id) ||
+        ({
+          case_id: row.case_id,
+          case_number: row.case_number,
+          case_type: row.case_type,
+          case_status: row.case_status,
+          eligible_members: 0,
+          paid_members: 0,
+          partial_members: 0,
+          unpaid_members: 0,
+          expected_total: 0,
+          net_paid_total: 0,
+          outstanding_total: 0,
+          paid_amount_percent: 0,
+          paid_members_percent: 0,
+        } as CasePaymentSummaryRow)
+
+      existing.eligible_members += 1
+      existing.expected_total += row.expected_amount
+      existing.net_paid_total += row.net_paid
+      existing.outstanding_total += row.outstanding_amount
+      if (row.payment_compliance === 'paid') existing.paid_members += 1
+      if (row.payment_compliance === 'partial') existing.partial_members += 1
+      if (row.payment_compliance === 'unpaid') existing.unpaid_members += 1
+      grouped.set(row.case_id, existing)
+    })
+
+    return Array.from(grouped.values())
+      .map((row) => ({
+        ...row,
+        paid_amount_percent: row.expected_total > 0 ? Number(((row.net_paid_total / row.expected_total) * 100).toFixed(2)) : 0,
+        paid_members_percent: row.eligible_members > 0 ? Number(((row.paid_members / row.eligible_members) * 100).toFixed(2)) : 0,
+      }))
+      .sort((a, b) => b.outstanding_total - a.outstanding_total || b.case_number.localeCompare(a.case_number))
+  }, [casePaymentRows])
+
+  const filteredCasePaymentRows = useMemo(() => {
+    const term = casePaymentMemberSearch.trim().toLowerCase()
+    return casePaymentRows.filter((row) => {
+      const searchMatch =
+        term === '' ||
+        row.member_name.toLowerCase().includes(term) ||
+        row.member_number.toLowerCase().includes(term) ||
+        row.case_number.toLowerCase().includes(term)
+      const statusMatch = casePaymentStatusFilter === 'all' || row.payment_compliance === casePaymentStatusFilter
+      return searchMatch && statusMatch
+    })
+  }, [casePaymentMemberSearch, casePaymentRows, casePaymentStatusFilter])
+
+  const paginatedCasePaymentRows = useMemo(() => {
+    const start = (casePaymentPage - 1) * ITEMS_PER_PAGE
+    return {
+      data: filteredCasePaymentRows.slice(start, start + ITEMS_PER_PAGE),
+      total: filteredCasePaymentRows.length,
+      totalPages: Math.ceil(filteredCasePaymentRows.length / ITEMS_PER_PAGE),
+    }
+  }, [casePaymentPage, filteredCasePaymentRows])
+
+  const casePaymentTotals = useMemo(() => {
+    const expectedTotal = casePaymentSummaryRows.reduce((sum, row) => sum + row.expected_total, 0)
+    const netPaidTotal = casePaymentSummaryRows.reduce((sum, row) => sum + row.net_paid_total, 0)
+    return {
+      expectedTotal,
+      netPaidTotal,
+      paidAmountPercent: expectedTotal > 0 ? Number(((netPaidTotal / expectedTotal) * 100).toFixed(2)) : 0,
+    }
+  }, [casePaymentSummaryRows])
+
+  useEffect(() => {
+    setCasePaymentPage(1)
+  }, [casePaymentCaseSearch, casePaymentCaseStatus, casePaymentCaseType, casePaymentMemberSearch, casePaymentStatusFilter])
 
   const clearFilters = () => {
     setDatePreset('30days')
@@ -451,6 +751,130 @@ const ComplianceReports = () => {
         variant: 'destructive',
       })
     }
+  }
+
+  const formatCurrency = (value: number) => `KES ${Number(value || 0).toLocaleString()}`
+
+  const casePaymentSummaryExportRows = useMemo(() => (
+    casePaymentSummaryRows.map((row) => ({
+      case_number: row.case_number,
+      case_type: row.case_type,
+      case_status: row.case_status,
+      eligible_members: row.eligible_members,
+      paid_members: row.paid_members,
+      partial_members: row.partial_members,
+      unpaid_members: row.unpaid_members,
+      expected_total: row.expected_total,
+      net_paid_total: row.net_paid_total,
+      outstanding_total: row.outstanding_total,
+      paid_against_total_percent: row.paid_amount_percent,
+      paid_members_percent: row.paid_members_percent,
+    }))
+  ), [casePaymentSummaryRows])
+
+  const casePaymentListExportRows = useMemo(() => (
+    filteredCasePaymentRows.map((row) => ({
+      case_number: row.case_number,
+      case_type: row.case_type,
+      case_status: row.case_status,
+      member_number: row.member_number,
+      member_name: row.member_name,
+      member_status: row.member_status,
+      expected_amount: row.expected_amount,
+      gross_paid: row.gross_paid,
+      total_refunded: row.total_refunded,
+      net_paid: row.net_paid,
+      outstanding_amount: row.outstanding_amount,
+      payment_compliance: row.payment_compliance,
+    }))
+  ), [filteredCasePaymentRows])
+
+  const exportCasePaymentSummaryToPDF = async () => {
+    try {
+      if (!casePaymentSummaryRows.length) {
+        toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
+        return
+      }
+      const jsPDF = await loadJsPdfWithAutotable()
+      const doc = new jsPDF()
+      doc.setFontSize(16)
+      doc.text('Case Payment Compliance Summary', 14, 20)
+      doc.setFontSize(10)
+      doc.text(`Generated on: ${format(new Date(), 'dd MMMM yyyy')}`, 14, 28)
+      ;(doc as any).autoTable({
+        head: [['Case', 'Type', 'Members', 'Paid', 'Partial', 'Unpaid', 'Expected', 'Net Paid', 'Paid/Total %']],
+        body: casePaymentSummaryRows.map((row) => [
+          row.case_number,
+          row.case_type,
+          row.eligible_members,
+          row.paid_members,
+          row.partial_members,
+          row.unpaid_members,
+          formatCurrency(row.expected_total),
+          formatCurrency(row.net_paid_total),
+          `${row.paid_amount_percent}%`,
+        ]),
+        startY: 35,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [41, 128, 185] },
+      })
+      doc.save(createReportFilename('case_payment_compliance_summary', 'pdf'))
+    } catch (error: any) {
+      console.error('Error exporting case payment PDF:', error)
+      toast({ title: 'Export failed', description: 'Failed to export case payment summary.', variant: 'destructive' })
+    }
+  }
+
+  const exportCasePaymentSummaryToExcel = async () => {
+    try {
+      if (!casePaymentSummaryExportRows.length) {
+        toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
+        return
+      }
+      const XLSX = await loadXlsx()
+      const ws = XLSX.utils.json_to_sheet(casePaymentSummaryExportRows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Case Payment Summary')
+      XLSX.writeFile(wb, createReportFilename('case_payment_compliance_summary', 'xlsx'))
+    } catch (error: any) {
+      console.error('Error exporting case payment summary:', error)
+      toast({ title: 'Export failed', description: 'Failed to export case payment summary.', variant: 'destructive' })
+    }
+  }
+
+  const exportCasePaymentListToExcel = async () => {
+    try {
+      if (!casePaymentListExportRows.length) {
+        toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
+        return
+      }
+      const XLSX = await loadXlsx()
+      const ws = XLSX.utils.json_to_sheet(casePaymentListExportRows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Case Payment List')
+      XLSX.writeFile(wb, createReportFilename('case_payment_compliance_list', 'xlsx'))
+    } catch (error: any) {
+      console.error('Error exporting case payment list:', error)
+      toast({ title: 'Export failed', description: 'Failed to export case payment list.', variant: 'destructive' })
+    }
+  }
+
+  const exportCasePaymentSummaryToCSV = () => {
+    if (!casePaymentSummaryExportRows.length) {
+      toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
+      return
+    }
+    const columns = Object.keys(casePaymentSummaryExportRows[0]).map((key) => ({ key, label: key.replace(/_/g, ' ').toUpperCase() }))
+    exportRowsToCSV(createReportFilename('case_payment_compliance_summary', 'csv'), casePaymentSummaryExportRows, columns)
+  }
+
+  const exportCasePaymentListToCSV = () => {
+    if (!casePaymentListExportRows.length) {
+      toast({ title: 'No data to export', description: 'Adjust filters and try again.', variant: 'destructive' })
+      return
+    }
+    const columns = Object.keys(casePaymentListExportRows[0]).map((key) => ({ key, label: key.replace(/_/g, ' ').toUpperCase() }))
+    exportRowsToCSV(createReportFilename('case_payment_compliance_list', 'csv'), casePaymentListExportRows, columns)
   }
 
   const renderSkeletonRows = (cols: number) => (
@@ -655,11 +1079,256 @@ const ComplianceReports = () => {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid grid-cols-3 gap-4 w-full">
+          <TabsList className="grid grid-cols-4 gap-4 w-full">
+            <TabsTrigger value="case-payments">Case Payments</TabsTrigger>
             <TabsTrigger value="audit">Audit Trail</TabsTrigger>
             <TabsTrigger value="reversals">Reversals Audit</TabsTrigger>
             <TabsTrigger value="compliance">Compliance Issues</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="case-payments" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <CardTitle>Case Payment Compliance</CardTitle>
+                    <CardDescription>Active and probation member payment compliance for filterable cases</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={exportCasePaymentSummaryToPDF}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Summary PDF
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportCasePaymentSummaryToExcel}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Summary Excel
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportCasePaymentSummaryToCSV}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Summary CSV
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportCasePaymentListToExcel}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      List Excel
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportCasePaymentListToCSV}>
+                      <Download className="h-4 w-4 mr-2" />
+                      List CSV
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm font-medium text-muted-foreground">Filtered Cases</p>
+                    <div className="mt-2 text-2xl font-bold">{casePaymentSummaryRows.length.toLocaleString()}</div>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm font-medium text-muted-foreground">Eligible Members</p>
+                    <div className="mt-2 text-2xl font-bold">{casePaymentMembers.length.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground">Active and probation only</p>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm font-medium text-muted-foreground">Expected Total</p>
+                    <div className="mt-2 text-2xl font-bold">{formatCurrency(casePaymentTotals.expectedTotal)}</div>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm font-medium text-muted-foreground">Paid Against Total</p>
+                    <div className="mt-2 text-2xl font-bold">{casePaymentTotals.paidAmountPercent.toLocaleString()}%</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="relative md:col-span-2">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search case number or type..."
+                      value={casePaymentCaseSearch}
+                      onChange={(e) => setCasePaymentCaseSearch(e.target.value)}
+                      className="pl-8"
+                    />
+                  </div>
+                  <Select value={casePaymentCaseStatus} onValueChange={(value: 'all' | 'active' | 'finalized' | 'closed') => setCasePaymentCaseStatus(value)}>
+                    <SelectTrigger><SelectValue placeholder="Case status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Case Statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="finalized">Finalized</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={casePaymentCaseType} onValueChange={setCasePaymentCaseType}>
+                    <SelectTrigger><SelectValue placeholder="Case type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Case Types</SelectItem>
+                      {casePaymentCaseTypeOptions.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Case</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Members</TableHead>
+                        <TableHead className="text-right">Paid</TableHead>
+                        <TableHead className="text-right">Partial</TableHead>
+                        <TableHead className="text-right">Unpaid</TableHead>
+                        <TableHead className="text-right">Expected</TableHead>
+                        <TableHead className="text-right">Net Paid</TableHead>
+                        <TableHead className="text-right">Outstanding</TableHead>
+                        <TableHead className="text-right">Paid/Total</TableHead>
+                        <TableHead className="text-right">Paid Members</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? renderSkeletonRows(12) : casePaymentSummaryRows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">No case payment compliance data found</TableCell>
+                        </TableRow>
+                      ) : (
+                        casePaymentSummaryRows.map((row) => (
+                          <TableRow key={row.case_id}>
+                            <TableCell className="font-medium">{row.case_number}</TableCell>
+                            <TableCell className="capitalize">{row.case_type}</TableCell>
+                            <TableCell className="capitalize">{row.case_status}</TableCell>
+                            <TableCell className="text-right">{row.eligible_members.toLocaleString()}</TableCell>
+                            <TableCell className="text-right text-primary">{row.paid_members.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">{row.partial_members.toLocaleString()}</TableCell>
+                            <TableCell className="text-right text-destructive">{row.unpaid_members.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.expected_total)}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(row.net_paid_total)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.outstanding_total)}</TableCell>
+                            <TableCell className="text-right font-medium">{row.paid_amount_percent.toLocaleString()}%</TableCell>
+                            <TableCell className="text-right">{row.paid_members_percent.toLocaleString()}%</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold">Member Payment List</h3>
+                      <p className="text-sm text-muted-foreground">The member list behind the filtered case-payment compliance report</p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="relative min-w-[240px]">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search member or case..."
+                          value={casePaymentMemberSearch}
+                          onChange={(e) => setCasePaymentMemberSearch(e.target.value)}
+                          className="pl-8"
+                        />
+                      </div>
+                      <Select value={casePaymentStatusFilter} onValueChange={(value: 'all' | 'paid' | 'partial' | 'unpaid') => setCasePaymentStatusFilter(value)}>
+                        <SelectTrigger className="w-[170px]"><SelectValue placeholder="Payment status" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Payments</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="partial">Partial</SelectItem>
+                          <SelectItem value="unpaid">Unpaid</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Case</TableHead>
+                          <TableHead>Member</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Expected</TableHead>
+                          <TableHead className="text-right">Gross Paid</TableHead>
+                          <TableHead className="text-right">Refunded</TableHead>
+                          <TableHead className="text-right">Net Paid</TableHead>
+                          <TableHead className="text-right">Outstanding</TableHead>
+                          <TableHead>Compliance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? renderSkeletonRows(9) : paginatedCasePaymentRows.data.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No member payment rows found</TableCell>
+                          </TableRow>
+                        ) : (
+                          paginatedCasePaymentRows.data.map((row) => (
+                            <TableRow key={row.id}>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{row.case_number}</p>
+                                  <p className="text-xs text-muted-foreground capitalize">{row.case_type}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{row.member_name}</p>
+                                  <p className="text-xs text-muted-foreground">{row.member_number} · {row.member_status}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="capitalize">{row.case_status}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(row.expected_amount)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(row.gross_paid)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(row.total_refunded)}</TableCell>
+                              <TableCell className="text-right font-medium">{formatCurrency(row.net_paid)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(row.outstanding_amount)}</TableCell>
+                              <TableCell>
+                                <Badge variant={row.payment_compliance === 'paid' ? 'default' : row.payment_compliance === 'partial' ? 'secondary' : 'destructive'} className="capitalize">
+                                  {row.payment_compliance}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {!loading && paginatedCasePaymentRows.totalPages > 1 && (
+                    <div className="flex items-center justify-between mt-4">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {(casePaymentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(casePaymentPage * ITEMS_PER_PAGE, paginatedCasePaymentRows.total)} of {paginatedCasePaymentRows.total}
+                      </p>
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious
+                              onClick={() => setCasePaymentPage((p) => Math.max(1, p - 1))}
+                              className={casePaymentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: paginatedCasePaymentRows.totalPages }).slice(0, 7).map((_, i) => (
+                            <PaginationItem key={i}>
+                              <PaginationLink onClick={() => setCasePaymentPage(i + 1)} isActive={casePaymentPage === i + 1} className="cursor-pointer">
+                                {i + 1}
+                              </PaginationLink>
+                            </PaginationItem>
+                          ))}
+                          <PaginationItem>
+                            <PaginationNext
+                              onClick={() => setCasePaymentPage((p) => Math.min(paginatedCasePaymentRows.totalPages, p + 1))}
+                              className={casePaymentPage === paginatedCasePaymentRows.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="audit" className="space-y-4">
             <Card>

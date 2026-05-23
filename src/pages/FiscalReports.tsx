@@ -56,6 +56,7 @@ interface CaseFunding {
   case_id: string
   case_number: string
   case_type: string
+  contribution_per_member?: number
   expected_amount: number
   actual_amount: number
   variance: number
@@ -96,6 +97,15 @@ interface DisciplineCollectionTransaction {
   status: string | null
 }
 
+interface EligibleCaseOption {
+  id: string
+  case_number: string
+  case_type: string
+  contribution_per_member: number
+  is_active: boolean
+  is_finalized: boolean
+}
+
 interface DashboardSummary {
   total_contributions?: number
   active_members?: number
@@ -124,9 +134,25 @@ const ITEMS_PER_PAGE = 15
 
 const formatCellValue = (col: string, value: unknown): string => {
   if (value === null || value === undefined) return ''
-  const numericCols = ['total_amount', 'expected_amount', 'actual_amount', 'variance', 'wallet_balance', 'total_contributions', 'total_disbursements']
+  const numericCols = [
+    'total_amount',
+    'expected_amount',
+    'actual_amount',
+    'variance',
+    'wallet_balance',
+    'total_contributions',
+    'total_disbursements',
+    'gross_paid',
+    'total_refunded',
+    'net_paid',
+    'outstanding_amount',
+    'expected_total',
+    'net_paid_total',
+    'outstanding_total',
+  ]
   if (typeof value === 'number') {
     if (numericCols.includes(col)) return `KES ${value.toLocaleString()}`
+    if (col.includes('percent')) return `${value.toLocaleString()}%`
     return value.toString()
   }
   if (col === 'month') return value ? format(new Date(value as string), 'MMM yyyy') : ''
@@ -160,7 +186,7 @@ const FiscalReports = () => {
 
   const [monthlyData, setMonthlyData] = useState<MonthlySummary[]>([])
   const [caseData, setCaseData] = useState<CaseFunding[]>([])
-  const [allCaseOptions, setAllCaseOptions] = useState<Array<{ id: string; case_number: string; case_type: string }>>([])
+  const [allCaseOptions, setAllCaseOptions] = useState<EligibleCaseOption[]>([])
   const [memberContributions, setMemberContributions] = useState<MemberContribution[]>([])
   const [contributionTransactions, setContributionTransactions] = useState<ContributionTransaction[]>([])
   const [disciplineCollectionTransactions, setDisciplineCollectionTransactions] = useState<DisciplineCollectionTransaction[]>([])
@@ -186,7 +212,13 @@ const FiscalReports = () => {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [{ data: monthly }, { data: memberTx }, { data: disciplineRows }, { data: dashSummary }, { data: caseOptions }] = await Promise.all([
+        const [
+          { data: monthly },
+          { data: memberTx },
+          { data: disciplineRows },
+          { data: dashSummary },
+          { data: caseOptions },
+        ] = await Promise.all([
           supabase.from('monthly_contributions_summary').select(MONTHLY_CONTRIBUTIONS_SUMMARY_COLUMNS).order('month', { ascending: false }),
           supabase.from('member_transaction_summary').select(MEMBER_TRANSACTION_SUMMARY_COLUMNS).order('member_number'),
           supabase
@@ -197,7 +229,11 @@ const FiscalReports = () => {
             .order('created_at', { ascending: false })
             .limit(5000),
           supabase.rpc('get_enhanced_dashboard_summary'),
-          supabase.from('cases').select('id, case_number, case_type').order('case_number', { ascending: false }),
+          supabase
+            .from('cases')
+            .select('id, case_number, case_type, contribution_per_member, is_active, is_finalized')
+            .order('case_number', { ascending: false })
+            .range(0, 49999),
         ])
 
         setMonthlyData((monthly || []) as MonthlySummary[])
@@ -208,6 +244,9 @@ const FiscalReports = () => {
             id: String(c.id),
             case_number: String(c.case_number || ''),
             case_type: String(c.case_type || ''),
+            contribution_per_member: Number(c.contribution_per_member || 0),
+            is_active: Boolean(c.is_active),
+            is_finalized: Boolean(c.is_finalized),
           }))
         )
         setDisciplineCollectionTransactions(
