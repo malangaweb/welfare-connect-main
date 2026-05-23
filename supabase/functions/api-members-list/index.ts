@@ -32,11 +32,13 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
+    const fetchLimit = limit + 1;
+
     let query = supabase
       .from("members")
-      .select("id, member_number, name, phone_number, wallet_balance, is_active, status, probation_end_date, created_at", { count: "exact" })
+      .select("id, member_number, name, phone_number, wallet_balance, is_active, status, probation_end_date, created_at")
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + fetchLimit - 1);
 
     if (search) {
       query = query.or(
@@ -48,15 +50,18 @@ serve(async (req) => {
       query = query.eq("status", status);
     }
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
     if (error) throw error;
 
+    const hasMore = (data?.length || 0) > limit;
+    const members = hasMore ? (data || []).slice(0, limit) : (data || []);
+
     return jsonResponse(200, {
-      members: data || [],
-      total: count || 0,
+      members,
+      total: offset + members.length + (hasMore ? 1 : 0),
       limit,
       offset,
-      has_more: (count || 0) > offset + limit,
+      has_more: hasMore,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unauthorized";

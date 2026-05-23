@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Filter, RefreshCw, FileText, Printer, Search, SortAsc, SortDesc } from 'lucide-react';
-import { format, subMonths, endOfDay } from 'date-fns';
+import { format, subMonths, startOfDay, endOfDay } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -307,16 +307,18 @@ const disciplineLatePaymentHeaders: HeaderMap[] = [
   { key: 'description', label: 'Description' },
 ];
 
-const REPORT_TX_BATCH = 5000;
-const REPORT_TX_MAX = 50000;
+const REPORT_TX_BATCH = 2000;
+const REPORT_TX_MAX = 10000;
+const REPORT_TX_LOOKBACK_MONTHS = 12;
 
-async function fetchReportTransactionsBatched(): Promise<Transaction[]> {
+async function fetchReportTransactionsBatched(startDateIso: string): Promise<Transaction[]> {
   const rows: Transaction[] = [];
   for (let from = 0; rows.length < REPORT_TX_MAX; from += REPORT_TX_BATCH) {
     const to = from + REPORT_TX_BATCH - 1;
     const { data, error } = await supabase
       .from('transactions')
       .select(REPORT_TRANSACTION_COLUMNS)
+      .gte('created_at', startDateIso)
       .order('created_at', { ascending: false })
       .range(from, to);
     if (error) throw error;
@@ -417,11 +419,13 @@ const Reports = () => {
         return rows;
       };
 
+      const reportStartIso = startOfDay(subMonths(new Date(), REPORT_TX_LOOKBACK_MONTHS)).toISOString();
+
       const [summaryRes, memberRows, casesRes, reportTransactions] = await Promise.all([
         (supabase.rpc as any)('get_dashboard_summary'),
         fetchMembersViaApi(),
         supabase.from('cases').select(CASE_ROW_COLUMNS),
-        fetchReportTransactionsBatched(),
+        fetchReportTransactionsBatched(reportStartIso),
       ]);
 
       if (summaryRes.data) {

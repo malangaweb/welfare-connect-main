@@ -38,7 +38,7 @@ const Transactions = () => {
   const memberId = searchParams.get('memberId');
 
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [hasMorePages, setHasMorePages] = useState(false);
   const pageSize = 10;
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -78,8 +78,9 @@ const Transactions = () => {
         setLoading(true);
       }
 
+      const fetchLimit = pageSize + 1;
       let query = supabase.from('transactions')
-        .select(TRANSACTION_LIST_COLUMNS, { count: 'exact' })
+        .select(TRANSACTION_LIST_COLUMNS)
         .order('created_at', { ascending: false });
         
       if (memberId) {
@@ -87,18 +88,16 @@ const Transactions = () => {
       }
       
       const from = (pageNum - 1) * pageSize;
-      const to = from + pageSize - 1;
+      const to = from + fetchLimit - 1;
       query = query.range(from, to);
 
-      const { data, error, count } = await query;
+      const { data, error } = await query;
       if (error) throw error;
-      
-      if (count !== null) {
-        setTotalPages(Math.ceil(count / pageSize));
-      }
 
       if (data) {
-        const formattedTransactions: Transaction[] = data.map((t: any) => ({
+        const pageRows = data.slice(0, pageSize);
+        setHasMorePages(data.length > pageSize);
+        const formattedTransactions: Transaction[] = pageRows.map((t: any) => ({
           id: t.id,
           memberId: t.member_id,
           caseId: t.case_id || undefined,
@@ -256,7 +255,7 @@ const Transactions = () => {
           )}
         />
 
-        {totalPages > 1 && (
+        {(page > 1 || hasMorePages) && (
           <div className="flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4 mt-6 md:mt-8 pb-6 md:pb-8">
             <Button
               variant="outline"
@@ -267,12 +266,12 @@ const Transactions = () => {
               Previous
             </Button>
             <span className="text-xs md:text-sm font-medium">
-              Page {page} of {totalPages}
+              Page {page}
             </span>
             <Button
               variant="outline"
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages || loading}
+              onClick={() => setPage(p => p + 1)}
+              disabled={!hasMorePages || loading}
               className="text-xs md:text-sm h-9"
             >
               Next

@@ -25,7 +25,8 @@ serve(async (req) => {
     const page = Math.max(Number(url.searchParams.get("page") ?? body.page ?? 1), 1);
     const pageSize = Math.min(Math.max(Number(url.searchParams.get("page_size") ?? body.page_size ?? 30), 1), 200);
     const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const fetchLimit = pageSize + 1;
+    const to = from + fetchLimit - 1;
 
     const search = String(url.searchParams.get("search") ?? body.search ?? "").trim();
     const type = String(url.searchParams.get("type") ?? body.type ?? "all").trim();
@@ -39,64 +40,43 @@ serve(async (req) => {
     let query = supabase
       .from("transactions")
       .select(
-        "id, member_id, case_id, amount, transaction_type, payment_method, mpesa_reference, reference, description, status, created_at",
-        { count: "exact" },
+        "id, member_id, case_id, amount, transaction_type, payment_method, mpesa_reference, reference, description, status, created_at, members(name, member_number)",
       )
       .order("created_at", { ascending: false })
       .range(from, to);
 
-    if (type != "all" && type.isNotEmpty) {
+    if (type !== "all" && type.length > 0) {
       query = query.eq("transaction_type", type);
     }
 
-    if (status != "all" && status.isNotEmpty) {
+    if (status !== "all" && status.length > 0) {
       query = query.eq("status", status);
     }
 
-    if (search.isNotEmpty) {
+    if (search.length > 0) {
       query = query.or(
         `reference.ilike.%${search}%,mpesa_reference.ilike.%${search}%,description.ilike.%${search}%`,
       );
     }
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
     if (error) throw error;
 
     const txList = data || [];
-    const memberIds = Array.from(new Set(txList.map((t: any) => t.member_id).filter(Boolean)));
-
-    let memberMap = new Map<string, { name: string | null; member_number: string | null }>();
-    if (memberIds.length > 0) {
-      const { data: members, error: membersErr } = await supabase
-        .from("members")
-        .select("id, name, member_number")
-        .in("id", memberIds);
-
-      if (membersErr) throw membersErr;
-
-      memberMap = new Map(
-        (members || []).map((m: any) => [
-          String(m.id),
-          {
-            name: m.name ?? null,
-            member_number: m.member_number ?? null,
-          },
-        ]),
-      );
-    }
-
-    const transactions = txList.map((tx: any) => ({
+    const hasMore = txList.length > pageSize;
+    const transactions = txList.slice(0, pageSize).map((tx: any) => ({
       ...tx,
-      member_name: memberMap.get(String(tx.member_id))?.name ?? null,
-      member_number: memberMap.get(String(tx.member_id))?.member_number ?? null,
+      member_name: tx.members?.name ?? null,
+      member_number: tx.members?.member_number ?? null,
+      members: undefined,
     }));
 
     return jsonResponse(200, {
       transactions,
-      total: count || 0,
+      total: from + transactions.length + (hasMore ? 1 : 0),
       page,
       page_size: pageSize,
-      has_more: (count || 0) > to + 1,
+      has_more: hasMore,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unauthorized";

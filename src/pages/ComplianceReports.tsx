@@ -71,20 +71,6 @@ interface CasePaymentCase {
   is_finalized: boolean
 }
 
-interface CasePaymentMember {
-  id: string
-  member_number: string
-  name: string
-  status: 'active' | 'probation'
-}
-
-interface CasePaymentTransaction {
-  member_id: string
-  case_id: string
-  transaction_type: string
-  amount: number
-}
-
 interface CasePaymentComplianceRow {
   id: string
   case_id: string
@@ -123,42 +109,12 @@ const ITEMS_PER_PAGE = 15
 const MAX_EXPORT_ENTRIES = 200
 const FAILED_TRANSACTION_STATUSES = ['failed', 'error', 'cancelled', 'canceled', 'reversed', 'voided']
 const COMPLIANCE_MEMBER_STATUSES = ['active', 'probation']
-const CASE_PAYMENT_TYPES = ['contribution', 'case_wallet_deduction', 'contribution_refund', 'case_wallet_refund']
-const CASE_PAYMENT_TRANSACTION_PAGE_SIZE = 1000
 
 const severityColorMap: Record<string, string> = {
   critical: 'bg-destructive',
   high: 'bg-accent',
   medium: 'bg-primary/80',
   low: 'bg-primary',
-}
-
-const fetchCasePaymentTransactionRows = async (memberStatuses: string[]) => {
-  const rows: any[] = []
-  let from = 0
-
-  while (true) {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('id, member_id, case_id, transaction_type, amount, status, created_at, members!inner(status)')
-      .in('transaction_type', CASE_PAYMENT_TYPES)
-      .in('members.status', memberStatuses)
-      .or('status.is.null,status.in.(completed,success)')
-      .not('member_id', 'is', null)
-      .not('case_id', 'is', null)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + CASE_PAYMENT_TRANSACTION_PAGE_SIZE - 1)
-
-    if (error) throw error
-
-    const batch = data || []
-    rows.push(...batch)
-    if (batch.length < CASE_PAYMENT_TRANSACTION_PAGE_SIZE) break
-    from += CASE_PAYMENT_TRANSACTION_PAGE_SIZE
-  }
-
-  return rows
 }
 
 const ComplianceReports = () => {
@@ -176,8 +132,8 @@ const ComplianceReports = () => {
   const [reversals, setReversals] = useState<ReversalEntry[]>([])
   const [complianceIssues, setComplianceIssues] = useState<ComplianceIssue[]>([])
   const [casePaymentCases, setCasePaymentCases] = useState<CasePaymentCase[]>([])
-  const [casePaymentMembers, setCasePaymentMembers] = useState<CasePaymentMember[]>([])
-  const [casePaymentTransactions, setCasePaymentTransactions] = useState<CasePaymentTransaction[]>([])
+  const [casePaymentRowsBase, setCasePaymentRowsBase] = useState<CasePaymentComplianceRow[]>([])
+  const [casePaymentSummaryRowsBase, setCasePaymentSummaryRowsBase] = useState<CasePaymentSummaryRow[]>([])
   const [casePaymentCaseSearch, setCasePaymentCaseSearch] = useState('')
   const [casePaymentMemberSearch, setCasePaymentMemberSearch] = useState('')
   const [casePaymentCaseStatus, setCasePaymentCaseStatus] = useState<'all' | 'active' | 'finalized' | 'closed'>('all')
@@ -242,7 +198,7 @@ const ComplianceReports = () => {
       ] = await Promise.all([
         supabase
           .from('members')
-          .select('id, member_number, name', { count: 'exact' })
+          .select('id, member_number, name')
           .is('phone_number', null)
           .in('status', COMPLIANCE_MEMBER_STATUSES),
         supabase
@@ -250,7 +206,7 @@ const ComplianceReports = () => {
           .select('id, member_number, name, wallet_balance'),
         supabase
           .from('wrong_mpesa_transactions')
-          .select(WRONG_MPESA_PENDING_COUNT_COLUMNS, { count: 'exact' })
+          .select(WRONG_MPESA_PENDING_COUNT_COLUMNS)
           .eq('status', 'pending'),
         supabase
           .from('members_on_probation')
@@ -258,7 +214,7 @@ const ComplianceReports = () => {
           .gt('days_overdue', 0),
         supabase
           .from('transactions')
-          .select('id, member_id, amount, mpesa_reference, created_at, members!inner(status)', { count: 'exact' })
+          .select('id, member_id, amount, mpesa_reference, created_at, members!inner(status)')
           .in('status', FAILED_TRANSACTION_STATUSES)
           .in('members.status', COMPLIANCE_MEMBER_STATUSES),
       ])
@@ -368,47 +324,57 @@ const ComplianceReports = () => {
 
   const fetchCasePaymentComplianceData = async () => {
     try {
-      const [{ data: cases }, { data: members }, transactions] = await Promise.all([
-        supabase
-          .from('cases')
-          .select('id, case_number, case_type, contribution_per_member, is_active, is_finalized')
-          .order('case_number', { ascending: false })
-          .range(0, 49999),
-        supabase
-          .from('members')
-          .select('id, member_number, name, status')
-          .in('status', COMPLIANCE_MEMBER_STATUSES)
-          .order('member_number')
-          .range(0, 49999),
-        fetchCasePaymentTransactionRows(COMPLIANCE_MEMBER_STATUSES),
+      const [{ data: rows, error: rowsError }, { data: summaryRows, error: summaryError }] = await Promise.all([
+        supabase.rpc('get_case_payment_compliance_rows'),
+        supabase.rpc('get_case_payment_compliance_summary'),
       ])
+      if (rowsError) throw rowsError
+      if (summaryError) throw summaryError
 
+      const mappedRows: CasePaymentComplianceRow[] = ((rows || []) as any[]).map((row) => ({
+        id: `${row.case_id}:${row.member_id}`,
+        case_id: String(row.case_id),
+        case_number: String(row.case_number || ''),
+        case_type: String(row.case_type || ''),
+        case_status: String(row.case_status || 'closed'),
+        member_id: String(row.member_id),
+        member_number: String(row.member_number || ''),
+        member_name: String(row.member_name || 'Unknown member'),
+        member_status: String(row.member_status || ''),
+        expected_amount: Number(row.expected_amount || 0),
+        gross_paid: Number(row.gross_paid || 0),
+        total_refunded: Number(row.total_refunded || 0),
+        net_paid: Number(row.net_paid || 0),
+        outstanding_amount: Number(row.outstanding_amount || 0),
+        payment_compliance: (row.payment_compliance || 'unpaid') as 'paid' | 'partial' | 'unpaid',
+      }))
+
+      const mappedSummaryRows: CasePaymentSummaryRow[] = ((summaryRows || []) as any[]).map((row) => ({
+        case_id: String(row.case_id),
+        case_number: String(row.case_number || ''),
+        case_type: String(row.case_type || ''),
+        case_status: String(row.case_status || 'closed'),
+        eligible_members: Number(row.eligible_members || 0),
+        paid_members: Number(row.paid_members || 0),
+        partial_members: Number(row.partial_members || 0),
+        unpaid_members: Number(row.unpaid_members || 0),
+        expected_total: Number(row.expected_total || 0),
+        net_paid_total: Number(row.net_paid_total || 0),
+        outstanding_total: Number(row.outstanding_total || 0),
+        paid_amount_percent: Number(row.paid_amount_percent || 0),
+        paid_members_percent: Number(row.paid_members_percent || 0),
+      }))
+
+      setCasePaymentRowsBase(mappedRows)
+      setCasePaymentSummaryRowsBase(mappedSummaryRows)
       setCasePaymentCases(
-        ((cases || []) as any[]).map((c) => ({
-          id: String(c.id),
-          case_number: String(c.case_number || ''),
-          case_type: String(c.case_type || ''),
-          contribution_per_member: Number(c.contribution_per_member || 0),
-          is_active: Boolean(c.is_active),
-          is_finalized: Boolean(c.is_finalized),
-        }))
-      )
-      setCasePaymentMembers(
-        ((members || []) as any[])
-          .filter((member) => COMPLIANCE_MEMBER_STATUSES.includes(String(member.status)))
-          .map((member) => ({
-            id: String(member.id),
-            member_number: String(member.member_number || ''),
-            name: String(member.name || 'Unknown member'),
-            status: String(member.status) as 'active' | 'probation',
-          }))
-      )
-      setCasePaymentTransactions(
-        ((transactions || []) as any[]).map((tx) => ({
-          member_id: String(tx.member_id),
-          case_id: String(tx.case_id),
-          transaction_type: String(tx.transaction_type || ''),
-          amount: Number(tx.amount || 0),
+        mappedSummaryRows.map((row) => ({
+          id: row.case_id,
+          case_number: row.case_number,
+          case_type: row.case_type,
+          contribution_per_member: row.eligible_members > 0 ? row.expected_total / row.eligible_members : 0,
+          is_active: row.case_status === 'active',
+          is_finalized: row.case_status === 'finalized',
         }))
       )
     } catch (error: any) {
@@ -504,95 +470,16 @@ const ComplianceReports = () => {
   }, [casePaymentCases, casePaymentCaseSearch, casePaymentCaseStatus, casePaymentCaseType])
 
   const casePaymentRows = useMemo(() => {
-    const netByMemberCase = new Map<string, { gross_paid: number; total_refunded: number; net_paid: number }>()
-
-    casePaymentTransactions.forEach((tx) => {
-      const key = `${tx.member_id}:${tx.case_id}`
-      const existing = netByMemberCase.get(key) || { gross_paid: 0, total_refunded: 0, net_paid: 0 }
-      const amount = Math.abs(Number(tx.amount || 0))
-      if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction') {
-        existing.gross_paid += amount
-        existing.net_paid += amount
-      }
-      if (tx.transaction_type === 'contribution_refund' || tx.transaction_type === 'case_wallet_refund') {
-        existing.total_refunded += amount
-        existing.net_paid -= amount
-      }
-      netByMemberCase.set(key, existing)
-    })
-
-    return filteredCasePaymentCases.flatMap((caseItem) => {
-      const expectedAmount = Number(caseItem.contribution_per_member || 0)
-      const caseStatus = caseItem.is_finalized ? 'finalized' : caseItem.is_active ? 'active' : 'closed'
-
-      return casePaymentMembers.map((member) => {
-        const payment = netByMemberCase.get(`${member.id}:${caseItem.id}`) || { gross_paid: 0, total_refunded: 0, net_paid: 0 }
-        const netPaid = Number(payment.net_paid || 0)
-        const outstandingAmount = Math.max(expectedAmount - netPaid, 0)
-        const paymentCompliance: CasePaymentComplianceRow['payment_compliance'] =
-          netPaid >= expectedAmount ? 'paid' : netPaid > 0 ? 'partial' : 'unpaid'
-
-        return {
-          id: `${caseItem.id}:${member.id}`,
-          case_id: caseItem.id,
-          case_number: caseItem.case_number,
-          case_type: caseItem.case_type,
-          case_status: caseStatus,
-          member_id: member.id,
-          member_number: member.member_number,
-          member_name: member.name,
-          member_status: member.status,
-          expected_amount: expectedAmount,
-          gross_paid: Number(payment.gross_paid || 0),
-          total_refunded: Number(payment.total_refunded || 0),
-          net_paid: netPaid,
-          outstanding_amount: outstandingAmount,
-          payment_compliance: paymentCompliance,
-        }
-      })
-    })
-  }, [casePaymentMembers, casePaymentTransactions, filteredCasePaymentCases])
+    const allowedCaseIds = new Set(filteredCasePaymentCases.map((c) => c.id))
+    return casePaymentRowsBase.filter((row) => allowedCaseIds.has(row.case_id))
+  }, [casePaymentRowsBase, filteredCasePaymentCases])
 
   const casePaymentSummaryRows = useMemo(() => {
-    const grouped = new Map<string, CasePaymentSummaryRow>()
-
-    casePaymentRows.forEach((row) => {
-      const existing =
-        grouped.get(row.case_id) ||
-        ({
-          case_id: row.case_id,
-          case_number: row.case_number,
-          case_type: row.case_type,
-          case_status: row.case_status,
-          eligible_members: 0,
-          paid_members: 0,
-          partial_members: 0,
-          unpaid_members: 0,
-          expected_total: 0,
-          net_paid_total: 0,
-          outstanding_total: 0,
-          paid_amount_percent: 0,
-          paid_members_percent: 0,
-        } as CasePaymentSummaryRow)
-
-      existing.eligible_members += 1
-      existing.expected_total += row.expected_amount
-      existing.net_paid_total += row.net_paid
-      existing.outstanding_total += row.outstanding_amount
-      if (row.payment_compliance === 'paid') existing.paid_members += 1
-      if (row.payment_compliance === 'partial') existing.partial_members += 1
-      if (row.payment_compliance === 'unpaid') existing.unpaid_members += 1
-      grouped.set(row.case_id, existing)
-    })
-
-    return Array.from(grouped.values())
-      .map((row) => ({
-        ...row,
-        paid_amount_percent: row.expected_total > 0 ? Number(((row.net_paid_total / row.expected_total) * 100).toFixed(2)) : 0,
-        paid_members_percent: row.eligible_members > 0 ? Number(((row.paid_members / row.eligible_members) * 100).toFixed(2)) : 0,
-      }))
+    const allowedCaseIds = new Set(filteredCasePaymentCases.map((c) => c.id))
+    return casePaymentSummaryRowsBase
+      .filter((row) => allowedCaseIds.has(row.case_id))
       .sort((a, b) => b.outstanding_total - a.outstanding_total || b.case_number.localeCompare(a.case_number))
-  }, [casePaymentRows])
+  }, [casePaymentSummaryRowsBase, filteredCasePaymentCases])
 
   const filteredCasePaymentRows = useMemo(() => {
     const term = casePaymentMemberSearch.trim().toLowerCase()
@@ -625,6 +512,10 @@ const ComplianceReports = () => {
       paidAmountPercent: expectedTotal > 0 ? Number(((netPaidTotal / expectedTotal) * 100).toFixed(2)) : 0,
     }
   }, [casePaymentSummaryRows])
+
+  const casePaymentMemberCount = useMemo(() => {
+    return new Set(casePaymentRowsBase.map((row) => row.member_id)).size
+  }, [casePaymentRowsBase])
 
   useEffect(() => {
     setCasePaymentPage(1)
@@ -1126,7 +1017,7 @@ const ComplianceReports = () => {
                   </div>
                   <div className="rounded-lg border p-4">
                     <p className="text-sm font-medium text-muted-foreground">Eligible Members</p>
-                    <div className="mt-2 text-2xl font-bold">{casePaymentMembers.length.toLocaleString()}</div>
+                    <div className="mt-2 text-2xl font-bold">{casePaymentMemberCount.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">Active and probation only</p>
                   </div>
                   <div className="rounded-lg border p-4">
