@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_controller.dart';
 import '../../core/auth/role_access.dart';
+import '../../core/widgets/notification_bell.dart';
 
 class AdminShell extends ConsumerWidget {
   final String title;
@@ -62,6 +63,7 @@ class AdminShell extends ConsumerWidget {
         backgroundColor: const Color(0xFF1F3556),
         foregroundColor: Colors.white,
         actions: [
+          const NotificationBell(),
           ...?actions,
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),

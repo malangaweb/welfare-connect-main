@@ -1,7 +1,7 @@
 # Graph Report - Malanga Welfare  (2026-05-25)
 
 ## Corpus Check
-- 300 files · ~575,769 words
+- 300 files · ~493,764 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary

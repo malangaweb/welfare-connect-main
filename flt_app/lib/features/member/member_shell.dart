@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_controller.dart';
+import '../../core/widgets/notification_bell.dart';
 
 class MemberShell extends ConsumerWidget {
   final String title;
@@ -48,6 +49,7 @@ class MemberShell extends ConsumerWidget {
         flexibleSpace: Container(color: const Color(0xFF1F3556)),
         foregroundColor: Colors.white,
         actions: [
+          const NotificationBell(),
           ...?actions,
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),

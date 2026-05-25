@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bell, Search, User, Settings, LogOut } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -12,9 +12,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { AppNotification, fetchNotifications } from '@/lib/notificationsApi';
 
 const Navbar = () => {
   const [searchValue, setSearchValue] = useState('');
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
 
   // Check if a member is logged in (localStorage)
@@ -26,6 +29,28 @@ const Navbar = () => {
     localStorage.removeItem("member_member_id");
     navigate("/member/login");
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await fetchNotifications(20);
+        if (cancelled) return;
+        setNotifications(result.notifications);
+        setUnreadCount(result.unread_count);
+      } catch {
+        if (cancelled) return;
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur-md flex items-center px-6">
@@ -66,7 +91,11 @@ const Navbar = () => {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="h-5 w-5" />
-                <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-destructive" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-destructive text-[10px] px-1 text-white border border-white flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
@@ -74,7 +103,19 @@ const Navbar = () => {
               <DropdownMenuSeparator />
               <div className="max-h-[60vh] overflow-y-auto">
                 <div className="flex flex-col gap-2 py-2 px-1">
-                  <p className="text-center text-sm text-muted-foreground py-4">No new notifications</p>
+                  {notifications.length === 0 ? (
+                    <p className="text-center text-sm text-muted-foreground py-4">No notifications</p>
+                  ) : (
+                    notifications.map((item) => (
+                      <div key={item.id} className="rounded-md border p-2 border-slate-100 bg-white">
+                        <p className="text-sm font-semibold">{item.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{item.message}</p>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {new Date(item.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </DropdownMenuContent>

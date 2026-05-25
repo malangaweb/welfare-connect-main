@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { clearAppToken } from '@/lib/appAuth';
+import { AppNotification, fetchNotifications } from '@/lib/notificationsApi';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -24,6 +25,8 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
   const [searchValue, setSearchValue] = useState('');
   const [userName, setUserName] = useState<string>('');
   const [showSearch, setShowSearch] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -38,6 +41,28 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
         console.error('Error parsing user data:', error);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await fetchNotifications(20);
+        if (cancelled) return;
+        setNotifications(result.notifications);
+        setUnreadCount(result.unread_count);
+      } catch {
+        if (cancelled) return;
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -123,7 +148,11 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
                 aria-label="Notifications"
               >
                 <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600" />
-                <span className="absolute top-1 sm:top-2 right-1 sm:right-2 h-2 w-2 rounded-full bg-destructive border-2 border-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-destructive text-[10px] px-1 text-white border border-white flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-72 sm:w-80 p-0 shadow-lg border-slate-200">
@@ -131,7 +160,19 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
                 <h3 className="font-semibold text-sm">Notifications</h3>
               </div>
               <div className="max-h-80 overflow-y-auto p-2">
-                <p className="text-center text-xs text-muted-foreground py-8">No new notifications</p>
+                {notifications.length === 0 ? (
+                  <p className="text-center text-xs text-muted-foreground py-8">No notifications</p>
+                ) : (
+                  notifications.map((item) => (
+                    <div key={item.id} className="rounded-md border border-slate-100 p-2 mb-2 bg-white">
+                      <p className="text-xs font-semibold text-slate-800">{item.title}</p>
+                      <p className="text-xs text-slate-600 mt-1">{item.message}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {new Date(item.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
