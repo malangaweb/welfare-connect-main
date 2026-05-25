@@ -18,11 +18,27 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   final _service = LiveDataService();
   late Future<AdminDashboardSnapshot> _future;
+  ProviderSubscription<AuthState>? _authSub;
+  String? _lastToken;
 
   @override
   void initState() {
     super.initState();
+    _lastToken = ref.read(authControllerProvider).appToken;
     _future = _loadDashboard();
+    _authSub = ref.listenManual<AuthState>(authControllerProvider, (_, next) {
+      final token = next.appToken;
+      if (token == null || token.isEmpty || token == _lastToken) return;
+      _lastToken = token;
+      if (!mounted) return;
+      setState(() => _future = _loadDashboard());
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.close();
+    super.dispose();
   }
 
   Future<void> _refresh() async {

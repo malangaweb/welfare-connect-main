@@ -163,7 +163,7 @@ serve(async (req) => {
       Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date),
     );
     const caseIds = payableCandidates.map((c) => c.id);
-    let paidCaseIds = new Set<string>();
+    const netByCase = new Map<string, number>();
 
     if (caseIds.length > 0) {
       const { data: caseTx } = await supabase
@@ -179,7 +179,6 @@ serve(async (req) => {
           "case_wallet_refund",
         ]);
 
-      const netByCase = new Map<string, number>();
       (caseTx || [])
         .filter((r) => !r.status || r.status === "completed")
         .forEach((r) => {
@@ -196,19 +195,26 @@ serve(async (req) => {
             netByCase.set(caseId, current - Math.abs(amount));
           }
         });
-
-      paidCaseIds = new Set(
-        Array.from(netByCase.entries())
-          .filter(([, net]) => net > 0)
-          .map(([caseId]) => caseId),
-      );
     }
 
-    const activeCasesSummary = payableCandidates.map((c) => ({
-      ...c,
-      paid: paidCaseIds.has(String(c.id)),
-      late_payment: Boolean(!c.is_active || c.is_finalized),
-    }));
+    const activeCasesSummary = payableCandidates.map((c) => {
+      const caseId = String(c.id || "");
+      const required = Number(c.contribution_per_member) || 0;
+      const rawNetPaid = netByCase.get(caseId) || 0;
+      const amountPaid = Math.max(rawNetPaid, 0);
+      const remainingAmount = Math.max(required - amountPaid, 0);
+      const progress =
+        required > 0 ? Math.min(amountPaid / required, 1) : amountPaid > 0 ? 1 : 0;
+
+      return {
+        ...c,
+        amount_paid: amountPaid,
+        remaining_amount: remainingAmount,
+        progress,
+        paid: required > 0 ? amountPaid >= required : amountPaid > 0,
+        late_payment: Boolean(!c.is_active || c.is_finalized),
+      };
+    });
 
     return jsonResponse(200, {
       member: {

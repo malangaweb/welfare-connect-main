@@ -17,11 +17,27 @@ class SuspenseQueueScreen extends ConsumerStatefulWidget {
 class _SuspenseQueueScreenState extends ConsumerState<SuspenseQueueScreen> {
   final _service = LiveDataService();
   late Future<List<Map<String, dynamic>>> _future;
+  ProviderSubscription<AuthState>? _authSub;
+  String? _lastToken;
 
   @override
   void initState() {
     super.initState();
+    _lastToken = ref.read(authControllerProvider).appToken;
     _future = _loadQueue();
+    _authSub = ref.listenManual<AuthState>(authControllerProvider, (_, next) {
+      final token = next.appToken;
+      if (token == null || token.isEmpty || token == _lastToken) return;
+      _lastToken = token;
+      if (!mounted) return;
+      setState(() => _future = _loadQueue());
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.close();
+    super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _loadQueue() {

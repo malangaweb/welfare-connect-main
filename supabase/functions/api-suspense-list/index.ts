@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/cors.ts";
-import { requireFinanceRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
+import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
 function jsonResponse(status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
@@ -17,7 +17,7 @@ serve(async (req) => {
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
-    requireFinanceRole(claims.role);
+    requirePrivilegedRole(claims.role);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -29,6 +29,7 @@ serve(async (req) => {
       .select(
         "id, mpesa_receipt_number, phone_number, amount, sender_name, transaction_date, status, reference, matched_member_id, intended_case_id, intended_member_id, created_at",
       )
+      .in("status", ["pending", "PENDING_REVIEW"])
       .order("transaction_date", { ascending: false })
       .limit(300);
     if (error) throw error;

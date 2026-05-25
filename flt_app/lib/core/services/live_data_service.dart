@@ -734,7 +734,7 @@ class LiveDataService {
                   .map((e) => e.cast<String, dynamic>())
                   .toList() ??
               const <Map<String, dynamic>>[];
-          if (list.isNotEmpty) return list;
+          return list;
         }
       } catch (_) {
         // Fall back to direct query below.

@@ -28,7 +28,17 @@ const MemberCases = () => {
   const myContributionTransactions = useMemo(() => {
     const mid = typeof window !== "undefined" ? localStorage.getItem("member_member_id") : null;
     if (!mid) return [];
-    return transactions.filter((t) => t.member_id === mid);
+    return transactions.filter((t) => {
+      if (t.member_id !== mid) return false;
+      if (t.status && t.status !== "completed") return false;
+      return [
+        "contribution",
+        "case_wallet_deduction",
+        "arrears",
+        "contribution_refund",
+        "case_wallet_refund",
+      ].includes(String(t.transaction_type || ""));
+    });
   }, [transactions]);
 
   useEffect(() => {
@@ -80,34 +90,14 @@ const MemberCases = () => {
 
         setMemberCount(memberCountNum);
         setTransactions(transactionsData || []);
-        const caseNum = (cn: string | null | undefined) => String(cn || "").trim().toLowerCase();
-        const isCompleted = (tx: { status?: string | null }) =>
-          !tx.status || tx.status === "completed";
         const mappedCases = (casesData || []).map((c: any) => {
-          let collected = 0;
-          if (transactionsData && c.case_number) {
-            const cn = caseNum(c.case_number);
-            collected = transactionsData.reduce((sum, tx) => {
-              if (!isCompleted(tx)) return sum;
-              const linked =
-                (tx.case_id && tx.case_id === c.id) ||
-                (!!tx.description && tx.description.toLowerCase().includes(cn));
-              if (!linked) return sum;
-              const amt = Number(tx.amount) || 0;
-              if (tx.transaction_type === "contribution" || tx.transaction_type === "case_wallet_deduction") {
-                return sum + Math.abs(amt);
-              }
-              if (tx.transaction_type === "contribution_refund" || tx.transaction_type === "case_wallet_refund") {
-                return sum - (amt > 0 ? amt : 0);
-              }
-              return sum;
-            }, 0);
-          }
+          const actualAmount = Math.max(0, Number(c.actual_amount) || 0);
+          const expectedAmount = Math.max(0, Number(c.expected_amount) || 0);
           return {
             ...c,
             affected_name: namesByMemberId[c.affected_member_id] || "Unknown",
-            actual_amount: Math.max(0, collected),
-            expected_amount: c.contribution_per_member * memberCountNum,
+            actual_amount: actualAmount,
+            expected_amount: expectedAmount,
           };
         });
         setCases(mappedCases);
@@ -180,20 +170,86 @@ const MemberCases = () => {
   const sessionMemberId =
     typeof window !== "undefined" ? localStorage.getItem("member_member_id") : null;
 
-  const hasContributed = (caseId: string) => {
-    if (!sessionMemberId) return false;
-    return transactions.some((t) => t.case_id === caseId && t.member_id === sessionMemberId);
+  const getCaseContributionTransactions = (caseItem: any) => {
+    if (!sessionMemberId) return [];
+    const caseNumber = String(caseItem?.case_number || "").trim().toLowerCase();
+    return transactions.filter((t) => {
+      if (t.member_id !== sessionMemberId) return false;
+      if (t.status && t.status !== "completed") return false;
+      const txType = String(t.transaction_type || "");
+      const contributionLike = [
+        "contribution",
+        "case_wallet_deduction",
+        "arrears",
+        "contribution_refund",
+        "case_wallet_refund",
+      ].includes(txType);
+      if (!contributionLike) return false;
+
+      const byCaseId = t.case_id === caseItem.id;
+      const desc = String(t.description || "").toLowerCase();
+      const byDescription =
+        caseNumber.length > 0 &&
+        (desc.includes(`case #${caseNumber}`) ||
+          desc.includes(`case ${caseNumber}`) ||
+          desc.includes(`#${caseNumber}`));
+      return byCaseId || byDescription;
+    });
   };
 
-  const getContributionsForCase = (caseId: string) => {
-    if (!sessionMemberId) return [];
-    return transactions.filter((t) => t.case_id === caseId && t.member_id === sessionMemberId);
+  const hasContributed = (caseItem: any) =>
+    getCaseContributionTransactions(caseItem).some((t) =>
+      ["contribution", "case_wallet_deduction", "arrears"].includes(
+        String(t.transaction_type || ""),
+      ),
+    );
+
+  const getContributionsForCase = (caseItem: any) =>
+    getCaseContributionTransactions(caseItem);
+
+  const getContributionBadge = (caseItem: any) => {
+    const contributionRows = getCaseContributionTransactions(caseItem).filter((t) =>
+      ["contribution", "case_wallet_deduction", "arrears"].includes(
+        String(t.transaction_type || ""),
+      ),
+    );
+    const contributed = contributionRows.length > 0;
+    const endDate = caseItem?.end_date ? new Date(caseItem.end_date) : null;
+    const firstContributionAt = contributionRows
+      .map((t) => new Date(t.created_at))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    const contributedLate =
+      contributed &&
+      !!endDate &&
+      !!firstContributionAt &&
+      firstContributionAt.getTime() > endDate.getTime();
+
+    if (contributedLate) {
+      return {
+        label: "Contributed Late",
+        className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+      };
+    }
+    if (contributed) {
+      return {
+        label: "You Contributed",
+        className: "bg-primary/10 text-primary hover:bg-primary/15",
+      };
+    }
+    return {
+      label: "Not Contributed",
+      className: "bg-rose-100 text-rose-800 hover:bg-rose-100",
+    };
   };
 
   // Calculate progress for a case
   const calculateProgress = (caseItem: any) => {
     if (!caseItem.expected_amount || caseItem.expected_amount === 0) return 0;
-    return (caseItem.actual_amount / caseItem.expected_amount) * 100;
+    return Math.max(
+      0,
+      Math.min(100, (caseItem.actual_amount / caseItem.expected_amount) * 100),
+    );
   };
 
   return (
@@ -262,8 +318,11 @@ const MemberCases = () => {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {filteredCases.map((c) => (
-                        <Card key={c.id} className={`overflow-hidden hover:shadow-md transition-shadow ${hasContributed(c.id) ? 'border-primary/30' : ''}`}>
+                        <Card key={c.id} className={`overflow-hidden hover:shadow-md transition-shadow ${hasContributed(c) ? 'border-primary/30' : ''}`}>
                           <CardHeader className="pb-2 border-b">
+                            {(() => {
+                              const contributionBadge = getContributionBadge(c);
+                              return (
                             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-medium">Case #{c.case_number}</h3>
@@ -273,11 +332,13 @@ const MemberCases = () => {
                                 <Badge variant="outline" className={getStatusColor(c.is_active, c.is_finalized)}>
                                   {getStatusText(c.is_active, c.is_finalized)}
                                 </Badge>
-                                {hasContributed(c.id) && (
-                                  <Badge variant="secondary">You Contributed</Badge>
-                                )}
+                                <Badge variant="outline" className={contributionBadge.className}>
+                                  {contributionBadge.label}
+                                </Badge>
                               </div>
                             </div>
+                              );
+                            })()}
                           </CardHeader>
                           
                           <CardContent className="pt-4">
@@ -335,9 +396,9 @@ const MemberCases = () => {
                             <div className="text-sm text-muted-foreground">
                               {c.created_at ? `Created ${format(new Date(c.created_at), "MMM d, yyyy")}` : ""}
                             </div>
-                            {hasContributed(c.id) && (
+                            {hasContributed(c) && (
                               <Badge variant="outline" className="bg-primary/10">
-                                {getContributionsForCase(c.id).length} Contribution{getContributionsForCase(c.id).length !== 1 ? 's' : ''}
+                                {getContributionsForCase(c).length} Contribution{getContributionsForCase(c).length !== 1 ? 's' : ''}
                               </Badge>
                             )}
                           </CardFooter>
