@@ -5,6 +5,13 @@ export const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
+export function buildCorsHeaders(origin?: string | null) {
+  return {
+    ...corsHeaders,
+    ...(origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : null),
+  };
+}
+
 // Helper function to create a CORS response
 export function corsResponse(body: any, status = 200) {
   return new Response(JSON.stringify(body), {

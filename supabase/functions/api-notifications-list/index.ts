@@ -1,19 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { normalizeRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
-function jsonResponse(status: number, payload: Record<string, unknown>) {
+function jsonResponse(
+  status: number,
+  payload: Record<string, unknown>,
+  origin?: string | null,
+) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...buildCorsHeaders(origin), "Content-Type": "application/json" },
   });
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" });
+  const corsHeaders = buildCorsHeaders(req.headers.get("Origin"));
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" }, req.headers.get("Origin"));
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
@@ -38,7 +43,7 @@ serve(async (req) => {
     if (userId) orClauses.push(`user_id.eq.${userId}`);
     if (memberId) orClauses.push(`member_id.eq.${memberId}`);
     if (orClauses.length === 0) {
-      return jsonResponse(200, { success: true, unread_count: 0, notifications: [] });
+      return jsonResponse(200, { success: true, unread_count: 0, notifications: [] }, req.headers.get("Origin"));
     }
 
     const baseQuery = supabase
@@ -58,14 +63,14 @@ serve(async (req) => {
       success: true,
       unread_count: unreadCount,
       notifications,
-    });
+    }, req.headers.get("Origin"));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unauthorized";
     const lowered = msg.toLowerCase();
-    if (lowered.includes("forbidden")) return jsonResponse(403, { error: "Forbidden" });
+    if (lowered.includes("forbidden")) return jsonResponse(403, { error: "Forbidden" }, req.headers.get("Origin"));
     if (lowered.includes("jwt") || lowered.includes("token") || lowered.includes("bearer")) {
-      return jsonResponse(401, { error: msg });
+      return jsonResponse(401, { error: msg }, req.headers.get("Origin"));
     }
-    return jsonResponse(500, { error: msg });
+    return jsonResponse(500, { error: msg }, req.headers.get("Origin"));
   }
 });

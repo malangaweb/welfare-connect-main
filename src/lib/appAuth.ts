@@ -1,6 +1,6 @@
-import { supabase } from "@/integrations/supabase/client";
-
 const APP_TOKEN_KEY = "app_token";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const MEMBER_SESSION_KEYS = [
   "member_user_id",
   "member_member_id",
@@ -96,21 +96,33 @@ export async function invokeWithAppToken<T = unknown>(
     throw new Error("Session expired. Please login again.");
   }
 
-  const { data, error } = await supabase.functions.invoke(functionName, {
-    body,
-    // Keep Authorization reserved for Supabase gateway auth; send app JWT in custom header.
-    headers: { "x-app-token": token },
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Missing Supabase configuration.");
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+    method: "POST",
+    credentials: "omit",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "x-app-token": token,
+    },
+    body: JSON.stringify(body ?? {}),
   });
 
-  if (error) {
-    const message = String(error.message || "");
-    const status = Number((error as any).context?.status || 0);
-    const ctx = (error as any).context;
-    const backendMessage = await readFunctionErrorMessage(ctx);
+  const responseText = await response.text().catch(() => "");
+  const responseContext = new Response(responseText, {
+    status: response.status,
+    headers: response.headers,
+  });
 
-    const combinedAuthMessage = `${message} ${backendMessage}`.toLowerCase();
+  if (!response.ok) {
+    const backendMessage = await readFunctionErrorMessage(responseContext);
+    const combinedAuthMessage = ` ${backendMessage || responseText}`.toLowerCase();
     const isSessionExpired =
-      status === 401 &&
+      response.status === 401 &&
       /session expired|jwt expired|invalid token|missing bearer token|unauthorized or invalid request|signature verification|verification failed/.test(combinedAuthMessage);
     if (isSessionExpired) {
       clearMemberSession();
@@ -118,30 +130,38 @@ export async function invokeWithAppToken<T = unknown>(
     }
 
     if (
-      status === 401 &&
+      response.status === 401 &&
       !backendMessage &&
-      /unexpected end of json input/i.test(message)
+      /unexpected end of json input/i.test(responseText)
     ) {
       throw new Error("Unauthorized request to function. Please log in again and retry.");
     }
 
     if (
-      status >= 500 &&
+      response.status >= 500 &&
       !backendMessage &&
-      /unexpected end of json input/i.test(message)
+      /unexpected end of json input/i.test(responseText)
     ) {
       throw new Error(`Server error in ${functionName}. Please try again shortly.`);
     }
 
     if (
-      /unexpected end of json input/i.test(message) ||
+      /unexpected end of json input/i.test(responseText) ||
       /unexpected end of json input/i.test(backendMessage)
     ) {
       throw new Error(`Server error in ${functionName}. The function returned an empty or invalid response.`);
     }
 
-    throw new Error(backendMessage || error.message || "Request failed");
+    throw new Error(backendMessage || responseText || "Request failed");
   }
 
-  return data as T;
+  if (!responseText) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error(`Server error in ${functionName}. The function returned an invalid JSON response.`);
+  }
 }
