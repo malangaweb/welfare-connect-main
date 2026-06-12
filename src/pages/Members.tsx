@@ -312,8 +312,8 @@ const sortMembers = (list: Member[], sortConfig: SortConfig): Member[] => {
 
 const Members = () => {
   const navigate = useNavigate();
-  const { canManageFinances } = useAuth();
-  const canBulkDeduct = canManageFinances();
+  const { isAdmin } = useAuth();
+  const canBulkDeduct = isAdmin();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);

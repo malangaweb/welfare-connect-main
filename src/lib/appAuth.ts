@@ -74,7 +74,13 @@ async function readFunctionErrorMessage(context: unknown): Promise<string> {
 
     try {
       const payload = JSON.parse(rawText) as Record<string, unknown>;
-      const message = String(payload?.error || payload?.message || "").trim();
+      const errorValue = payload?.error || payload?.message;
+      const message =
+        typeof errorValue === "string"
+          ? errorValue.trim()
+          : errorValue && typeof errorValue === "object"
+            ? JSON.stringify(errorValue)
+            : String(errorValue || "").trim();
       if (message) return message;
     } catch {
       // Non-JSON payloads can still carry useful text (e.g. gateway/internal errors).
