@@ -513,6 +513,12 @@ const Members = () => {
       if (!res.ok) {
         const errMsg = typeof parsed?.error === 'string'
           ? parsed.error
+          : typeof parsed?.message === 'string'
+            ? parsed.message
+            : typeof parsed?.raw === 'string'
+              ? parsed.raw
+              : typeof parsed?.upstream_body === 'string'
+                ? parsed.upstream_body
           : `Deduction request failed (${res.status})`;
         throw new Error(errMsg);
       }

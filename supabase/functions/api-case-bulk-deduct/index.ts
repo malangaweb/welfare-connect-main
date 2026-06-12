@@ -58,6 +58,26 @@ serve(async (req) => {
       parsed = { raw: text };
     }
 
+    if (!res.ok) {
+      const upstreamError =
+        (parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+          (String((parsed as Record<string, unknown>).error || "").trim() ||
+            String((parsed as Record<string, unknown>).message || "").trim())) ||
+        text.trim() ||
+        `Upstream bulk deduct failed (${res.status})`;
+
+      return jsonResponse(
+        res.status,
+        {
+          success: false,
+          error: upstreamError,
+          upstream_status: res.status,
+          upstream_body: text,
+        },
+        req.headers.get("Origin"),
+      );
+    }
+
     return new Response(JSON.stringify(parsed), {
       status: res.status,
       headers: { ...buildCorsHeaders(req.headers.get("Origin")), "Content-Type": "application/json" },
