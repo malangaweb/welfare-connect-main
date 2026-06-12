@@ -16,6 +16,7 @@ function jsonResponse(
 
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req.headers.get("Origin"));
+  let resolvedRole = "unknown";
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -26,6 +27,7 @@ serve(async (req) => {
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
+    resolvedRole = String(claims.role || "").toLowerCase().trim() || "unknown";
     requireFinanceRole(claims.role);
 
     const mlgUrl = Deno.env.get("MLG_BULK_DEDUCT_URL");
@@ -86,7 +88,15 @@ serve(async (req) => {
     const msg = e instanceof Error ? e.message : "Error";
     const lower = msg.toLowerCase();
     if (msg === "Forbidden") {
-      return jsonResponse(403, { error: "Forbidden" }, req.headers.get("Origin"));
+      return jsonResponse(
+        403,
+        {
+          error: "Forbidden",
+          role: resolvedRole,
+          allowed_roles: ["super_admin", "treasurer"],
+        },
+        req.headers.get("Origin"),
+      );
     }
     if (
       lower.includes("missing bearer token") ||

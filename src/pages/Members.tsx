@@ -97,6 +97,25 @@ type DeductPreviewRow = {
   preview_status: DeductPreviewStatus;
 };
 
+function toErrorMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value instanceof Error) return value.message || fallback;
+  if (Array.isArray(value)) {
+    const parts = value.map((item) => toErrorMessage(item, '')).filter(Boolean);
+    if (parts.length > 0) return parts.join(', ');
+  }
+  if (value && typeof value === 'object') {
+    try {
+      const json = JSON.stringify(value);
+      if (json && json !== '{}') return json;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer, showBulkSelect, selected, onToggleSelect }: {
   member: Member,
   index: number,
@@ -495,44 +514,20 @@ const Members = () => {
     setDeductSubmitting(true);
     setDeductInlineMessage(`Submitting deduction for ${memberIdsToSubmit.length.toLocaleString()} member(s)...`);
     try {
-      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api-case-bulk-deduct`;
-      const res = await fetch(fnUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          case_id: deductCaseId,
-          member_ids: memberIdsToSubmit,
-        }),
-      });
-
-      const parsed = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const errMsg = typeof parsed?.error === 'string'
-          ? parsed.error
-          : typeof parsed?.message === 'string'
-            ? parsed.message
-            : typeof parsed?.raw === 'string'
-              ? parsed.raw
-              : typeof parsed?.upstream_body === 'string'
-                ? parsed.upstream_body
-          : `Deduction request failed (${res.status})`;
-        throw new Error(errMsg);
-      }
-
-      const d = parsed as {
+      const d = await invokeWithAppToken<{
         success?: boolean;
         error?: string;
         deducted?: string[];
         skipped_already_paid?: string[];
         skipped_ineligible?: unknown[];
         skipped_insufficient?: unknown[];
-      };
+        required_amount?: number;
+      }>('api-case-bulk-deduct', {
+        case_id: deductCaseId,
+        member_ids: memberIdsToSubmit,
+      });
       if (!d?.success) {
-        throw new Error(d?.error || 'Deduction failed');
+        throw new Error(toErrorMessage(d?.error, 'Deduction failed'));
       }
       const deductedCount = d.deducted?.length ?? 0;
       const toastVariant = deductedCount > 0 ? undefined : 'destructive';
