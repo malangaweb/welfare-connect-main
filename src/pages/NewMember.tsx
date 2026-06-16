@@ -9,30 +9,47 @@ import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/lib/types';
 import { normalizeMemberNumber } from '@/lib/memberNumber';
 import { createManagedUser } from '@/lib/adminUsersApi';
+import { logSystemEvent } from '@/lib/systemLog';
+import { invokeWithAppToken } from '@/lib/appAuth';
 
 // Function to send SMS
 const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) => {
   try {
-    const response = await fetch('https://siha.javanet.co.ke/send_notification.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const { error } = await invokeWithAppToken('send-sms', {
+      phoneNumber,
+      message: [
+        `Malanga Welfare: Welcome ${name}.`,
+        `Your member number is ${memberNumber}.`,
+      ].join(' '),
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    await logSystemEvent({
+      action: 'WELCOME_SMS_SENT',
+      tableName: 'members',
+      status: 'info',
+      metadata: {
         name,
         phone_number: phoneNumber,
         member_number: memberNumber,
-      }),
+      },
     });
-
-    if (!response.ok) {
-      console.error('Failed to send SMS:', response.statusText);
-      return;
-    }
-
-    const result = await response.json();
   } catch (error) {
     console.error('Error sending SMS:', error);
+    await logSystemEvent({
+      action: 'WELCOME_SMS_FAILED',
+      tableName: 'members',
+      status: 'warning',
+      metadata: {
+        name,
+        phone_number: phoneNumber,
+        member_number: memberNumber,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
   }
 };
 
@@ -138,6 +155,18 @@ const NewMember = () => {
       if (!memberData || !memberData.success) {
         throw new Error(memberData?.message || 'Failed to create member: No data returned');
       }
+
+      await logSystemEvent({
+        action: 'MEMBER_CREATED',
+        tableName: 'members',
+        status: 'info',
+        recordId: memberData.id || null,
+        metadata: {
+          member_number: normalizedMemberNumber,
+          name: data.name,
+          residence: residenceData.name,
+        },
+      });
 
       // Send welcome SMS if phone number is provided
       if (data.phoneNumber && data.name) {

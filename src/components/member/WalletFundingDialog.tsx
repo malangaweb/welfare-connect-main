@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Wallet, Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { getAppToken } from "@/lib/appAuth";
+import { invokeWithAppToken } from "@/lib/appAuth";
 
 interface WalletFundingDialogProps {
   memberId: string;
@@ -38,33 +38,6 @@ const WalletFundingDialog = ({
   onFundingSuccess,
   mode = "stk",
 }: WalletFundingDialogProps) => {
-  const extractErrorMessage = (payload: unknown): string => {
-    if (!payload) return "";
-    if (typeof payload === "string") return payload.trim();
-    if (typeof payload === "object") {
-      const obj = payload as Record<string, unknown>;
-      const direct =
-        (typeof obj.error === "string" && obj.error) ||
-        (typeof obj.message === "string" && obj.message) ||
-        "";
-      if (direct.trim()) return direct.trim();
-      if (obj.error && typeof obj.error === "object") {
-        const nested = obj.error as Record<string, unknown>;
-        const nestedMsg =
-          (typeof nested.message === "string" && nested.message) ||
-          (typeof nested.error === "string" && nested.error) ||
-          "";
-        if (nestedMsg.trim()) return nestedMsg.trim();
-      }
-      try {
-        return JSON.stringify(obj);
-      } catch {
-        return "";
-      }
-    }
-    return "";
-  };
-
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [amount, setAmount] = useState("");
@@ -104,34 +77,13 @@ const WalletFundingDialog = ({
           throw new Error("Enter a valid M-Pesa phone number.");
         }
 
-        const appToken = getAppToken();
-        if (!appToken) {
-          throw new Error("Session expired. Please login again.");
-        }
-
-        const endpoint = "https://javanet.co.ke/mlg/stk_push.php";
-
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-app-token": appToken,
-            Authorization: `Bearer ${appToken}`,
-          },
-          body: JSON.stringify({
-            memberId,
-            phone: normalizedPhone,
-            amount: numAmount,
-            accountReference: effectiveAccountRef,
-            transactionDesc: `Wallet top-up for ${memberRef || memberId}`,
-          }),
+        await invokeWithAppToken("api-stk-push", {
+          memberId,
+          phone: normalizedPhone,
+          amount: numAmount,
+          accountReference: effectiveAccountRef,
+          transactionDesc: `Wallet top-up for ${memberRef || memberId}`,
         });
-
-        const result = await response.json().catch(() => null);
-        if (!response.ok) {
-          const message = extractErrorMessage(result) || `Request failed with status ${response.status}`;
-          throw new Error(message);
-        }
 
         toast.success("STK Push sent", {
           description: `Prompt sent to ${normalizedPhone}. Complete payment with M-Pesa PIN.`,

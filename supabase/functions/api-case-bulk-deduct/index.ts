@@ -258,7 +258,7 @@ serve(async (req) => {
     if (!res.ok) {
       if (isVercelDeny(res.status, parsed, text)) {
         const fallback = await runEdgeBulkDeduct(case_id, member_ids);
-        return jsonResponse(200, { ...fallback, upstream_fallback: "vercel_denied_php" }, req.headers.get("Origin"));
+        return jsonResponse(200, { ...fallback, upstream_fallback: "vercel_denied_legacy" }, req.headers.get("Origin"));
       }
 
       const upstreamError =

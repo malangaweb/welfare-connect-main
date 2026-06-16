@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
-import { getAppToken, invokeWithAppToken } from "@/lib/appAuth";
+import { invokeWithAppToken } from "@/lib/appAuth";
 import { walletRowDelta } from "@/lib/walletEffect";
 
 type ActiveCaseSummary = {
@@ -416,61 +416,13 @@ const MemberDashboard = () => {
 
     try {
       setIsInitiatingStk(true);
-      const appToken = getAppToken();
-      if (!appToken) {
-        throw new Error("Session expired. Please login again.");
-      }
-
-      const endpoint = "https://javanet.co.ke/mlg/stk_push.php";
-
-      const extractErrorMessage = (payload: unknown): string => {
-        if (!payload) return "";
-        if (typeof payload === "string") return payload.trim();
-        if (typeof payload === "object") {
-          const obj = payload as Record<string, unknown>;
-          const direct =
-            (typeof obj.error === "string" && obj.error) ||
-            (typeof obj.message === "string" && obj.message) ||
-            "";
-          if (direct.trim()) return direct.trim();
-          if (obj.error && typeof obj.error === "object") {
-            const nested = obj.error as Record<string, unknown>;
-            const nestedMsg =
-              (typeof nested.message === "string" && nested.message) ||
-              (typeof nested.error === "string" && nested.error) ||
-              "";
-            if (nestedMsg.trim()) return nestedMsg.trim();
-          }
-          try {
-            return JSON.stringify(obj);
-          } catch {
-            return "";
-          }
-        }
-        return "";
-      };
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-app-token": appToken,
-          Authorization: `Bearer ${appToken}`,
-        },
-        body: JSON.stringify({
-          memberId: member.id,
-          phone,
-          amount: parsedAmount,
-          accountReference: stkReference || member.member_number || member.id,
-          transactionDesc: `Wallet top-up for ${member.member_number || member.id}`,
-        }),
+      await invokeWithAppToken("api-stk-push", {
+        memberId: member.id,
+        phone,
+        amount: parsedAmount,
+        accountReference: stkReference || member.member_number || member.id,
+        transactionDesc: `Wallet top-up for ${member.member_number || member.id}`,
       });
-
-      const result = await response.json().catch(() => null);
-      if (!response.ok) {
-        const message = extractErrorMessage(result) || `Request failed with status ${response.status}`;
-        throw new Error(message);
-      }
 
       toast({
         title: "STK Push sent",

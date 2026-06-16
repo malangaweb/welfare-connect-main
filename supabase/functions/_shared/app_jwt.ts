@@ -1,4 +1,4 @@
-import { jwtVerify } from "https://esm.sh/jose@5.9.6";
+import { jwtVerify, SignJWT } from "https://esm.sh/jose@5.9.6";
 
 export type AppJwtPayload = {
   sub?: string;
@@ -40,6 +40,19 @@ export async function verifyAppJwtFromRequest(req: Request): Promise<AppJwtPaylo
 
   const verified = await jwtVerify(token, new TextEncoder().encode(appJwtSecret));
   return verified.payload as AppJwtPayload;
+}
+
+export async function signAppJwt(payload: AppJwtPayload, expiresIn: string = "5m"): Promise<string> {
+  const appJwtSecret = Deno.env.get("APP_JWT_SECRET");
+  if (!appJwtSecret) {
+    throw new Error("APP_JWT_SECRET is not configured");
+  }
+
+  return await new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(new TextEncoder().encode(appJwtSecret));
 }
 
 export function requirePrivilegedRole(role: string | undefined): void {

@@ -11,6 +11,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { mapDbMemberToMember } from '@/lib/db-types';
 import { persistentCache } from '@/lib/cache';
 import { DEPENDANT_COLUMNS, MEMBER_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
+import { invokeWithAppToken } from '@/lib/appAuth';
 
 type CaseInsert = Database["public"]["Tables"]["cases"]["Insert"];
 
@@ -207,11 +208,9 @@ const NewCase = () => {
             `Deadline: ${deadline}.`,
           ].join(' ');
 
-          await supabase.functions.invoke('send-sms', {
-            body: {
-              phoneNumber: affectedMember.phoneNumber,
-              message,
-            },
+          await invokeWithAppToken('send-sms', {
+            phoneNumber: affectedMember.phoneNumber,
+            message,
           });
         }
       } catch (smsError) {

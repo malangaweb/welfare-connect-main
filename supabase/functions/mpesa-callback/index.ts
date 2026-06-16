@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { signAppJwt } from "../_shared/app_jwt.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -352,14 +353,20 @@ serve(async (req) => {
 
       // Send SMS notification (if configured)
       try {
-        await supabase.functions.invoke('send-sms', {
-          body: {
+        const appToken = await signAppJwt({ sub: 'mpesa-callback', role: 'super_admin' }, '5m')
+        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-sms`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-app-token': appToken,
+          },
+          body: JSON.stringify({
             phoneNumber: PhoneNumber,
             message: `Payment received: KES ${Amount}. M-Pesa Ref: ${normalizedReceipt}. Thank you!`,
-          },
+          }),
         })
       } catch (smsError) {
-        console.error('SMS notification failed:', smsError.message)
+        console.error('SMS notification failed:', smsError instanceof Error ? smsError.message : String(smsError))
       }
 
     } else {
