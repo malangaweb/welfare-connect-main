@@ -146,7 +146,7 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
           />
         </TableCell>
       )}
-      <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">#{memberNumber}</TableCell>
+      <TableCell className="w-[44px] md:w-[52px] font-bold text-slate-900 py-3 px-1 md:px-1.5 text-xs md:text-sm whitespace-nowrap">#{memberNumber}</TableCell>
       <TableCell className="font-bold text-slate-900 py-3 px-2 md:px-4">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <div className="h-7 w-7 md:h-8 md:w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
@@ -154,9 +154,6 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
           </div>
           <span className="truncate max-w-[120px] md:max-w-none">{memberName}</span>
         </div>
-      </TableCell>
-      <TableCell className="text-slate-600 font-medium text-xs md:text-sm py-3 px-2 md:px-4 whitespace-nowrap">
-        {member.gender ? member.gender.charAt(0).toUpperCase() + member.gender.slice(1) : '-'}
       </TableCell>
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap">
         {member.phoneNumber ? (
@@ -171,22 +168,25 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
           <span className="text-slate-400 text-xs md:text-sm italic">N/A</span>
         )}
       </TableCell>
-      <TableCell className="py-3 px-2 md:px-4">
-        <div className="flex flex-wrap gap-1">
-          {member.emailAddress && (
-            <Badge variant="secondary" className="text-[10px] md:text-xs rounded-full font-medium bg-slate-100 text-slate-700 hover:bg-slate-100 border-0">
-              Email
-            </Badge>
-          )}
-          {member.residence && (
-            <Badge variant="secondary" className="text-[10px] md:text-xs rounded-full font-medium bg-blue-50 text-blue-700 hover:bg-blue-50 border-0 truncate max-w-[80px] md:max-w-none">
-              {member.residence.split(' ')[0]}
-            </Badge>
-          )}
-        </div>
-      </TableCell>
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap">
         <MemberStatusBadge member={member} />
+      </TableCell>
+      <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
+        {(() => {
+          const count = Number(member.unpaidCaseContributionCount || 0);
+          const countClass =
+            count === 0
+              ? 'bg-green-600 text-white border-green-600'
+              : count <= 2
+                ? 'bg-amber-500 text-white border-amber-500'
+                : 'bg-red-600 text-white border-red-600';
+
+          return (
+            <span className={`inline-flex min-w-7 items-center justify-center rounded-full border px-2 py-0.5 text-xs font-semibold ${countClass}`}>
+              {count}
+            </span>
+          );
+        })()}
       </TableCell>
       <TableCell className="py-3 px-2 md:px-4 text-right whitespace-nowrap">
         <span
@@ -760,7 +760,43 @@ const Members = () => {
           dependants: []
         };
       });
-      setMembers(membersWithBalances);
+      const membersWithContributionCounts = await Promise.all(
+        membersWithBalances.map(async (member) => {
+          const { data, error } = await supabase.rpc('get_member_finalized_unpaid_case_count', {
+            p_member_id: member.id,
+          });
+
+          if (error) {
+            console.warn(`Finalized unpaid count RPC unavailable for member ${member.id}, falling back to obligation list:`, error);
+            const { data: fallbackData, error: fallbackError } = await supabase.rpc('get_member_unpaid_case_obligations', {
+              p_member_id: member.id,
+            });
+
+            if (fallbackError) {
+              console.error(`Failed to load unpaid contribution count for member ${member.id}:`, fallbackError);
+              return {
+                ...member,
+                unpaidCaseContributionCount: 0,
+              };
+            }
+
+            const finalizedUnpaidCases = Array.isArray(fallbackData)
+              ? fallbackData.filter((row: any) => String(row?.case_status || '').toLowerCase() === 'closed')
+              : [];
+
+            return {
+              ...member,
+              unpaidCaseContributionCount: finalizedUnpaidCases.length,
+            };
+          }
+
+          return {
+            ...member,
+            unpaidCaseContributionCount: Number(data || 0),
+          };
+        })
+      );
+      setMembers(membersWithContributionCounts);
 
       // Fetch locations from residences table
       if (locations.length === 0) {
@@ -1654,7 +1690,7 @@ const Members = () => {
               </div>
             ) : (
               <div className="min-w-full">
-                <Table>
+                <Table className="min-w-max">
                   <TableHeader className="bg-slate-50 border-b border-slate-100">
                     <TableRow className="hover:bg-transparent">
                       {canBulkDeduct && (
@@ -1673,9 +1709,9 @@ const Members = () => {
                           />
                         </TableHead>
                       )}
-                      <TableHead className="font-bold text-slate-900 cursor-pointer hover:text-primary transition-colors h-12 md:h-14 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap" onClick={() => setSortConfig({...sortConfig, key: 'memberNumber', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})}>
+                      <TableHead className="w-[44px] md:w-[52px] font-bold text-slate-900 cursor-pointer hover:text-primary transition-colors h-12 md:h-14 px-1 md:px-1.5 text-xs md:text-sm whitespace-nowrap" onClick={() => setSortConfig({...sortConfig, key: 'memberNumber', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})}>
                         <div className="flex items-center gap-1 md:gap-2">
-                          Member No
+                          Mem No.
                           {sortConfig.key === 'memberNumber' ? (
                             <ArrowUpDown className={`h-3 w-3 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
                           ) : (
@@ -1693,10 +1729,9 @@ const Members = () => {
                           )}
                         </div>
                       </TableHead>
-                      <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Members</TableHead>
                       <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Phone</TableHead>
-                      <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Tag</TableHead>
-                      <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Membership</TableHead>
+                      <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Status</TableHead>
+                      <TableHead className="w-[52px] md:w-[64px] font-bold text-slate-900 px-2 md:px-3 text-xs md:text-sm text-center whitespace-nowrap">Unpaid</TableHead>
                       <TableHead className="font-bold text-slate-900 text-right px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Wallet</TableHead>
                       <TableHead className="font-bold text-slate-900 w-[80px] md:w-[100px] px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Actions</TableHead>
                     </TableRow>

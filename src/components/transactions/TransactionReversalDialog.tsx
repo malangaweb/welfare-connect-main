@@ -68,11 +68,12 @@ export function TransactionReversalDialog({
             throw new Error('Session expired. Please login again.')
           }
 
-          const configuredBaseUrl = String(import.meta.env.VITE_MLG_API_BASE_URL || '').trim()
-          const normalizedBaseUrl = configuredBaseUrl.replace(/\/+$/, '')
-          const endpoint = normalizedBaseUrl
-            ? `${normalizedBaseUrl}/mpesa_reversal.php`
-            : '/mlg/mpesa_reversal.php'
+          const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '')
+          if (!supabaseUrl) {
+            throw new Error('Supabase URL is not configured')
+          }
+
+          const endpoint = `${supabaseUrl}/functions/v1/mpesa-b2c`
 
           const reversalResp = await fetch(endpoint, {
             method: 'POST',
@@ -81,10 +82,11 @@ export function TransactionReversalDialog({
               'x-app-token': appToken,
             },
             body: JSON.stringify({
-              transactionId: transaction.id,
-              mpesaReceipt: transaction.mpesaReference || null,
               amount: Math.abs(transaction.amount),
+              memberId: transaction.memberId,
               reason: `Reversal: ${reason}`,
+              isReversal: true,
+              transactionId: transaction.id,
             }),
           })
 

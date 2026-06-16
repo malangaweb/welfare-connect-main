@@ -17,6 +17,10 @@ const DashboardLayout = ({
 }: DashboardLayoutProps) => {
   const isMobile = useIsMobile();
   const location = useLocation();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('dashboard:sidebar-collapsed') === 'true';
+  });
   // Mobile sidebar should always start hidden and only open from the menu button.
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -24,6 +28,10 @@ const DashboardLayout = ({
   useEffect(() => {
     if (!isMobile) setSidebarOpen(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    localStorage.setItem('dashboard:sidebar-collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   // Also close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -33,8 +41,13 @@ const DashboardLayout = ({
   return (
     <div className="min-h-screen bg-slate-50 flex overflow-hidden">
       {/* Desktop Sidebar - Hidden on mobile */}
-      <div className="hidden md:flex md:w-56 lg:w-64 md:flex-shrink-0">
-        <Sidebar sidebarItems={customLinks} />
+      <div className={`hidden md:flex md:flex-shrink-0 transition-all duration-200 ${sidebarCollapsed ? 'md:w-16 lg:w-16' : 'md:w-56 lg:w-64'}`}>
+        <Sidebar
+          sidebarItems={customLinks}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+          onLogout={customLogout}
+        />
       </div>
 
       {/* Mobile Sidebar - Hidden by default, shown via menu button */}
@@ -43,7 +56,7 @@ const DashboardLayout = ({
              onClick={() => setSidebarOpen(false)}>
           <div className="fixed inset-y-0 left-0 w-56 z-50 bg-white overflow-y-auto"
                onClick={(e) => e.stopPropagation()}>
-            <Sidebar sidebarItems={customLinks} />
+            <Sidebar sidebarItems={customLinks} onLogout={customLogout} />
           </div>
         </div>
       )}

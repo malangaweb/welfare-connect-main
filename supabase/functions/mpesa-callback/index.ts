@@ -366,27 +366,56 @@ serve(async (req) => {
       // Payment failed
       console.log('❌ Payment failed:', ResultDesc)
 
-      const { error: updateError } = await supabase
+      const { data: failedTransaction } = await supabase
         .from('transactions')
-        .update({
+        .select('id')
+        .eq('reference', CheckoutRequestID)
+        .maybeSingle()
+
+      if (failedTransaction) {
+        const { error: updateError } = await supabase
+          .from('transactions')
+          .update({
+            status: 'failed',
+            metadata: {
+              mpesa_code: ResultCode,
+              mpesa_desc: ResultDesc,
+              callback_time: new Date().toISOString(),
+            },
+          })
+          .eq('id', failedTransaction.id)
+
+        if (updateError) {
+          console.error('Error updating failed transaction:', updateError.message)
+        }
+      } else {
+        await supabase.from('wrong_mpesa_transactions').insert({
+          mpesa_receipt_number: normalizedReceipt || null,
+          phone_number: normalizedPhone || null,
+          amount: Number(Amount || 0) || null,
+          sender_name: AccountReference || 'STK Push',
+          transaction_date: parsedTransactionDate.toISOString(),
           status: 'failed',
+          payment_method: 'mpesa',
+          source: 'stk_push',
+          reference: CheckoutRequestID || null,
           metadata: {
+            webhook_source: 'stk_push',
+            checkout_request_id: CheckoutRequestID,
+            merchant_request_id: MerchantRequestID,
             mpesa_code: ResultCode,
             mpesa_desc: ResultDesc,
-            callback_time: new Date().toISOString(),
           },
+          notes: 'STK callback failed and no matching pending transaction was found',
         })
-        .eq('reference', CheckoutRequestID)
-
-      if (updateError) {
-        console.error('Error updating failed transaction:', updateError.message)
       }
 
       // Log failed payment
       await supabase.from('audit_logs').insert({
         action: 'PAYMENT_FAILED',
         table_name: 'transactions',
-        status: 'failed',
+        record_id: failedTransaction?.id ?? null,
+        status: failedTransaction ? 'failed' : 'warning',
         new_values: {
           checkout_request_id: CheckoutRequestID,
           mpesa_code: ResultCode,

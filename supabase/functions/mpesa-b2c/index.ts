@@ -25,18 +25,18 @@ serve(async (req) => {
   }
 
   try {
-    const { 
-      phone, 
-      amount, 
-      memberId, 
-      reason, 
+    const {
+      phone,
+      amount,
+      memberId,
+      reason,
       isReversal = false,
-      transactionId 
+      transactionId
     } = await req.json()
 
     // Validate required fields
-    if (!phone || !amount || !reason) {
-      throw new Error('Missing required fields: phone, amount, reason')
+    if (!amount || !reason) {
+      throw new Error('Missing required fields: amount, reason')
     }
 
     // Initialize Supabase client
@@ -78,8 +78,28 @@ serve(async (req) => {
     // Get access token
     const accessToken = await getMpesaToken(mpesaConfig)
 
+    let resolvedPhone = String(phone || '').trim()
+
+    if (!resolvedPhone && memberId) {
+      const { data: member, error: memberError } = await supabase
+        .from('members')
+        .select('phone_number')
+        .eq('id', memberId)
+        .single()
+
+      if (memberError) {
+        throw memberError
+      }
+
+      resolvedPhone = String(member?.phone_number || '').trim()
+    }
+
+    if (!resolvedPhone) {
+      throw new Error('Member phone number is required')
+    }
+
     // Format phone number
-    const formattedPhone = formatPhoneNumber(phone)
+    const formattedPhone = formatPhoneNumber(resolvedPhone)
 
     // Determine CommandID based on payment type
     const commandID = isReversal ? 'BusinessPayment' : 'SalaryPayment'

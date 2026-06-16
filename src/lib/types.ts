@@ -58,6 +58,7 @@ export interface Member {
   walletBalance: number;
   isActive: boolean;
   status: 'probation' | 'active' | 'inactive' | 'deceased';
+  unpaidCaseContributionCount?: number;
   pinHash?: string;
   pinAttempts?: number;
   pinLockedUntil?: Date;
