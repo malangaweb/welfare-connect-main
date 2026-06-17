@@ -15,17 +15,13 @@ import { invokeWithAppToken } from '@/lib/appAuth';
 // Function to send SMS
 const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) => {
   try {
-    const { error } = await invokeWithAppToken('send-sms', {
+    await invokeWithAppToken('send-sms', {
       phoneNumber,
       message: [
         `Malanga Welfare: Welcome ${name}.`,
         `Your member number is ${memberNumber}.`,
       ].join(' '),
     });
-
-    if (error) {
-      throw error;
-    }
 
     await logSystemEvent({
       action: 'WELCOME_SMS_SENT',

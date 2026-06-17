@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown, Upload, Pencil, Settings, Trash2, ArrowRight, Briefcase } from 'lucide-react';
+import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown, Upload, Pencil, Settings, Trash2, ArrowRight, Briefcase, MessageSquare } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +54,8 @@ import {
 import type { Database } from '@/integrations/supabase/types';
 import { loadXlsx } from '@/lib/reportExportLibs';
 import { logSystemEvent } from '@/lib/systemLog';
+import { SmsMessageComposer } from '@/components/messages/SmsMessageComposer';
+import type { SmsRecipient } from '@/lib/smsMessaging';
 
 const getMemberNumberValue = (memberNumber?: string) => {
   if (!memberNumber) return Number.MAX_SAFE_INTEGER;
@@ -116,7 +118,7 @@ function toErrorMessage(value: unknown, fallback: string): string {
   return fallback;
 }
 
-const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer, showBulkSelect, selected, onToggleSelect }: {
+const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer, onMessage, showBulkSelect, selected, onToggleSelect }: {
   member: Member,
   index: number,
   navigate: (path: string) => void,
@@ -124,6 +126,7 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
   onManage: (m: Member) => void
   onDelete: (m: Member) => void
   onTransfer: (m: Member) => void
+  onMessage: (m: Member) => void
   showBulkSelect?: boolean
   selected?: boolean
   onToggleSelect?: (memberId: string, checked: boolean) => void
@@ -171,7 +174,7 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap">
         <MemberStatusBadge member={member} />
       </TableCell>
-      <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
+<TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
         {(() => {
           const count = Number(member.unpaidCaseContributionCount || 0);
           const countClass =
@@ -184,6 +187,17 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
           return (
             <span className={`inline-flex min-w-7 items-center justify-center rounded-full border px-2 py-0.5 text-xs font-semibold ${countClass}`}>
               {count}
+            </span>
+          );
+        })()}
+      </TableCell>
+      <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
+        {(() => {
+          const count = Number(member.unpaidCaseContributionCount || 0);
+          const due = count * 120;
+          return (
+            <span className="text-xs md:text-sm font-semibold text-slate-900">
+              KES {due.toLocaleString()}
             </span>
           );
         })()}
@@ -232,6 +246,21 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
               </TooltipTrigger>
               <TooltipContent>
                 <p>Manage</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 md:h-8 md:w-8 hover:bg-primary/10 text-primary"
+                  onClick={() => onMessage(member)}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Message</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -335,6 +364,10 @@ const Members = () => {
   });
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferFromMember, setTransferFromMember] = useState<Member | null>(null);
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageRecipients, setMessageRecipients] = useState<SmsRecipient[]>([]);
+  const [messageAudienceLabel, setMessageAudienceLabel] = useState('');
+  const [messageSending, setMessageSending] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const [deductCases, setDeductCases] = useState<{ id: string; case_number: string; contribution_per_member: number }[]>([]);
@@ -384,6 +417,105 @@ const Members = () => {
       else next.delete(memberId);
       return next;
     });
+  };
+
+  const memberToSmsRecipient = (member: Member): SmsRecipient => ({
+    id: member.id,
+    name: member.name,
+    memberNumber: member.memberNumber,
+    phoneNumber: String(member.phoneNumber || '').trim(),
+    residence: member.residence,
+    status: member.status,
+  });
+
+  const buildSmsRecipientsFromMembers = (memberList: Member[]): SmsRecipient[] => memberList
+    .map(memberToSmsRecipient)
+    .filter((recipient) => recipient.phoneNumber.length > 0);
+
+  const fetchSelectedMembersForMessaging = async (): Promise<Member[]> => {
+    const selectedIds = Array.from(selectedMemberIds);
+    const memberRows: any[] = [];
+
+    for (let i = 0; i < selectedIds.length; i += 200) {
+      const chunk = selectedIds.slice(i, i + 200);
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, member_number, name, phone_number, residence, status, is_active')
+        .in('id', chunk);
+      if (error) throw error;
+      memberRows.push(...(data || []));
+    }
+
+    return memberRows.map((row) => ({
+      ...mapDbMemberToMember(row),
+      walletBalance: Number(row.wallet_balance) || 0,
+      dependants: [],
+    }));
+  };
+
+  const openSelectedMessageDialog = async () => {
+    if (selectedMemberIds.size === 0) return;
+    try {
+      const selectedMembers = await fetchSelectedMembersForMessaging();
+      const recipients = buildSmsRecipientsFromMembers(selectedMembers);
+      setMessageRecipients(recipients);
+      setMessageAudienceLabel(`${selectedMemberIds.size} selected member${selectedMemberIds.size === 1 ? '' : 's'}`);
+      setMessageDialogOpen(true);
+      if (recipients.length === 0) {
+        toast({
+          title: 'No phone numbers found',
+          description: 'The selected members do not have phone numbers on file.',
+        });
+      }
+    } catch (error) {
+      console.error('Error preparing SMS recipients:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Could not prepare message recipients',
+        description: error instanceof Error ? error.message : 'Try again.',
+      });
+    }
+  };
+
+  const openMemberMessageDialog = (member: Member) => {
+    const recipients = buildSmsRecipientsFromMembers([member]);
+    setMessageRecipients(recipients);
+    setMessageAudienceLabel(`#${member.memberNumber} ${member.name}`);
+    setMessageDialogOpen(true);
+    if (recipients.length === 0) {
+      toast({
+        title: 'No phone number found',
+        description: 'This member does not have a phone number on file.',
+      });
+    }
+  };
+
+  const handleSendSms = async (payload: { triggerKey: string; message: string; recipients: SmsRecipient[] }) => {
+    setMessageSending(true);
+    try {
+      const result = await invokeWithAppToken<{ sent: number; failed: number; recipients: number }>('send-sms', {
+        recipients: payload.recipients,
+        message: payload.message,
+        triggerKey: payload.triggerKey,
+        source: 'members_page',
+      });
+
+      toast({
+        title: result.failed ? 'SMS partially sent' : 'SMS sent',
+        description: `${result.sent.toLocaleString()} of ${result.recipients.toLocaleString()} recipient(s) accepted.`,
+        variant: result.failed ? 'destructive' : 'default',
+      });
+      setMessageDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error sending SMS:', error);
+      toast({
+        variant: 'destructive',
+        title: 'SMS failed',
+        description: error.message || 'The SMS provider rejected the message.',
+      });
+    } finally {
+      setMessageSending(false);
+    }
   };
 
   const buildMemberIdFilterQuery = () => {
@@ -1663,6 +1795,10 @@ const Members = () => {
               <Button type="button" variant="outline" size="sm" onClick={() => setSelectedMemberIds(new Set())}>
                 Clear selection
               </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void openSelectedMessageDialog()}>
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Message
+              </Button>
               <Button type="button" size="sm" onClick={() => void openDeductDialog()}>
                 <Briefcase className="h-4 w-4 mr-2" />
                 Deduct to Case
@@ -1732,6 +1868,7 @@ const Members = () => {
                       <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Phone</TableHead>
                       <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Status</TableHead>
                       <TableHead className="w-[52px] md:w-[64px] font-bold text-slate-900 px-2 md:px-3 text-xs md:text-sm text-center whitespace-nowrap">Unpaid</TableHead>
+                      <TableHead className="w-[52px] md:w-[64px] font-bold text-slate-900 px-2 md:px-3 text-xs md:text-sm text-center whitespace-nowrap">Due</TableHead>
                       <TableHead className="font-bold text-slate-900 text-right px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Wallet</TableHead>
                       <TableHead className="font-bold text-slate-900 w-[80px] md:w-[100px] px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Actions</TableHead>
                     </TableRow>
@@ -1753,6 +1890,7 @@ const Members = () => {
                           setManageMemberOpen(true);
                         }}
                         onTransfer={handleTransferFromMember}
+                        onMessage={openMemberMessageDialog}
                         showBulkSelect={canBulkDeduct}
                         selected={selectedMemberIds.has(member.id)}
                         onToggleSelect={toggleMemberSelected}
@@ -1881,6 +2019,18 @@ const Members = () => {
               {deductSubmitting ? 'Working…' : 'Run deduction'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <SmsMessageComposer
+            recipients={messageRecipients}
+            audienceLabel={messageAudienceLabel}
+            audienceDescription="Choose an SMS trigger configured on the SMS settings tab, or write a custom message."
+            onSend={handleSendSms}
+            isSending={messageSending}
+          />
         </DialogContent>
       </Dialog>
 

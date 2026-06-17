@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Save, Edit, X } from 'lucide-react';
+import { RefreshCw, Save, Edit, X, MessageSquare } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ResidenceForm from '@/components/forms/ResidenceForm';
+import { SmsMessageComposer } from '@/components/messages/SmsMessageComposer';
+import type { SmsRecipient } from '@/lib/smsMessaging';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -47,6 +51,29 @@ interface SettingsData {
   has_mpesa_initiator_password?: boolean;
 }
 
+type SmsSummary = {
+  sent: number;
+  delivered: number;
+  failed: number;
+  balance: number | null;
+  recent: Array<{
+    action: string;
+    status: string | null;
+    timestamp: string;
+    metadata?: Record<string, unknown> | null;
+  }>;
+};
+
+type MembersListResponse = {
+  members: Array<{
+    id: string;
+    member_number: string | null;
+    name: string | null;
+    phone_number: string | null;
+    status: string | null;
+  }>;
+};
+
 const settingsFormSchema = z.object({
   registration_fee: z.coerce.number().min(0, 'Fee must be a positive number'),
   renewal_fee: z.coerce.number().min(0, 'Fee must be a positive number'),
@@ -72,6 +99,10 @@ const Settings = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [smsSummary, setSmsSummary] = useState<SmsSummary | null>(null);
+  const [smsRecipients, setSmsRecipients] = useState<SmsRecipient[]>([]);
+  const [smsLoading, setSmsLoading] = useState(false);
+  const [smsSending, setSmsSending] = useState(false);
   const [settingsMeta, setSettingsMeta] = useState<Pick<
     SettingsData,
     'has_mpesa_consumer_key' | 'has_mpesa_consumer_secret' | 'has_mpesa_passkey' | 'has_mpesa_initiator_password'
@@ -161,12 +192,77 @@ const Settings = () => {
     fetchSettings();
   }, [refreshTrigger, form]);
 
+  useEffect(() => {
+    void fetchSmsData();
+  }, []);
+
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
   };
 
   const handleResidenceAdded = () => {
     handleRefresh();
+  };
+
+  const fetchSmsData = async () => {
+    setSmsLoading(true);
+    try {
+      const [summary, membersResult] = await Promise.all([
+        invokeWithAppToken<SmsSummary>('api-sms-summary', {}),
+        invokeWithAppToken<MembersListResponse>('api-members-list', {
+          status: 'active',
+          limit: 300,
+        }),
+      ]);
+
+      setSmsSummary(summary);
+      setSmsRecipients((membersResult.members || [])
+        .filter((member) => String(member.phone_number || '').trim().length > 0)
+        .map((member) => ({
+          id: member.id,
+          name: member.name || undefined,
+          memberNumber: member.member_number || undefined,
+          phoneNumber: String(member.phone_number || '').trim(),
+          status: member.status || undefined,
+        })));
+    } catch (error: any) {
+      console.error('Error loading SMS data:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load SMS data',
+        description: error.message || 'SMS balance and recipients could not be loaded.',
+      });
+    } finally {
+      setSmsLoading(false);
+    }
+  };
+
+  const handleSendSms = async (payload: { triggerKey: string; message: string; recipients: SmsRecipient[] }) => {
+    setSmsSending(true);
+    try {
+      const result = await invokeWithAppToken<{ sent: number; failed: number; recipients: number }>('send-sms', {
+        recipients: payload.recipients,
+        message: payload.message,
+        triggerKey: payload.triggerKey,
+        source: 'settings_sms_tab',
+      });
+
+      toast({
+        title: result.failed ? 'SMS partially sent' : 'SMS sent',
+        description: `${result.sent.toLocaleString()} of ${result.recipients.toLocaleString()} recipient(s) accepted.`,
+        variant: result.failed ? 'destructive' : 'default',
+      });
+      await fetchSmsData();
+    } catch (error: any) {
+      console.error('Error sending SMS:', error);
+      toast({
+        variant: 'destructive',
+        title: 'SMS failed',
+        description: error.message || 'The SMS provider rejected the message.',
+      });
+    } finally {
+      setSmsSending(false);
+    }
   };
 
   const onSubmitSettings = async (values: z.infer<typeof settingsFormSchema>) => {
@@ -223,6 +319,7 @@ const Settings = () => {
             <TabsTrigger value="residences">Residence Locations</TabsTrigger>
             <TabsTrigger value="organization">Organization</TabsTrigger>
             <TabsTrigger value="mpesa">M-Pesa API</TabsTrigger>
+            <TabsTrigger value="sms">SMS</TabsTrigger>
           </TabsList>
           
           <TabsContent value="fees" className="space-y-4">
@@ -989,6 +1086,100 @@ const Settings = () => {
                     </div>
                   </form>
                 </Form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="sms" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Mobiwave balance</CardDescription>
+                  <CardTitle className="text-2xl">
+                    {smsSummary?.balance == null ? 'N/A' : smsSummary.balance.toLocaleString()}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Sent</CardDescription>
+                  <CardTitle className="text-2xl">{(smsSummary?.sent || 0).toLocaleString()}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Delivered</CardDescription>
+                  <CardTitle className="text-2xl">{(smsSummary?.delivered || 0).toLocaleString()}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Failed</CardDescription>
+                  <CardTitle className="text-2xl">{(smsSummary?.failed || 0).toLocaleString()}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" onClick={() => void fetchSmsData()} disabled={smsLoading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${smsLoading ? 'animate-spin' : ''}`} />
+                Refresh SMS Data
+              </Button>
+            </div>
+
+            <SmsMessageComposer
+              recipients={smsRecipients}
+              audienceLabel="Active members with phone numbers"
+              audienceDescription="Send a Mobiwave SMS to active members that have phone numbers on file."
+              onSend={handleSendSms}
+              isSending={smsSending}
+            />
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <MessageSquare className="h-4 w-4" />
+                  Recent SMS Activity
+                </CardTitle>
+                <CardDescription>Latest SMS audit entries recorded by Edge Functions.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Recipient</TableHead>
+                      <TableHead>Source</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(smsSummary?.recent || []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                          No SMS activity recorded yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      (smsSummary?.recent || []).map((row, index) => {
+                        const metadata = row.metadata || {};
+                        return (
+                          <TableRow key={`${row.timestamp}-${index}`}>
+                            <TableCell>{row.timestamp ? new Date(row.timestamp).toLocaleString() : '-'}</TableCell>
+                            <TableCell>{row.action}</TableCell>
+                            <TableCell>
+                              <Badge variant={row.status === 'error' ? 'destructive' : 'secondary'}>
+                                {row.status || 'unknown'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{String(metadata.phone_number || '-')}</TableCell>
+                            <TableCell>{String(metadata.source || '-')}</TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>

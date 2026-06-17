@@ -10,6 +10,16 @@ This project is built with .
 
 MPESA Payment via Safaricom Daraja (a separate PHP script currently handles this, hosted separately). 
 
+## Edge Function Secrets
+
+Mobiwave SMS requires these Supabase Edge Function secrets:
+
+```sh
+SMS_MOBIWAVE_TOKEN=
+SMS_SENDER_ID=WELFARE
+SMS_MOBIWAVE_BASE_URL=https://sms.mobiwave.co.ke/api/v3
+```
+
 ## How can I edit this code?
 
 **Use your preferred IDE**

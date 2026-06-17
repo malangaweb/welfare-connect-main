@@ -6,7 +6,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from "../_shared/cors.ts"
 import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts"
-import { sendSmsMessage } from "../_shared/sms.ts"
+import { isSmsFailure, sendSmsMessage, summarizeSmsFailure } from "../_shared/sms.ts"
 
 serve(async (req) => {
   // Handle CORS
@@ -52,9 +52,9 @@ serve(async (req) => {
     );
 
     await Promise.all(results.map((result, index) => supabase.from("audit_logs").insert({
-      action: result.status === 'failed' ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT',
+      action: isSmsFailure(result) ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT',
       table_name: tableName,
-      status: result.status === 'failed' ? 'error' : 'success',
+      status: isSmsFailure(result) ? 'error' : 'success',
       user_id: claims.sub || null,
       metadata: {
         source,
@@ -70,19 +70,23 @@ serve(async (req) => {
     })));
 
     const delivered = results.filter((result) => result.status === 'delivered').length;
-    const failed = results.filter((result) => result.status === 'failed').length;
+    const failed = results.filter(isSmsFailure).length;
     const sent = results.length - failed;
+    const success = failed === 0;
+    const errorMessage = summarizeSmsFailure(results);
 
     return new Response(
       JSON.stringify({
-        success: failed === 0,
+        success,
         sent,
         delivered,
         failed,
         recipients: results.length,
         results,
+        ...(success ? {} : { error: errorMessage || 'One or more SMS messages failed' }),
       }),
       {
+        status: success ? 200 : 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );

@@ -4,7 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { signAppJwt } from "../_shared/app_jwt.ts"
+import { isSmsFailure, sendSmsMessage } from "../_shared/sms.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -353,18 +353,27 @@ serve(async (req) => {
 
       // Send SMS notification (if configured)
       try {
-        const appToken = await signAppJwt({ sub: 'mpesa-callback', role: 'super_admin' }, '5m')
-        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-sms`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-app-token': appToken,
+        const smsMessage = `Payment received: KES ${Amount}. M-Pesa Ref: ${normalizedReceipt}. Thank you!`
+        const smsResults = await sendSmsMessage([String(PhoneNumber || '')], smsMessage)
+
+        await Promise.all(smsResults.map((result, index) => supabase.from('audit_logs').insert({
+          action: isSmsFailure(result) ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT',
+          table_name: 'sms',
+          status: isSmsFailure(result) ? 'error' : 'success',
+          metadata: {
+            source: 'mpesa_callback',
+            trigger_key: 'payment_received',
+            provider: result.provider,
+            recipient_index: index,
+            recipient_count: smsResults.length,
+            phone_number: result.phoneNumber,
+            message: smsMessage,
+            provider_message_id: result.providerMessageId,
+            provider_response: result.raw,
+            transaction_id: transaction.id,
+            mpesa_receipt: normalizedReceipt,
           },
-          body: JSON.stringify({
-            phoneNumber: PhoneNumber,
-            message: `Payment received: KES ${Amount}. M-Pesa Ref: ${normalizedReceipt}. Thank you!`,
-          }),
-        })
+        })))
       } catch (smsError) {
         console.error('SMS notification failed:', smsError instanceof Error ? smsError.message : String(smsError))
       }

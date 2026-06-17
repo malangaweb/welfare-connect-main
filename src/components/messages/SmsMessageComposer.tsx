@@ -2,20 +2,16 @@ import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { buildSmsPreview, getSmsTemplate, normalizeSmsRecipients, SmsRecipient, SmsTriggerKey, smsTemplates } from '@/lib/smsMessaging';
+import { buildSmsPreview, normalizeSmsRecipients, SmsRecipient, SmsTriggerKey, smsTemplates } from '@/lib/smsMessaging';
 
 type ComposerPayload = {
   triggerKey: SmsTriggerKey;
   message: string;
   recipients: SmsRecipient[];
-  topUpAmount?: number;
-  topUpReference?: string;
-  topUpNotes?: string;
 };
 
 type SmsMessageComposerProps = {
@@ -51,9 +47,6 @@ export function SmsMessageComposer({
   const [activeTab, setActiveTab] = useState<'triggers' | 'custom'>('triggers');
   const [triggerKey, setTriggerKey] = useState<SmsTriggerKey>('welcome_member');
   const [customMessage, setCustomMessage] = useState('');
-  const [topUpAmount, setTopUpAmount] = useState('');
-  const [topUpReference, setTopUpReference] = useState('');
-  const [topUpNotes, setTopUpNotes] = useState('');
 
   const previewContext = {
     ...defaultContext,
@@ -77,9 +70,6 @@ export function SmsMessageComposer({
       triggerKey: activeTab === 'triggers' ? triggerKey : 'manual_custom',
       message,
       recipients: normalizedRecipients,
-      topUpAmount: Number(topUpAmount || 0) || undefined,
-      topUpReference: topUpReference.trim() || undefined,
-      topUpNotes: topUpNotes.trim() || undefined,
     });
   };
 
@@ -162,39 +152,6 @@ export function SmsMessageComposer({
           </TabsContent>
         </Tabs>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-2">
-            <Label htmlFor="topup-amount">Top up amount</Label>
-            <Input
-              id="topup-amount"
-              type="number"
-              min="0"
-              step="1"
-              value={topUpAmount}
-              onChange={(event) => setTopUpAmount(event.target.value)}
-              placeholder="Optional"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="topup-reference">Top up reference</Label>
-            <Input
-              id="topup-reference"
-              value={topUpReference}
-              onChange={(event) => setTopUpReference(event.target.value)}
-              placeholder="Optional"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="topup-notes">Top up notes</Label>
-            <Input
-              id="topup-notes"
-              value={topUpNotes}
-              onChange={(event) => setTopUpNotes(event.target.value)}
-              placeholder="Optional"
-            />
-          </div>
-        </div>
-
         <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <p className="text-sm font-semibold text-slate-900">{audienceLabel}</p>
@@ -212,4 +169,3 @@ export function SmsMessageComposer({
     </Card>
   );
 }
-

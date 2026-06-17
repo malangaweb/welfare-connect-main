@@ -16,7 +16,41 @@ export type SmsSendResult = {
 };
 
 function normalizePhoneNumber(phoneNumber: string): string {
-  return String(phoneNumber || '').trim().replace(/\s+/g, '').replace(/^\+/, '');
+  const digits = String(phoneNumber || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('254')) return digits;
+  if (digits.startsWith('0')) return `254${digits.slice(1)}`;
+  if (digits.length === 9 && digits.startsWith('7')) return `254${digits}`;
+  return digits;
+}
+
+function readProviderMessage(response: unknown, fallback: string): string {
+  if (!response || typeof response !== 'object') return fallback;
+
+  const queue: unknown[] = [response];
+  const seen = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+
+    for (const [key, raw] of Object.entries(current as Record<string, unknown>)) {
+      const lowerKey = key.toLowerCase();
+      if (
+        typeof raw === 'string' &&
+        ['message', 'error', 'error_message', 'description', 'response-description', 'responsedescription'].includes(lowerKey)
+      ) {
+        const trimmed = raw.trim();
+        if (trimmed) return trimmed;
+      }
+      if (raw && typeof raw === 'object') {
+        queue.push(raw);
+      }
+    }
+  }
+
+  return fallback;
 }
 
 function findStatusValue(value: unknown): string | null {
@@ -147,7 +181,8 @@ export async function sendSmsMessage(
     });
 
     const raw = await response.json().catch(() => ({}));
-    const ok = response.ok && String((raw as any)?.status || '').toLowerCase() === 'success';
+    const responseStatus = String((raw as any)?.status || '').toLowerCase();
+    const ok = response.ok && (!responseStatus || responseStatus === 'success');
     const status = inferSmsStatus(raw, ok);
     const providerMessageId = extractProviderMessageId(raw);
 
@@ -167,7 +202,6 @@ export async function sendSmsMessage(
 
   const results: SmsSendResult[] = [];
   for (const phoneNumber of recipients) {
-    const formattedNumber = phoneNumber.replace(/^0/, '254').replace(/^\+/, '');
     const response = await fetch(`${provider.legacyBaseUrl}/sendsms/`, {
       method: 'POST',
       headers: {
@@ -176,7 +210,7 @@ export async function sendSmsMessage(
       body: JSON.stringify({
         apikey: provider.legacyApiKey,
         partnerID: provider.legacyPartnerId,
-        mobile: formattedNumber,
+        mobile: phoneNumber,
         message,
         shortcode: provider.legacyShortcode,
         pass_type: 'plain',
@@ -200,6 +234,24 @@ export async function sendSmsMessage(
   }
 
   return results;
+}
+
+export function summarizeSmsFailure(results: SmsSendResult[]): string {
+  const failed = results.filter(isSmsFailure);
+  if (failed.length === 0) return '';
+
+  const messages = failed
+    .map((result) => readProviderMessage(result.raw, 'Provider marked message as failed'))
+    .filter(Boolean);
+  const uniqueMessages = [...new Set(messages)];
+
+  return uniqueMessages.length
+    ? uniqueMessages.join('; ')
+    : `${failed.length} SMS recipient${failed.length === 1 ? '' : 's'} failed`;
+}
+
+export function isSmsFailure(result: SmsSendResult): boolean {
+  return !result.ok || result.status === 'failed';
 }
 
 export async function fetchSmsBalance(): Promise<{ balance: number | null; raw: unknown | null }> {
@@ -240,4 +292,3 @@ export async function fetchSmsBalance(): Promise<{ balance: number | null; raw: 
     raw,
   };
 }
-
