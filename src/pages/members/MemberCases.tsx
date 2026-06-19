@@ -218,29 +218,11 @@ const MemberCases = () => {
     getCaseContributionTransactions(caseItem);
 
   const getContributionBadge = (caseItem: any) => {
-    const contributionRows = getCaseContributionTransactions(caseItem).filter((t) =>
+    const contributed = getCaseContributionTransactions(caseItem).some((t) =>
       ["contribution", "case_wallet_deduction", "arrears"].includes(
         String(t.transaction_type || ""),
       ),
     );
-    const contributed = contributionRows.length > 0;
-    const endDate = caseItem?.end_date ? new Date(caseItem.end_date) : null;
-    const firstContributionAt = contributionRows
-      .map((t) => new Date(t.created_at))
-      .filter((d) => !Number.isNaN(d.getTime()))
-      .sort((a, b) => a.getTime() - b.getTime())[0];
-    const contributedLate =
-      contributed &&
-      !!endDate &&
-      !!firstContributionAt &&
-      firstContributionAt.getTime() > endDate.getTime();
-
-    if (contributedLate) {
-      return {
-        label: "Contributed Late",
-        className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
-      };
-    }
     if (contributed) {
       return {
         label: "You Contributed",
