@@ -10,7 +10,7 @@ import { UserRole } from '@/lib/types';
 import { normalizeMemberNumber } from '@/lib/memberNumber';
 import { createManagedUser } from '@/lib/adminUsersApi';
 import { logSystemEvent } from '@/lib/systemLog';
-import { invokeWithAppToken } from '@/lib/appAuth';
+import { invokeWithAppToken, normalizePhone } from '@/lib/appAuth';
 
 // Function to send SMS
 const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) => {
@@ -47,29 +47,6 @@ const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) 
       },
     });
   }
-};
-
-// Format phone number to ensure it starts with +254
-const formatPhoneNumber = (phone: string) => {
-  if (!phone) return null;
-  
-  // Remove any spaces or special characters
-  let cleaned = phone.replace(/\D/g, '');
-  
-  // If number starts with 0, replace with +254
-  if (cleaned.startsWith('0')) {
-    cleaned = '+254' + cleaned.substring(1);
-  }
-  // If number starts with 254, add +
-  else if (cleaned.startsWith('254')) {
-    cleaned = '+' + cleaned;
-  }
-  // If number doesn't start with +, add it
-  else if (!cleaned.startsWith('+')) {
-    cleaned = '+' + cleaned;
-  }
-  
-  return cleaned;
 };
 
 const NewMember = () => {
@@ -118,7 +95,7 @@ const NewMember = () => {
           p_gender: data.gender,
           p_date_of_birth: data.dateOfBirth.toISOString().split('T')[0],
           p_national_id_number: data.nationalIdNumber,
-          p_phone_number: data.phoneNumber || null,
+          p_phone_number: data.phoneNumber ? normalizePhone(data.phoneNumber) : null,
           p_email_address: data.emailAddress || null,
           p_residence: residenceData.name,
           p_next_of_kin: {
@@ -167,7 +144,7 @@ const NewMember = () => {
       // Send welcome SMS if phone number is provided
       if (data.phoneNumber && data.name) {
         const name = String(data.name).trim();
-        const phoneNumber = String(data.phoneNumber).trim();
+        const phoneNumber = normalizePhone(data.phoneNumber);
         const memberNumber = normalizedMemberNumber;
         if (name && phoneNumber && memberNumber) {
           await sendSMS(name, phoneNumber, memberNumber);

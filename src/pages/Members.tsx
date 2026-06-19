@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { clearAppToken, getAppToken, invokeWithAppToken, isAppTokenExpired } from '@/lib/appAuth';
+import { clearAppToken, getAppToken, invokeWithAppToken, isAppTokenExpired, normalizePhone } from '@/lib/appAuth';
 import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
@@ -161,11 +161,11 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap">
         {member.phoneNumber ? (
           <a
-            href={`tel:${member.phoneNumber}`}
+            href={`tel:${normalizePhone(member.phoneNumber)}`}
             className="text-primary hover:underline font-medium text-xs md:text-sm"
             onClick={(e) => e.stopPropagation()}
           >
-            +{member.phoneNumber}
+            +{normalizePhone(member.phoneNumber)}
           </a>
         ) : (
           <span className="text-slate-400 text-xs md:text-sm italic">N/A</span>

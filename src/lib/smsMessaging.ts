@@ -139,13 +139,22 @@ export function buildSmsPreview(
   return template.message(context).trim();
 }
 
+function normalizePhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('254')) return digits;
+  if (digits.startsWith('0')) return `254${digits.slice(1)}`;
+  if (digits.length === 9 && digits.startsWith('7')) return `254${digits}`;
+  return digits;
+}
+
 export function normalizeSmsRecipients(
   recipients: SmsRecipient[],
 ): SmsRecipient[] {
   return recipients
     .map((recipient) => ({
       ...recipient,
-      phoneNumber: String(recipient.phoneNumber || '').trim(),
+      phoneNumber: normalizePhone(recipient.phoneNumber),
       name: recipient.name ? String(recipient.name).trim() : undefined,
       memberNumber: recipient.memberNumber ? String(recipient.memberNumber).trim() : undefined,
     }))
