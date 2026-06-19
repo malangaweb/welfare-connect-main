@@ -913,7 +913,10 @@ const Members = () => {
             }
 
             const finalizedUnpaidCases = Array.isArray(fallbackData)
-              ? fallbackData.filter((row: any) => String(row?.case_status || '').toLowerCase() === 'closed')
+              ? fallbackData.filter((row: any) => {
+                  const status = String(row?.case_status || '').toLowerCase();
+                  return status === 'closed' || status === 'active';
+                })
               : [];
 
             return {

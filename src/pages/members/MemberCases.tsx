@@ -85,7 +85,17 @@ const MemberCases = () => {
 
         const { data: transactionsData, error: txErr } = await supabase
           .from("transactions")
-          .select(TRANSACTION_LIST_COLUMNS);
+          .select(TRANSACTION_LIST_COLUMNS)
+          .eq("member_id", member_id)
+          .in("transaction_type", [
+            "contribution",
+            "case_wallet_deduction",
+            "arrears",
+            "contribution_refund",
+            "case_wallet_refund",
+            "wallet_funding",
+            "wallet_transfer",
+          ]);
         if (txErr) throw txErr;
 
         setMemberCount(memberCountNum);

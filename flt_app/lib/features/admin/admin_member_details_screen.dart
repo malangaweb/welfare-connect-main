@@ -25,6 +25,7 @@ class _AdminMemberDetailsScreenState
   bool _redirectingForSession = false;
   static const int _txPageSize = 15;
   int _txPage = 1;
+  List<Map<String, dynamic>> _cachedCases = const [];
 
   @override
   void initState() {
@@ -188,6 +189,191 @@ class _AdminMemberDetailsScreenState
     }
   }
 
+  Future<void> _recordCasePayment() async {
+    final token = ref.read(authControllerProvider).appToken ?? '';
+    if (token.isEmpty || _busy) return;
+
+    if (_cachedCases.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No cases available for this member')),
+      );
+      return;
+    }
+
+    String? selectedCaseId;
+    final amountCtrl = TextEditingController();
+    String selectedTxType = 'case_wallet_deduction';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Record Case Payment'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedCaseId,
+                  hint: const Text('Select Case'),
+                  items: _cachedCases.map((c) {
+                    final caseNum = c['case_number'] ?? 'N/A';
+                    final caseType = c['case_type'] ?? '';
+                    final amount = c['contribution_per_member'] ?? 0;
+                    return DropdownMenuItem(
+                      value: c['id']?.toString(),
+                      child: Text('#$caseNum $caseType (KES $amount)'),
+                    );
+                  }).toList(),
+                  onChanged: (v) => setLocal(() => selectedCaseId = v),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  decoration: const InputDecoration(labelText: 'Amount'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedTxType,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'case_wallet_deduction',
+                      child: Text('Case Wallet Deduction (debit wallet)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'contribution',
+                      child: Text('Contribution (no wallet effect)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'arrears',
+                      child: Text('Arrears (late payment)'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setLocal(() => selectedTxType = v);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Record Payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok != true || selectedCaseId == null) return;
+    final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Amount must be greater than zero')),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await _service.adminRecordCasePayment(
+        appToken: token,
+        memberId: widget.memberId,
+        caseId: selectedCaseId!,
+        amount: amount,
+        transactionType: selectedTxType,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Case payment recorded.')),
+      );
+      setState(() => _future = _load());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _fundWallet() async {
+    final token = ref.read(authControllerProvider).appToken ?? '';
+    if (token.isEmpty || _busy) return;
+
+    final amountCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Fund Wallet'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountCtrl,
+              decoration: const InputDecoration(labelText: 'Amount'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: descCtrl,
+              decoration: const InputDecoration(labelText: 'Description (optional)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Fund'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Amount must be greater than zero')),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await _service.adminRecordWalletFunding(
+        appToken: token,
+        memberId: widget.memberId,
+        amount: amount,
+        description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wallet funded.')),
+      );
+      setState(() => _future = _load());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Funding failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<Map<String, dynamic>> _load() async {
     final token = ref.read(authControllerProvider).appToken ?? '';
     if (token.isEmpty) throw Exception('Missing session token');
@@ -232,6 +418,7 @@ class _AdminMemberDetailsScreenState
           final payload = snapshot.data ?? const {};
           final member = _asMap(payload['member']);
           final cases = _asMapList(payload['cases']);
+          _cachedCases = cases;
           final tx = _asMapList(payload['transactions']);
           final txPages = tx.isEmpty ? 1 : ((tx.length - 1) ~/ _txPageSize) + 1;
           final currentTxPage = _txPage.clamp(1, txPages);
@@ -278,6 +465,16 @@ class _AdminMemberDetailsScreenState
                     onPressed: _busy ? null : _transferFromMember,
                     icon: const Icon(Icons.swap_horiz),
                     label: const Text('Transfer Funds'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _recordCasePayment,
+                    icon: const Icon(Icons.payment),
+                    label: const Text('Pay to Case'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _fundWallet,
+                    icon: const Icon(Icons.account_balance_wallet),
+                    label: const Text('Fund Wallet'),
                   ),
                 ],
               ),

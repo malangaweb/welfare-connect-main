@@ -1021,6 +1021,7 @@ class LiveDataService {
       'contribution_refund',
       'case_wallet_deduction',
       'case_wallet_refund',
+      'arrears',
     ]).order('created_at', ascending: false);
     final txList = (txRows as List)
         .whereType<Map>()
@@ -1032,7 +1033,8 @@ class LiveDataService {
 
     final contributions = txList
         .where((t) => (t['transaction_type'] == 'contribution' ||
-            t['transaction_type'] == 'case_wallet_deduction'))
+            t['transaction_type'] == 'case_wallet_deduction' ||
+            t['transaction_type'] == 'arrears'))
         .fold<double>(0, (sum, t) => sum + _toDouble(t['amount']).abs());
     final refunds = txList
         .where((t) => (t['transaction_type'] == 'contribution_refund' ||
@@ -1132,6 +1134,58 @@ class LiveDataService {
     if (response.status < 200 || response.status >= 300) {
       final payload = (response.data as Map?)?.cast<String, dynamic>();
       throw Exception(payload?['error']?.toString() ?? 'Failed to collect fee');
+    }
+    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<Map<String, dynamic>> adminRecordCasePayment({
+    required String appToken,
+    required String memberId,
+    required String caseId,
+    required double amount,
+    String transactionType = 'case_wallet_deduction',
+    String? description,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-admin-record-case-payment',
+      body: {
+        'member_id': memberId,
+        'case_id': caseId,
+        'amount': amount,
+        'transaction_type': transactionType,
+        'description': description,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to record case payment');
+    }
+    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<Map<String, dynamic>> adminRecordWalletFunding({
+    required String appToken,
+    required String memberId,
+    required double amount,
+    String? description,
+    String? mpesaReference,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-admin-wallet-funding',
+      body: {
+        'member_id': memberId,
+        'amount': amount,
+        'description': description,
+        'mpesa_reference': mpesaReference,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to record wallet funding');
     }
     return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
   }

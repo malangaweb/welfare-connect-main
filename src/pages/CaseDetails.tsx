@@ -142,8 +142,9 @@ const fetchCaseContributionTransactions = async (caseId: string, caseNumber: str
           'contribution_refund',
           'case_wallet_deduction',
           'case_wallet_refund',
+          'arrears',
         ]);
-
+ 
       const { data, error } = await applyFilter(baseQuery)
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
@@ -181,7 +182,7 @@ const calculateContributionTotals = (transactions: CaseContributionTransactionRo
       }
       const amount = Number(tx.amount) || 0;
 
-      if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction') {
+      if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction' || tx.transaction_type === 'arrears') {
         totals.totalContributions += Math.abs(amount);
       }
 
@@ -218,7 +219,7 @@ const buildContributionActivity = (transactions: CaseContributionTransactionRow[
     };
 
     const amount = Number(tx.amount) || 0;
-    if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction') {
+    if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction' || tx.transaction_type === 'arrears') {
       existing.grossContributed += Math.abs(amount);
     }
 
@@ -295,10 +296,15 @@ const fetchCasePageData = async (caseId: string) => {
 
   if (membersError) throw membersError;
 
+  const collectedAmount = Math.max(0, totalContributions - totalRefunds);
+
+  // Sync the cached actual_amount to keep it fresh for MemberCases.tsx etc.
+  syncCaseActualAmount(caseId, mappedCase.caseNumber).catch(() => {});
+
   return {
     mappedCase,
     memberCount: memberCount || 0,
-    collectedAmount: Math.max(0, totalContributions - totalRefunds),
+    collectedAmount,
   };
 };
 
