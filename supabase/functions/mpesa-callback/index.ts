@@ -236,6 +236,33 @@ serve(async (req) => {
                 member_id: member.id,
               },
             })
+
+            // Send SMS notification for new transaction
+            try {
+              const firstName = (member.name || '').split(' ')[0] || 'Valued Member'
+              const balance = member.wallet_balance != null ? Number(member.wallet_balance).toLocaleString('en-KE') : 'N/A'
+              const smsMessage = `Dear ${firstName}, Payment of KES ${Number(Amount).toLocaleString('en-KE')} received. M-Pesa Ref: ${normalizedReceipt}. Balance: KES ${balance}. Thank you!`
+              const smsResults = await sendSmsMessage([normalizedPhone], smsMessage)
+              await Promise.all(smsResults.map((result, index) => supabase.from('audit_logs').insert({
+                action: isSmsFailure(result) ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT',
+                table_name: 'sms',
+                status: isSmsFailure(result) ? 'error' : 'success',
+                metadata: {
+                  source: 'mpesa_callback',
+                  trigger_key: 'payment_received',
+                  provider: result.provider,
+                  recipient_index: index,
+                  recipient_count: smsResults.length,
+                  phone_number: result.phoneNumber,
+                  message: smsMessage,
+                  provider_message_id: result.providerMessageId,
+                  provider_response: result.raw,
+                  mpesa_receipt: normalizedReceipt,
+                },
+              })))
+            } catch (smsError) {
+              console.error('SMS notification failed:', smsError instanceof Error ? smsError.message : String(smsError))
+            }
           }
         } else {
           // === ROUTE TO WRONG_MPESA_TRANSACTIONS (No Member Found) ===
@@ -351,9 +378,12 @@ serve(async (req) => {
         },
       })
 
-      // Send SMS notification (if configured)
+      // Send SMS notification
       try {
-        const smsMessage = `Payment received: KES ${Amount}. M-Pesa Ref: ${normalizedReceipt}. Thank you!`
+        const { data: member } = await supabase.from('members').select('name, wallet_balance').eq('id', transaction.member_id).single()
+        const firstName = member?.name ? member.name.split(' ')[0] : 'Valued Member'
+        const balance = member?.wallet_balance != null ? Number(member.wallet_balance).toLocaleString('en-KE') : 'N/A'
+        const smsMessage = `Dear ${firstName}, Payment of KES ${Number(Amount).toLocaleString('en-KE')} received. M-Pesa Ref: ${normalizedReceipt}. Balance: KES ${balance}. Thank you!`
         const smsResults = await sendSmsMessage([String(PhoneNumber || '')], smsMessage)
 
         await Promise.all(smsResults.map((result, index) => supabase.from('audit_logs').insert({

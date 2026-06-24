@@ -255,9 +255,11 @@ serve(async (req: Request): Promise<Response> => {
       console.log('✅ Case contribution created successfully for member:', memberId, 'case:', caseId)
 
       try {
-        const { data: member } = await supabase.from('members').select('phone_number, name').eq('id', memberId).single()
+        const { data: member } = await supabase.from('members').select('phone_number, name, wallet_balance').eq('id', memberId).single()
         if (member?.phone_number) {
-          const smsMessage = `Malanga Welfare: Payment received KES ${transAmount} for case ${parsed.caseNumber}. M-Pesa Ref: ${normalizedTransID}.`
+          const firstName = (member.name || '').split(' ')[0] || 'Valued Member'
+          const balance = Number(member.wallet_balance || 0).toLocaleString('en-KE')
+          const smsMessage = `Dear ${firstName}, Contribution of KES ${transAmount.toLocaleString('en-KE')} received for case ${parsed.caseNumber} from ${senderName}. M-Pesa Ref: ${normalizedTransID}. Balance: KES ${balance}. Thank you!`
           const smsResults = await sendSmsMessage([member.phone_number], smsMessage)
           await Promise.all(smsResults.map((result, i) => supabase.from('audit_logs').insert({
             action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',
@@ -292,9 +294,11 @@ serve(async (req: Request): Promise<Response> => {
       console.log('✅ Wallet funding created successfully for member:', memberId)
 
       try {
-        const { data: member } = await supabase.from('members').select('phone_number, name').eq('id', memberId).single()
+        const { data: member } = await supabase.from('members').select('phone_number, name, wallet_balance').eq('id', memberId).single()
         if (member?.phone_number) {
-          const smsMessage = `Malanga Welfare: Payment received KES ${transAmount}. M-Pesa Ref: ${normalizedTransID}. Thank you!`
+          const firstName = (member.name || '').split(' ')[0] || 'Valued Member'
+          const balance = Number(member.wallet_balance || 0).toLocaleString('en-KE')
+          const smsMessage = `Dear ${firstName}, Payment received KES ${transAmount.toLocaleString('en-KE')} from ${senderName}. M-Pesa Ref: ${normalizedTransID}. Balance: KES ${balance}. Thank you!`
           const smsResults = await sendSmsMessage([member.phone_number], smsMessage)
           await Promise.all(smsResults.map((result, i) => supabase.from('audit_logs').insert({
             action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',

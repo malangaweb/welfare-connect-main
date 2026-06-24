@@ -12,6 +12,8 @@ type RecipientData = {
   amount?: string;
   caseNumber?: string;
   deadline?: string;
+  ref?: string;
+  senderName?: string;
 };
 
 function resolveTags(text: string, data: Record<string, string>): string {
@@ -32,6 +34,8 @@ async function buildRecipientContext(
     amount: recipient.amount || '',
     caseNumber: recipient.caseNumber || '',
     deadline: recipient.deadline || '',
+    ref: recipient.ref || '',
+    senderName: recipient.senderName || '',
     balance: '',
   };
 
@@ -78,6 +82,8 @@ function toRecipient(input: unknown): RecipientData | null {
       amount: String(obj.amount || '').trim() || undefined,
       caseNumber: String(obj.caseNumber || obj.case_number || '').trim() || undefined,
       deadline: String(obj.deadline || '').trim() || undefined,
+      ref: String(obj.ref || obj.mpesaRef || obj.mpesa_reference || obj.receipt || '').trim() || undefined,
+      senderName: String(obj.senderName || obj.sender_name || obj.sender || '').trim() || undefined,
     };
   }
   return null;
