@@ -479,21 +479,12 @@ serve(async (req) => {
 
 function normalizePhoneNumber(phone: string): string {
   if (!phone) return ''
-  // Remove non-digits
-  let cleaned = phone.replace(/\D/g, '')
-
-  // Handle different formats
-  if (cleaned.startsWith('254')) {
-    return '+' + cleaned
-  }
-  if (cleaned.startsWith('0')) {
-    return '+254' + cleaned.substring(1)
-  }
-  if (!cleaned.startsWith('+')) {
-    return '+' + cleaned
-  }
-
-  return phone
+  const cleaned = phone.replace(/\D/g, '')
+  if (!cleaned) return ''
+  if (cleaned.startsWith('254')) return cleaned
+  if (cleaned.startsWith('0')) return '254' + cleaned.substring(1)
+  if (cleaned.length === 9 && cleaned.startsWith('7')) return '254' + cleaned
+  return cleaned
 }
 
 function normalizeMpesaReference(value: string): string {

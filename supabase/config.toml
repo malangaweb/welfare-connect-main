@@ -2,3 +2,12 @@ project_id = "hfojxbfcjozguobwtcgt"
 
 [db]
 major_version = 15
+
+[functions.c2b-webhook]
+verify_jwt = false
+
+[functions.mpesa-callback]
+verify_jwt = false
+
+[functions.mpesa-b2c-callback]
+verify_jwt = false

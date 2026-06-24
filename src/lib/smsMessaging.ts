@@ -13,8 +13,12 @@ export type SmsRecipient = {
   name?: string;
   phoneNumber: string;
   memberNumber?: string;
+  memberId?: string;
   residence?: string;
   status?: string;
+  amount?: string;
+  caseNumber?: string;
+  deadline?: string;
 };
 
 export type SmsTemplateContext = {
@@ -157,6 +161,10 @@ export function normalizeSmsRecipients(
       phoneNumber: normalizePhone(recipient.phoneNumber),
       name: recipient.name ? String(recipient.name).trim() : undefined,
       memberNumber: recipient.memberNumber ? String(recipient.memberNumber).trim() : undefined,
+      memberId: recipient.memberId ? String(recipient.memberId).trim() : undefined,
+      amount: recipient.amount ? String(recipient.amount).trim() : undefined,
+      caseNumber: recipient.caseNumber ? String(recipient.caseNumber).trim() : undefined,
+      deadline: recipient.deadline ? String(recipient.deadline).trim() : undefined,
     }))
     .filter((recipient) => recipient.phoneNumber.length > 0);
 }

@@ -12,26 +12,21 @@ import { createManagedUser } from '@/lib/adminUsersApi';
 import { logSystemEvent } from '@/lib/systemLog';
 import { invokeWithAppToken, normalizePhone } from '@/lib/appAuth';
 
-// Function to send SMS
-const sendSMS = async (name: string, phoneNumber: string, memberNumber: string) => {
+// Function to send welcome SMS
+const sendWelcomeSMS = async (memberId: string, name: string, phoneNumber: string, memberNumber: string) => {
   try {
     await invokeWithAppToken('send-sms', {
-      phoneNumber,
-      message: [
-        `Malanga Welfare: Welcome ${name}.`,
-        `Your member number is ${memberNumber}.`,
-      ].join(' '),
+      recipients: [{ phoneNumber, name, memberNumber, memberId }],
+      message: 'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.',
+      triggerKey: 'welcome_member',
+      source: 'member_registration',
     });
 
     await logSystemEvent({
       action: 'WELCOME_SMS_SENT',
       tableName: 'members',
       status: 'info',
-      metadata: {
-        name,
-        phone_number: phoneNumber,
-        member_number: memberNumber,
-      },
+      metadata: { name, phone_number: phoneNumber, member_number: memberNumber },
     });
   } catch (error) {
     console.error('Error sending SMS:', error);
@@ -146,8 +141,9 @@ const NewMember = () => {
         const name = String(data.name).trim();
         const phoneNumber = normalizePhone(data.phoneNumber);
         const memberNumber = normalizedMemberNumber;
-        if (name && phoneNumber && memberNumber) {
-          await sendSMS(name, phoneNumber, memberNumber);
+        const memberId = memberData.id;
+        if (name && phoneNumber && memberNumber && memberId) {
+          await sendWelcomeSMS(memberId, name, phoneNumber, memberNumber);
         }
       }
 

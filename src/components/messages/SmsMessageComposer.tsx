@@ -24,15 +24,19 @@ type SmsMessageComposerProps = {
   showRecipientCount?: boolean;
 };
 
-const defaultContext = {
-  audienceCount: 0,
-  memberName: 'member',
-  memberNumber: 'M-0000',
-  caseNumber: 'CASE-001',
-  amount: '0',
-  deadline: 'N/A',
-  balance: '0',
-};
+const TAGS = ['{name}', '{memberNumber}', '{balance}', '{amount}', '{caseNumber}', '{deadline}'] as const;
+
+function buildContextFromRecipient(first: SmsRecipient | null) {
+  return {
+    audienceCount: first ? 1 : 0,
+    memberName: first?.name || 'member',
+    memberNumber: first?.memberNumber || 'M-0000',
+    caseNumber: first?.caseNumber || 'CASE-001',
+    amount: first?.amount || '0',
+    deadline: first?.deadline || 'N/A',
+    balance: '{balance}',
+  };
+}
 
 export function SmsMessageComposer({
   recipients,
@@ -48,10 +52,11 @@ export function SmsMessageComposer({
   const [triggerKey, setTriggerKey] = useState<SmsTriggerKey>('welcome_member');
   const [customMessage, setCustomMessage] = useState('');
 
-  const previewContext = {
-    ...defaultContext,
-    audienceCount: normalizedRecipients.length,
-  };
+  const firstRecipient = normalizedRecipients[0] || null;
+  const previewContext = useMemo(
+    () => buildContextFromRecipient(firstRecipient),
+    [firstRecipient],
+  );
 
   const previewMessage = activeTab === 'triggers'
     ? buildSmsPreview(triggerKey, previewContext)
@@ -129,6 +134,12 @@ export function SmsMessageComposer({
               <p className="mt-2 text-sm leading-6 text-slate-800">
                 {previewMessage || 'Pick a trigger to preview the message.'}
               </p>
+              {firstRecipient && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Preview uses data from: {firstRecipient.name || firstRecipient.phoneNumber}
+                  {firstRecipient.name ? ` (${firstRecipient.phoneNumber})` : ''}
+                </p>
+              )}
             </div>
           </TabsContent>
 
@@ -139,14 +150,32 @@ export function SmsMessageComposer({
                 id="custom-message"
                 value={customMessage}
                 onChange={(event) => setCustomMessage(event.target.value)}
-                placeholder="Write your custom SMS here..."
+                placeholder="Write your custom SMS here. You can use tags that will be replaced per-recipient:"
                 rows={5}
               />
+              <div className="flex flex-wrap gap-1.5">
+                {TAGS.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className="cursor-pointer text-[10px] font-mono text-slate-500 hover:text-primary hover:border-primary"
+                    onClick={() => setCustomMessage((prev) => `${prev}${tag} `)}
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400">
+                Tags are replaced per-recipient with their actual data. {`{balance}`} is fetched from their wallet.
+              </p>
             </div>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preview</p>
               <p className="mt-2 text-sm leading-6 text-slate-800">
-                {previewMessage || 'Your custom message preview will appear here.'}
+                {customMessage.trim() || 'Your custom message preview will appear here.'}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                In preview tags are shown as-is. Recipients will get their own values.
               </p>
             </div>
           </TabsContent>

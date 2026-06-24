@@ -201,16 +201,20 @@ const NewCase = () => {
         const affectedMember = members.find(m => m.id === caseResult.affected_member_id);
         if (affectedMember?.phoneNumber) {
           const deadline = caseResult.end_date ? new Date(caseResult.end_date).toLocaleDateString() : 'N/A';
-          const message = [
-            `Malanga Welfare: Case ${caseResult.case_number} has been opened.`,
-            `Member: ${affectedMember.name}.`,
-            `Expected amount: KES ${Number(caseResult.expected_amount || 0).toLocaleString()}.`,
-            `Deadline: ${deadline}.`,
-          ].join(' ');
 
           await invokeWithAppToken('send-sms', {
-            phoneNumber: affectedMember.phoneNumber,
-            message,
+            recipients: [{
+              phoneNumber: affectedMember.phoneNumber,
+              name: affectedMember.name,
+              memberNumber: affectedMember.memberNumber,
+              memberId: affectedMember.id,
+              caseNumber: caseResult.case_number,
+              amount: Number(caseResult.expected_amount || 0).toLocaleString(),
+              deadline,
+            }],
+            message: 'Malanga Welfare: Case {caseNumber} has been opened. Member: {name}. Expected amount: KES {amount}. Deadline: {deadline}.',
+            triggerKey: 'case_opened',
+            source: 'case_creation',
           });
         }
       } catch (smsError) {

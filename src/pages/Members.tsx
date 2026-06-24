@@ -421,6 +421,7 @@ const Members = () => {
 
   const memberToSmsRecipient = (member: Member): SmsRecipient => ({
     id: member.id,
+    memberId: member.id,
     name: member.name,
     memberNumber: member.memberNumber,
     phoneNumber: String(member.phoneNumber || '').trim(),

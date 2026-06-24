@@ -7,6 +7,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { parseBillReference } from './reference-parser.ts'
+import { isSmsFailure, sendSmsMessage } from "../_shared/sms.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,7 +98,7 @@ serve(async (req: Request): Promise<Response> => {
     // Persist a small breadcrumb
     await supabase.from('audit_logs').insert({
       action: 'INSERT',
-      table_name: 'mpesa-c2b-webhook',
+      table_name: 'c2b-webhook',
       status: 'success',
       new_values: {
         custom_action: 'C2B_WEBHOOK_RECEIVED',
@@ -253,6 +254,22 @@ serve(async (req: Request): Promise<Response> => {
 
       console.log('✅ Case contribution created successfully for member:', memberId, 'case:', caseId)
 
+      try {
+        const { data: member } = await supabase.from('members').select('phone_number, name').eq('id', memberId).single()
+        if (member?.phone_number) {
+          const smsMessage = `Malanga Welfare: Payment received KES ${transAmount} for case ${parsed.caseNumber}. M-Pesa Ref: ${normalizedTransID}.`
+          const smsResults = await sendSmsMessage([member.phone_number], smsMessage)
+          await Promise.all(smsResults.map((result, i) => supabase.from('audit_logs').insert({
+            action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',
+            table_name: 'sms',
+            status: isSmsFailure(result) ? 'error' : 'success',
+            metadata: { source: 'c2b_webhook', trigger_key: 'payment_received', phone_number: result.phoneNumber, message: smsMessage, provider: result.provider },
+          })))
+        }
+      } catch (smsError) {
+        console.error('SMS notification failed:', smsError instanceof Error ? smsError.message : String(smsError))
+      }
+
     // SCENARIO 2: Member only → Regular wallet funding
     } else if (!existingTxByReceipt && memberId && !caseId && transAmount > 0 && hasMpesaReceipt) {
       console.log('✅ Member only: Creating wallet funding transaction')
@@ -273,6 +290,22 @@ serve(async (req: Request): Promise<Response> => {
       if (txError) throw txError
 
       console.log('✅ Wallet funding created successfully for member:', memberId)
+
+      try {
+        const { data: member } = await supabase.from('members').select('phone_number, name').eq('id', memberId).single()
+        if (member?.phone_number) {
+          const smsMessage = `Malanga Welfare: Payment received KES ${transAmount}. M-Pesa Ref: ${normalizedTransID}. Thank you!`
+          const smsResults = await sendSmsMessage([member.phone_number], smsMessage)
+          await Promise.all(smsResults.map((result, i) => supabase.from('audit_logs').insert({
+            action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',
+            table_name: 'sms',
+            status: isSmsFailure(result) ? 'error' : 'success',
+            metadata: { source: 'c2b_webhook', trigger_key: 'payment_received', phone_number: result.phoneNumber, message: smsMessage, provider: result.provider },
+          })))
+        }
+      } catch (smsError) {
+        console.error('SMS notification failed:', smsError instanceof Error ? smsError.message : String(smsError))
+      }
 
     // SCENARIO 3: No member resolved → Save to suspense for manual review
     } else if (!existingTxByReceipt) {
@@ -374,7 +407,7 @@ serve(async (req: Request): Promise<Response> => {
     
     await supabase.from('audit_logs').insert({
       action: 'INSERT',
-      table_name: 'mpesa-c2b-webhook',
+      table_name: 'c2b-webhook',
       status: 'error',
       new_values: { custom_action: 'C2B_WEBHOOK_ERROR', error: error.message, body: await req.text() },
     })
@@ -387,11 +420,12 @@ serve(async (req: Request): Promise<Response> => {
 
 function normalizePhoneNumber(phone: string): string {
   if (!phone || phone.trim() === '') return ''
-  let cleaned = phone.replace(/\D/g, '')
-  if (cleaned.startsWith('254')) return '+' + cleaned
-  if (cleaned.startsWith('0')) return '+254' + cleaned.substring(1)
-  if (!cleaned.startsWith('+')) return '+' + cleaned
-  return phone
+  const cleaned = phone.replace(/\D/g, '')
+  if (!cleaned) return ''
+  if (cleaned.startsWith('254')) return cleaned
+  if (cleaned.startsWith('0')) return '254' + cleaned.substring(1)
+  if (cleaned.length === 9 && cleaned.startsWith('7')) return '254' + cleaned
+  return cleaned
 }
 
 function normalizeMpesaReference(value: string): string {
