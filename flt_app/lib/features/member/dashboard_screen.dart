@@ -88,6 +88,7 @@ class _MemberDashboardScreenState extends ConsumerState<MemberDashboardScreen> {
                         _action(context, 'Cases', '/member/cases'),
                         _action(context, 'Transactions', '/member/transactions'),
                         _action(context, 'Payments', '/member/payments'),
+                        _action(context, 'Dependants', '/member/dependants'),
                         _action(context, 'Report', '/member/report'),
                         _action(context, 'Profile', '/member/summary'),
                       ],

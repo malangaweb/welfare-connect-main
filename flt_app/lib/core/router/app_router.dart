@@ -21,6 +21,7 @@ import '../../features/member/cases_screen.dart';
 import '../../features/member/payments_screen.dart';
 import '../../features/member/transactions_screen.dart';
 import '../../features/member/report_screen.dart';
+import '../../features/member/dependants_screen.dart';
 import '../../features/auth/auth_controller.dart';
 import '../auth/role_access.dart';
 
@@ -140,6 +141,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/member/report',
         builder: (context, state) => const MemberReportScreen(),
+      ),
+      GoRoute(
+        path: '/member/dependants',
+        builder: (context, state) => const DependantsScreen(),
       ),
       // Aliases to avoid "page not found" from legacy/deep links
       GoRoute(

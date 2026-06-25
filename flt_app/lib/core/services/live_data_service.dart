@@ -48,6 +48,61 @@ class MemberCaseSnapshot {
   });
 }
 
+class MemberDependant {
+  final String id;
+  final String name;
+  final String? gender;
+  final String? relationship;
+  final String? dateOfBirth;
+  final bool isDisabled;
+  final bool isEligible;
+
+  const MemberDependant({
+    required this.id,
+    required this.name,
+    this.gender,
+    this.relationship,
+    this.dateOfBirth,
+    this.isDisabled = false,
+    this.isEligible = true,
+  });
+
+  factory MemberDependant.fromMap(Map<String, dynamic> map) {
+    return MemberDependant(
+      id: (map['id'] ?? '').toString(),
+      name: (map['name'] ?? '').toString(),
+      gender: map['gender']?.toString(),
+      relationship: map['relationship']?.toString(),
+      dateOfBirth: map['date_of_birth']?.toString(),
+      isDisabled: map['is_disabled'] == true,
+      isEligible: map['is_eligible'] != false,
+    );
+  }
+
+  Map<String, dynamic> toInsertMap(String memberId) {
+    return {
+      'member_id': memberId,
+      'name': name,
+      'gender': gender,
+      'relationship': relationship,
+      'date_of_birth': dateOfBirth,
+      'is_disabled': isDisabled,
+      'is_eligible': isEligible,
+    };
+  }
+
+  Map<String, dynamic> toUpdateMap() {
+    return {
+      'name': name,
+      'gender': gender,
+      'relationship': relationship,
+      'date_of_birth': dateOfBirth,
+      'is_disabled': isDisabled,
+      'is_eligible': isEligible,
+    };
+  }
+}
+
 class AdminDashboardSnapshot {
   final int totalMembers;
   final int activeCases;
@@ -209,6 +264,17 @@ class LiveDataService {
   Future<List<MemberCaseSnapshot>> fetchPayableCases({
     required String memberId,
   }) async {
+    final memberResp = await _client
+        .from('members')
+        .select('status')
+        .eq('id', memberId)
+        .maybeSingle();
+    final memberStatus =
+        ((memberResp as Map?)?['status'] ?? '').toString().toLowerCase().trim();
+    if (memberStatus != 'active' && memberStatus != 'probation') {
+      return const [];
+    }
+
     final rows = await _client
         .from('cases')
         .select(
@@ -605,6 +671,47 @@ class LiveDataService {
           .map((e) => e.cast<String, dynamic>())
           .toList(),
     );
+  }
+
+  Future<List<MemberDependant>> fetchDependants(String memberId) async {
+    final rows = await _client
+        .from('dependants')
+        .select('id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+        .eq('member_id', memberId)
+        .order('name');
+    return (rows as List)
+        .whereType<Map>()
+        .map((e) => MemberDependant.fromMap(e.cast<String, dynamic>()))
+        .toList();
+  }
+
+  Future<MemberDependant> addDependant({
+    required String memberId,
+    required MemberDependant dependant,
+  }) async {
+    final result = await _client
+        .from('dependants')
+        .insert(dependant.toInsertMap(memberId))
+        .select('id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+        .single();
+    return MemberDependant.fromMap((result as Map).cast<String, dynamic>());
+  }
+
+  Future<MemberDependant> updateDependant({
+    required String dependantId,
+    required MemberDependant dependant,
+  }) async {
+    final result = await _client
+        .from('dependants')
+        .update(dependant.toUpdateMap())
+        .eq('id', dependantId)
+        .select('id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+        .single();
+    return MemberDependant.fromMap((result as Map).cast<String, dynamic>());
+  }
+
+  Future<void> deleteDependant(String dependantId) async {
+    await _client.from('dependants').delete().eq('id', dependantId);
   }
 
   Future<List<Map<String, dynamic>>> fetchAdminMembers({

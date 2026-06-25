@@ -895,6 +895,10 @@ const Members = () => {
       });
       const membersWithContributionCounts = await Promise.all(
         membersWithBalances.map(async (member) => {
+          if (member.status !== 'active' && member.status !== 'probation') {
+            return { ...member, unpaidCaseContributionCount: 0 };
+          }
+
           const { data, error } = await supabase.rpc('get_member_finalized_unpaid_case_count', {
             p_member_id: member.id,
           });

@@ -125,6 +125,9 @@ serve(async (req) => {
 
     const resolvedMemberId = String(member.id);
 
+    const memberStatus = String((member as any).status || "").toLowerCase().trim();
+    const isEligible = memberStatus === "active" || memberStatus === "probation";
+
     // Run independent reads in parallel; avoid loading full case history (was limit 1000).
     const casesSelect =
       "id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date";
@@ -159,62 +162,66 @@ serve(async (req) => {
     if (txError) throw txError;
     if (casesError) throw casesError;
 
-    const payableCandidates = (allCases || []).filter((c: any) =>
-      Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date),
-    );
-    const caseIds = payableCandidates.map((c) => c.id);
-    const netByCase = new Map<string, number>();
+    let activeCasesSummary: Record<string, unknown>[] = [];
 
-    if (caseIds.length > 0) {
-      const { data: caseTx } = await supabase
-        .from("transactions")
-        .select("case_id, status, amount, transaction_type")
-        .eq("member_id", resolvedMemberId)
-        .in("case_id", caseIds)
-        .in("transaction_type", [
-          "contribution",
-          "case_wallet_deduction",
-          "arrears",
-          "contribution_refund",
-          "case_wallet_refund",
-        ]);
+    if (isEligible) {
+      const payableCandidates = (allCases || []).filter((c: any) =>
+        Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date),
+      );
+      const caseIds = payableCandidates.map((c) => c.id);
+      const netByCase = new Map<string, number>();
 
-      (caseTx || [])
-        .filter((r) => !r.status || r.status === "completed")
-        .forEach((r) => {
-          const caseId = String(r.case_id || "");
-          if (!caseId) return;
-          const txType = String(r.transaction_type || "");
-          const amount = Number(r.amount) || 0;
-          const current = netByCase.get(caseId) || 0;
-          if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
-            netByCase.set(caseId, current + Math.abs(amount));
-            return;
-          }
-          if (txType === "contribution_refund" || txType === "case_wallet_refund") {
-            netByCase.set(caseId, current - Math.abs(amount));
-          }
-        });
+      if (caseIds.length > 0) {
+        const { data: caseTx } = await supabase
+          .from("transactions")
+          .select("case_id, status, amount, transaction_type")
+          .eq("member_id", resolvedMemberId)
+          .in("case_id", caseIds)
+          .in("transaction_type", [
+            "contribution",
+            "case_wallet_deduction",
+            "arrears",
+            "contribution_refund",
+            "case_wallet_refund",
+          ]);
+
+        (caseTx || [])
+          .filter((r) => !r.status || r.status === "completed")
+          .forEach((r) => {
+            const caseId = String(r.case_id || "");
+            if (!caseId) return;
+            const txType = String(r.transaction_type || "");
+            const amount = Number(r.amount) || 0;
+            const current = netByCase.get(caseId) || 0;
+            if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
+              netByCase.set(caseId, current + Math.abs(amount));
+              return;
+            }
+            if (txType === "contribution_refund" || txType === "case_wallet_refund") {
+              netByCase.set(caseId, current - Math.abs(amount));
+            }
+          });
+      }
+
+      activeCasesSummary = payableCandidates.map((c) => {
+        const caseId = String(c.id || "");
+        const required = Number(c.contribution_per_member) || 0;
+        const rawNetPaid = netByCase.get(caseId) || 0;
+        const amountPaid = Math.max(rawNetPaid, 0);
+        const remainingAmount = Math.max(required - amountPaid, 0);
+        const progress =
+          required > 0 ? Math.min(amountPaid / required, 1) : amountPaid > 0 ? 1 : 0;
+
+        return {
+          ...c,
+          amount_paid: amountPaid,
+          remaining_amount: remainingAmount,
+          progress,
+          paid: required > 0 ? amountPaid >= required : amountPaid > 0,
+          late_payment: Boolean(!c.is_active || c.is_finalized),
+        };
+      });
     }
-
-    const activeCasesSummary = payableCandidates.map((c) => {
-      const caseId = String(c.id || "");
-      const required = Number(c.contribution_per_member) || 0;
-      const rawNetPaid = netByCase.get(caseId) || 0;
-      const amountPaid = Math.max(rawNetPaid, 0);
-      const remainingAmount = Math.max(required - amountPaid, 0);
-      const progress =
-        required > 0 ? Math.min(amountPaid / required, 1) : amountPaid > 0 ? 1 : 0;
-
-      return {
-        ...c,
-        amount_paid: amountPaid,
-        remaining_amount: remainingAmount,
-        progress,
-        paid: required > 0 ? amountPaid >= required : amountPaid > 0,
-        late_payment: Boolean(!c.is_active || c.is_finalized),
-      };
-    });
 
     return jsonResponse(200, {
       member: {
