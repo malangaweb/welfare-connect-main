@@ -37,6 +37,7 @@ export type SmsTemplate = {
   description: string;
   category: 'member' | 'case' | 'payment' | 'renewal' | 'custom';
   message: (context: SmsTemplateContext) => string;
+  rawTemplate: string;
 };
 
 export const smsTemplates: SmsTemplate[] = [
@@ -47,6 +48,7 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'member',
     message: ({ memberName, memberNumber }) =>
       `Malanga Welfare: Welcome ${memberName || 'member'}. Your member number is ${memberNumber || 'N/A'}.`,
+    rawTemplate: 'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.',
   },
   {
     key: 'case_opened',
@@ -61,6 +63,11 @@ export const smsTemplates: SmsTemplate[] = [
       ]
         .filter(Boolean)
         .join(' '),
+    rawTemplate: [
+      'Malanga Welfare: Case {caseNumber} has been opened.',
+      'Member: {name}.',
+      'Deadline: {deadline}.',
+    ].join(' '),
   },
   {
     key: 'payment_received',
@@ -74,6 +81,7 @@ export const smsTemplates: SmsTemplate[] = [
       ]
         .filter(Boolean)
         .join(' '),
+    rawTemplate: 'Malanga Welfare: Payment received KES {amount}. Current balance: {balance}.',
   },
   {
     key: 'payment_failed',
@@ -82,6 +90,7 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'payment',
     message: ({ memberName }) =>
       `Malanga Welfare: Your payment could not be completed${memberName ? `, ${memberName}` : ''}. Please retry or contact support.`,
+    rawTemplate: 'Malanga Welfare: Your payment could not be completed, {name}. Please retry or contact support.',
   },
   {
     key: 'case_due',
@@ -96,6 +105,11 @@ export const smsTemplates: SmsTemplate[] = [
       ]
         .filter(Boolean)
         .join(' '),
+    rawTemplate: [
+      'Malanga Welfare: Reminder for case {caseNumber}.',
+      'Contribution due: KES {amount}.',
+      'Deadline: {deadline}.',
+    ].join(' '),
   },
   {
     key: 'overdue_reminder',
@@ -107,6 +121,10 @@ export const smsTemplates: SmsTemplate[] = [
         `Malanga Welfare: Your case contribution is overdue${caseNumber ? ` for case ${caseNumber}` : ''}.`,
         amount ? `Please settle KES ${amount} as soon as possible.` : 'Please settle the pending amount as soon as possible.',
       ].join(' '),
+    rawTemplate: [
+      'Malanga Welfare: Your case contribution is overdue for case {caseNumber}.',
+      'Please settle KES {amount} as soon as possible.',
+    ].join(' '),
   },
   {
     key: 'renewal_reminder',
@@ -121,6 +139,11 @@ export const smsTemplates: SmsTemplate[] = [
       ]
         .filter(Boolean)
         .join(' '),
+    rawTemplate: [
+      'Malanga Welfare: Your membership renewal is coming up.',
+      'Due date: {deadline}.',
+      'Please make your payment on time.',
+    ].join(' '),
   },
   {
     key: 'manual_custom',
@@ -128,8 +151,13 @@ export const smsTemplates: SmsTemplate[] = [
     description: 'Write a completely custom message.',
     category: 'custom',
     message: () => '',
+    rawTemplate: '',
   },
 ];
+
+export function getRawTemplate(key: SmsTriggerKey): string {
+  return smsTemplates.find((t) => t.key === key)?.rawTemplate ?? '';
+}
 
 export function getSmsTemplate(key: SmsTriggerKey): SmsTemplate {
   return smsTemplates.find((template) => template.key === key) || smsTemplates[0];

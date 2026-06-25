@@ -59,6 +59,13 @@ export interface Member {
   isActive: boolean;
   status: 'probation' | 'active' | 'inactive' | 'deceased';
   unpaidCaseContributionCount?: number;
+  unpaidCaseObligations?: Array<{
+    case_id: string;
+    case_number: string;
+    contribution_per_member: number;
+    case_status: string;
+    case_date: string;
+  }>;
   pinHash?: string;
   pinAttempts?: number;
   pinLockedUntil?: Date;

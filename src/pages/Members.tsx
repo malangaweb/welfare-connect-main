@@ -174,9 +174,10 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap">
         <MemberStatusBadge member={member} />
       </TableCell>
-<TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
+ <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
         {(() => {
           const count = Number(member.unpaidCaseContributionCount || 0);
+          const obligations = member.unpaidCaseObligations || [];
           const countClass =
             count === 0
               ? 'bg-green-600 text-white border-green-600'
@@ -184,21 +185,70 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
                 ? 'bg-amber-500 text-white border-amber-500'
                 : 'bg-red-600 text-white border-red-600';
 
-          return (
+          const badge = (
             <span className={`inline-flex min-w-7 items-center justify-center rounded-full border px-2 py-0.5 text-xs font-semibold ${countClass}`}>
               {count}
             </span>
+          );
+
+          if (obligations.length === 0) return badge;
+
+          const caseList = obligations.map((o, i) => (
+            <div key={o.case_id} className="flex justify-between gap-4 text-xs">
+              <span className="font-medium">{o.case_number}</span>
+              <span>{o.case_status}</span>
+              <span className="font-semibold">KES {Number(o.contribution_per_member || 0).toLocaleString()}</span>
+            </div>
+          ));
+
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>{badge}</TooltipTrigger>
+                <TooltipContent side="bottom" align="center" className="p-3 space-y-1 min-w-[200px]">
+                  <div className="text-xs font-semibold mb-1 border-b pb-1">Unpaid Cases</div>
+                  {caseList}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           );
         })()}
       </TableCell>
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
         {(() => {
-          const count = Number(member.unpaidCaseContributionCount || 0);
-          const due = count * 120;
+          const obligations = member.unpaidCaseObligations || [];
+          if (obligations.length === 0) {
+            return <span className="text-xs md:text-sm font-semibold text-slate-900">KES 0</span>;
+          }
+
+          const tooltipContent = (
+            <div className="space-y-1 min-w-[180px]">
+              {obligations.map((o) => (
+                <div key={o.case_id} className="flex justify-between gap-4 text-xs">
+                  <span>{o.case_number}</span>
+                  <span className="font-semibold">KES {Number(o.contribution_per_member || 0).toLocaleString()}</span>
+                </div>
+              ))}
+              <div className="border-t pt-1 mt-1 flex justify-between gap-4 text-xs font-bold">
+                <span>Total</span>
+                <span>KES {obligations.reduce((s, o) => s + Number(o.contribution_per_member || 0), 0).toLocaleString()}</span>
+              </div>
+            </div>
+          );
+
           return (
-            <span className="text-xs md:text-sm font-semibold text-slate-900">
-              KES {due.toLocaleString()}
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs md:text-sm font-semibold text-slate-900 cursor-help border-b border-dotted border-slate-400">
+                    KES {obligations.reduce((s, o) => s + Number(o.contribution_per_member || 0), 0).toLocaleString()}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="center" className="p-3">
+                  {tooltipContent}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           );
         })()}
       </TableCell>
@@ -893,50 +943,26 @@ const Members = () => {
           dependants: []
         };
       });
-      const membersWithContributionCounts = await Promise.all(
+      const membersWithObligations = await Promise.all(
         membersWithBalances.map(async (member) => {
-          if (member.status !== 'active' && member.status !== 'probation') {
-            return { ...member, unpaidCaseContributionCount: 0 };
-          }
-
-          const { data, error } = await supabase.rpc('get_member_finalized_unpaid_case_count', {
+          const { data: obligations, error } = await supabase.rpc('get_member_unpaid_case_obligations', {
             p_member_id: member.id,
           });
 
           if (error) {
-            console.warn(`Finalized unpaid count RPC unavailable for member ${member.id}, falling back to obligation list:`, error);
-            const { data: fallbackData, error: fallbackError } = await supabase.rpc('get_member_unpaid_case_obligations', {
-              p_member_id: member.id,
-            });
-
-            if (fallbackError) {
-              console.error(`Failed to load unpaid contribution count for member ${member.id}:`, fallbackError);
-              return {
-                ...member,
-                unpaidCaseContributionCount: 0,
-              };
-            }
-
-            const finalizedUnpaidCases = Array.isArray(fallbackData)
-              ? fallbackData.filter((row: any) => {
-                  const status = String(row?.case_status || '').toLowerCase();
-                  return status === 'closed' || status === 'active';
-                })
-              : [];
-
-            return {
-              ...member,
-              unpaidCaseContributionCount: finalizedUnpaidCases.length,
-            };
+            console.error(`Failed to load unpaid case obligations for member ${member.id}:`, error);
+            return { ...member, unpaidCaseContributionCount: 0, unpaidCaseObligations: [] };
           }
 
+          const rows = Array.isArray(obligations) ? obligations : [];
           return {
             ...member,
-            unpaidCaseContributionCount: Number(data || 0),
+            unpaidCaseContributionCount: rows.length,
+            unpaidCaseObligations: rows,
           };
         })
       );
-      setMembers(membersWithContributionCounts);
+      setMembers(membersWithObligations);
 
       // Fetch locations from residences table
       if (locations.length === 0) {

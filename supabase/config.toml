@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.mpesa-b2c-callback]
 verify_jwt = false
+
+[functions.send-case-reminders]
+verify_jwt = false
+
+[functions.api-sms-templates]
+verify_jwt = true

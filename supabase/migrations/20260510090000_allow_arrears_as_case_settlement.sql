@@ -9,17 +9,7 @@ RETURNS TABLE(
   case_status TEXT,
   case_date DATE
 ) AS $$
-DECLARE
-  v_member_status TEXT;
 BEGIN
-  SELECT LOWER(TRIM(m.status)) INTO v_member_status
-  FROM public.members m
-  WHERE m.id = p_member_id;
-
-  IF v_member_status IS NULL OR v_member_status NOT IN ('active', 'probation') THEN
-    RETURN;
-  END IF;
-
   RETURN QUERY
   SELECT
     c.id,

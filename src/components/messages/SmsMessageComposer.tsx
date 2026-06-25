@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { buildSmsPreview, normalizeSmsRecipients, SmsRecipient, SmsTriggerKey, smsTemplates } from '@/lib/smsMessaging';
+import { buildSmsPreview, getRawTemplate, normalizeSmsRecipients, SmsRecipient, SmsTriggerKey, smsTemplates } from '@/lib/smsMessaging';
 
 type ComposerPayload = {
   triggerKey: SmsTriggerKey;
@@ -64,7 +64,7 @@ export function SmsMessageComposer({
 
   const handleSend = async () => {
     const message = activeTab === 'triggers'
-      ? buildSmsPreview(triggerKey, previewContext)
+      ? getRawTemplate(triggerKey)
       : customMessage.trim();
 
     if (!normalizedRecipients.length || !message) {

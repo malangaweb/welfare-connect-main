@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { RefreshCw, Save, Edit, X, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { RefreshCw, Save, Edit, X, MessageSquare, PenLine } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -103,6 +103,10 @@ const Settings = () => {
   const [smsRecipients, setSmsRecipients] = useState<SmsRecipient[]>([]);
   const [smsLoading, setSmsLoading] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
+  const [smsTemplates, setSmsTemplates] = useState<Array<{ trigger_key: string; label: string; description: string; category: string; raw_template: string; is_active: boolean }>>([]);
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const [editingRawTemplate, setEditingRawTemplate] = useState('');
+  const [smsTemplatesSaving, setSmsTemplatesSaving] = useState(false);
   const [settingsMeta, setSettingsMeta] = useState<Pick<
     SettingsData,
     'has_mpesa_consumer_key' | 'has_mpesa_consumer_secret' | 'has_mpesa_passkey' | 'has_mpesa_initiator_password'
@@ -207,12 +211,13 @@ const Settings = () => {
   const fetchSmsData = async () => {
     setSmsLoading(true);
     try {
-      const [summary, membersResult] = await Promise.all([
+      const [summary, membersResult, templatesResult] = await Promise.all([
         invokeWithAppToken<SmsSummary>('api-sms-summary', {}),
         invokeWithAppToken<MembersListResponse>('api-members-list', {
           status: 'active',
           limit: 300,
         }),
+        invokeWithAppToken<{ templates: any[] }>('api-sms-templates', {}).catch(() => ({ templates: [] })),
       ]);
 
       setSmsSummary(summary);
@@ -225,6 +230,9 @@ const Settings = () => {
           phoneNumber: String(member.phone_number || '').trim(),
           status: member.status || undefined,
         })));
+      if (templatesResult?.templates) {
+        setSmsTemplates(templatesResult.templates);
+      }
     } catch (error: any) {
       console.error('Error loading SMS data:', error);
       toast({
@@ -234,6 +242,28 @@ const Settings = () => {
       });
     } finally {
       setSmsLoading(false);
+    }
+  };
+
+  const handleSaveTemplate = async (triggerKey: string) => {
+    setSmsTemplatesSaving(true);
+    try {
+      await invokeWithAppToken('api-sms-templates', {
+        action: 'update',
+        trigger_key: triggerKey,
+        raw_template: editingRawTemplate,
+      });
+      setEditingTemplate(null);
+      await fetchSmsData();
+      toast({ title: 'Template saved' });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to save template',
+        description: error.message,
+      });
+    } finally {
+      setSmsTemplatesSaving(false);
     }
   };
 
@@ -1180,6 +1210,67 @@ const Settings = () => {
                     )}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <PenLine className="h-4 w-4" />
+                  Message Templates
+                </CardTitle>
+                <CardDescription>Customise the SMS templates used by trigger messages. Use <code className="bg-slate-200 px-1 rounded">{'{\u2026}'}</code> tags for per-recipient data: <code>{'{name}'}</code>, <code>{'{memberNumber}'}</code>, <code>{'{amount}'}</code>, <code>{'{caseNumber}'}</code>, <code>{'{deadline}'}</code>, <code>{'{balance}'}</code>.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {smsTemplates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No templates loaded. Refresh SMS data.</p>
+                ) : (
+                  smsTemplates.map((tmpl) => (
+                    <div key={tmpl.trigger_key} className="border rounded-lg p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm">{tmpl.label}</span>
+                            <Badge variant="outline" className="text-[10px]">{tmpl.category}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{tmpl.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingTemplate(editingTemplate === tmpl.trigger_key ? null : tmpl.trigger_key);
+                            setEditingRawTemplate(tmpl.raw_template);
+                          }}
+                        >
+                          <Edit className="h-3.5 w-3.5 mr-1" />
+                          {editingTemplate === tmpl.trigger_key ? 'Cancel' : 'Edit'}
+                        </Button>
+                      </div>
+                      {editingTemplate === tmpl.trigger_key ? (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            className="w-full min-h-[80px] rounded-lg border border-slate-200 p-2 text-xs font-mono resize-y"
+                            value={editingRawTemplate}
+                            onChange={(e) => setEditingRawTemplate(e.target.value)}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => void handleSaveTemplate(tmpl.trigger_key)}
+                              disabled={smsTemplatesSaving}
+                            >
+                              <Save className="h-3.5 w-3.5 mr-1" />
+                              {smsTemplatesSaving ? 'Saving...' : 'Save Template'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-600 font-mono bg-slate-50 rounded px-2 py-1">{tmpl.raw_template}</p>
+                      )}
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
           </TabsContent>

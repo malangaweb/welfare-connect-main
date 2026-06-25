@@ -141,11 +141,15 @@ serve(async (req) => {
       allResults.push({ phoneNumber: recipient.phoneNumber, message: personalMessage, result: results[0] });
     }
 
-    await Promise.all(allResults.map(({ phoneNumber, message: personalMessage, result }, index) =>
-      supabase.from("audit_logs").insert({
-        action: isSmsFailure(result) ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT',
+    await Promise.all(allResults.map(async ({ phoneNumber, message: personalMessage, result }, index) => {
+      const recipient = recipients[index];
+      const action = isSmsFailure(result) ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT';
+      const isSuccess = !isSmsFailure(result);
+
+      await supabase.from("audit_logs").insert({
+        action,
         table_name: tableName,
-        status: isSmsFailure(result) ? 'error' : 'success',
+        status: isSuccess ? 'success' : 'error',
         user_id: claims.sub || null,
         metadata: {
           source,
@@ -158,8 +162,20 @@ serve(async (req) => {
           provider_message_id: result.providerMessageId,
           provider_response: result.raw,
         },
-      })
-    ));
+      });
+
+      if (isSuccess && recipient?.memberId) {
+        await supabase.from("notifications").insert({
+          member_id: recipient.memberId,
+          user_id: claims.sub || null,
+          role: 'member',
+          title: triggerKey === 'overdue_reminder' ? 'Payment Overdue' : triggerKey === 'case_due' ? 'Payment Due' : triggerKey === 'welcome_member' ? 'Welcome' : triggerKey === 'payment_received' ? 'Payment Received' : 'Message',
+          message: personalMessage,
+          category: triggerKey,
+          data: { sms: true, phone: phoneNumber, trigger_key: triggerKey },
+        });
+      }
+    }));
 
     const results = allResults.map(r => r.result);
     const delivered = results.filter((r) => r.status === 'delivered').length;
