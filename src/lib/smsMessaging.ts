@@ -47,8 +47,8 @@ export const smsTemplates: SmsTemplate[] = [
     description: 'Send right after a member is registered.',
     category: 'member',
     message: ({ memberName, memberNumber }) =>
-      `Malanga Welfare: Welcome ${memberName || 'member'}. Your member number is ${memberNumber || 'N/A'}.`,
-    rawTemplate: 'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.',
+      `Malanga Welfare: Karibu ${memberName || 'mwanachama'}. Nambari yako ya mwanachama ni ${memberNumber || 'N/A'}.`,
+    rawTemplate: 'Malanga Welfare: Karibu {name}. Nambari yako ya mwanachama ni {memberNumber}.',
   },
   {
     key: 'case_opened',
@@ -57,16 +57,16 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'case',
     message: ({ memberName, caseNumber, deadline }) =>
       [
-        `Malanga Welfare: Case ${caseNumber || 'N/A'} has been opened.`,
-        memberName ? `Member: ${memberName}.` : null,
-        deadline ? `Deadline: ${deadline}.` : null,
+        `Malanga Welfare: Kesi ${caseNumber || 'N/A'} imefunguliwa.`,
+        memberName ? `Mwanachama: ${memberName}.` : null,
+        deadline ? `Tarehe: ${deadline}.` : null,
       ]
         .filter(Boolean)
         .join(' '),
     rawTemplate: [
-      'Malanga Welfare: Case {caseNumber} has been opened.',
-      'Member: {name}.',
-      'Deadline: {deadline}.',
+      'Malanga Welfare: Kesi {caseNumber} imefunguliwa.',
+      'Mwanachama: {name}.',
+      'Tarehe: {deadline}.',
     ].join(' '),
   },
   {
@@ -76,12 +76,12 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'payment',
     message: ({ amount, balance }) =>
       [
-        `Malanga Welfare: Payment received${amount ? ` KES ${amount}` : ''}.`,
-        balance ? `Current balance: ${balance}.` : null,
+        `Malanga Welfare: Malipo${amount ? ` KES ${amount}` : ''} yamepokelewa.`,
+        balance ? `Salio: KES ${balance}.` : null,
       ]
         .filter(Boolean)
         .join(' '),
-    rawTemplate: 'Malanga Welfare: Payment received KES {amount}. Current balance: {balance}.',
+    rawTemplate: 'Malanga Welfare: Malipo KES {amount} yamepokelewa. Salio: KES {balance}.',
   },
   {
     key: 'payment_failed',
@@ -89,27 +89,22 @@ export const smsTemplates: SmsTemplate[] = [
     description: 'Let the member know a payment did not complete.',
     category: 'payment',
     message: ({ memberName }) =>
-      `Malanga Welfare: Your payment could not be completed${memberName ? `, ${memberName}` : ''}. Please retry or contact support.`,
-    rawTemplate: 'Malanga Welfare: Your payment could not be completed, {name}. Please retry or contact support.',
+      `Malanga Welfare: Malipo yako hayajakamilika${memberName ? `, ${memberName}` : ''}. Tafadhali jaribu tena au wasiliana nasi.`,
+    rawTemplate: 'Malanga Welfare: Malipo yako hayajakamilika, {name}. Tafadhali jaribu tena au wasiliana nasi.',
   },
   {
     key: 'case_due',
     label: 'Case Due Reminder',
     description: 'Remind members before case contribution deadlines.',
     category: 'case',
-    message: ({ caseNumber, deadline, amount }) =>
+    message: ({ caseNumber, amount, memberNumber, deadline }) =>
       [
-        `Malanga Welfare: Reminder for case ${caseNumber || 'N/A'}.`,
-        amount ? `Contribution due: KES ${amount}.` : null,
-        deadline ? `Deadline: ${deadline}.` : null,
+        `Mwanachama mpendwa, hujalipa case ${caseNumber || 'N/A'}.`,
+        amount ? `Tafadhali lipa KES ${amount} kwa paybill 4164179 account ${memberNumber || 'N/A'} kabla ${deadline || 'sasa'}.` : null,
       ]
         .filter(Boolean)
         .join(' '),
-    rawTemplate: [
-      'Malanga Welfare: Reminder for case {caseNumber}.',
-      'Contribution due: KES {amount}.',
-      'Deadline: {deadline}.',
-    ].join(' '),
+    rawTemplate: 'Mwanachama mpendwa, hujalipa case {caseNumber}. Tafadhali lipa KES {amount} kwa paybill 4164179 account {memberNumber} kabla {deadline}.',
   },
   {
     key: 'overdue_reminder',
@@ -118,13 +113,10 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'case',
     message: ({ caseNumber, amount }) =>
       [
-        `Malanga Welfare: Your case contribution is overdue${caseNumber ? ` for case ${caseNumber}` : ''}.`,
-        amount ? `Please settle KES ${amount} as soon as possible.` : 'Please settle the pending amount as soon as possible.',
+        `Mwanachama mpendwa, malipo ya case ${caseNumber || 'N/A'} yamechelewa.`,
+        amount ? `Tafadhali lipa KES ${amount} haraka iwezekanavyo.` : 'Tafadhali lipa haraka iwezekanavyo.',
       ].join(' '),
-    rawTemplate: [
-      'Malanga Welfare: Your case contribution is overdue for case {caseNumber}.',
-      'Please settle KES {amount} as soon as possible.',
-    ].join(' '),
+    rawTemplate: 'Mwanachama mpendwa, malipo ya case {caseNumber} yamechelewa. Tafadhali lipa KES {amount} haraka iwezekanavyo.',
   },
   {
     key: 'renewal_reminder',
@@ -133,17 +125,10 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'renewal',
     message: ({ deadline }) =>
       [
-        'Malanga Welfare: Your membership renewal is coming up.',
-        deadline ? `Due date: ${deadline}.` : null,
-        'Please make your payment on time.',
-      ]
-        .filter(Boolean)
-        .join(' '),
-    rawTemplate: [
-      'Malanga Welfare: Your membership renewal is coming up.',
-      'Due date: {deadline}.',
-      'Please make your payment on time.',
-    ].join(' '),
+        'Malanga Welfare: Usajili wako unakaribia kufikia mwisho.',
+        deadline ? `Tafadhali lipa kabla ya ${deadline}.` : 'Tafadhali lipa kabla ya muda.',
+      ].join(' '),
+    rawTemplate: 'Malanga Welfare: Usajili wako unakaribia kufikia mwisho. Tafadhali lipa kabla ya {deadline}.',
   },
   {
     key: 'manual_custom',

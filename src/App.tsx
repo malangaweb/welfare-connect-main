@@ -44,6 +44,7 @@ const MemberSummary = lazy(() => import("./pages/members/MemberSummary"));
 const MemberCases = lazy(() => import("./pages/members/MemberCases"));
 const MemberTransactions = lazy(() => import("./pages/members/MemberTransactions"));
 const MemberReport = lazy(() => import("./pages/members/MemberReport"));
+const MemberDependants = lazy(() => import("./pages/members/MemberDependants"));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -224,6 +225,14 @@ const App = () => (
             element={
               <MemberProtectedRoute>
                 <MemberReport />
+              </MemberProtectedRoute>
+            }
+          />
+          <Route
+            path="/member/dependants"
+            element={
+              <MemberProtectedRoute>
+                <MemberDependants />
               </MemberProtectedRoute>
             }
           />

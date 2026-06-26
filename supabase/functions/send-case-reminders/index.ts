@@ -41,7 +41,7 @@ serve(async (req) => {
     // Get all members with phone numbers who are active or probation
     const { data: members, error: memberError } = await supabase
       .from("members")
-      .select("id, name, phone_number")
+      .select("id, name, phone_number, member_number")
       .in("status", ["active", "probation"])
       .not("phone_number", "is", null);
 
@@ -72,17 +72,10 @@ serve(async (req) => {
 
         if (deadline < today) {
           triggerKey = "overdue_reminder";
-          rawTemplate = [
-            "Malanga Welfare: Your case contribution is overdue for case {caseNumber}.",
-            "Please settle KES {amount} as soon as possible.",
-          ].join(" ");
+          rawTemplate = "Mwanachama mpendwa, malipo ya case {caseNumber} yamechelewa. Tafadhali lipa KES {amount} haraka iwezekanavyo.";
         } else if (deadline <= threeDaysFromNow) {
           triggerKey = "case_due";
-          rawTemplate = [
-            "Malanga Welfare: Reminder for case {caseNumber}.",
-            "Contribution due: KES {amount}.",
-            "Deadline: {deadline}.",
-          ].join(" ");
+          rawTemplate = "Mwanachama mpendwa, hujalipa case {caseNumber}. Tafadhali lipa KES {amount} kwa paybill 4164179 account {memberNumber} kabla {deadline}.";
         } else {
           continue;
         }
@@ -97,8 +90,8 @@ serve(async (req) => {
         if (wallet) balance = String(wallet.wallet_balance ?? "");
 
         const context: Record<string, string> = {
-          name: member.name || "Member",
-          memberNumber: "",
+          name: member.name || "Mwanachama",
+          memberNumber: String(member.member_number || ""),
           amount: String(ob.contribution_per_member || 0),
           caseNumber: ob.case_number,
           deadline: deadline,
@@ -138,7 +131,7 @@ serve(async (req) => {
           await supabase.from("notifications").insert({
             member_id: member.id,
             role: "member",
-            title: triggerKey === "overdue_reminder" ? "Payment Overdue" : "Payment Due",
+            title: triggerKey === "overdue_reminder" ? "Malipo Yamechelewa" : "Malipo Yanakaribia",
             message: msg,
             category: triggerKey,
             data: { sms: true, phone, trigger_key: triggerKey, case_number: ob.case_number },

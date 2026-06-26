@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Wallet, CreditCard, User, Calendar, Phone, Mail, Home, FileText, ArrowRight } from "lucide-react";
+import { Wallet, CreditCard, User, Calendar, Phone, Mail, Home, FileText, ArrowRight, Users } from "lucide-react";
 import { memberLinks, memberLogout } from "./memberLinks";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -573,6 +573,12 @@ const MemberDashboard = () => {
                     <div className="font-medium">{member.residence}</div>
                   </div>
                 </div>
+              </div>
+              <div className="mt-4 pt-3 border-t">
+                <Button variant="outline" size="sm" className="w-full" onClick={() => navigate('/member/dependants')}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Manage Dependants
+                </Button>
               </div>
             </CardContent>
           </Card>

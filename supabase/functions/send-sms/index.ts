@@ -169,7 +169,7 @@ serve(async (req) => {
           member_id: recipient.memberId,
           user_id: claims.sub || null,
           role: 'member',
-          title: triggerKey === 'overdue_reminder' ? 'Payment Overdue' : triggerKey === 'case_due' ? 'Payment Due' : triggerKey === 'welcome_member' ? 'Welcome' : triggerKey === 'payment_received' ? 'Payment Received' : 'Message',
+          title: triggerKey === 'overdue_reminder' ? 'Malipo Yamechelewa' : triggerKey === 'case_due' ? 'Malipo Yanakaribia' : triggerKey === 'welcome_member' ? 'Karibu' : triggerKey === 'payment_received' ? 'Malipo Yamepokelewa' : triggerKey === 'payment_failed' ? 'Malipo Yameshindikana' : 'Ujumbe',
           message: personalMessage,
           category: triggerKey,
           data: { sms: true, phone: phoneNumber, trigger_key: triggerKey },

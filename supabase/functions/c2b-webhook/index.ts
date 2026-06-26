@@ -259,7 +259,7 @@ serve(async (req: Request): Promise<Response> => {
         if (member?.phone_number) {
           const firstName = (member.name || '').split(' ')[0] || 'Valued Member'
           const balance = Number(member.wallet_balance || 0).toLocaleString('en-KE')
-          const smsMessage = `Dear ${firstName}, Contribution of KES ${transAmount.toLocaleString('en-KE')} received for case ${parsed.caseNumber} from ${senderName}. M-Pesa Ref: ${normalizedTransID}. Balance: KES ${balance}. Thank you!`
+          const smsMessage = `Mpendwa ${firstName}, Mchango wa KES ${transAmount.toLocaleString('en-KE')} umepokelewa kwa kesi ${parsed.caseNumber} kutoka kwa ${senderName}. M-Pesa Ref: ${normalizedTransID}. Salio: KES ${balance}. Asante!`
           const smsResults = await sendSmsMessage([member.phone_number], smsMessage)
           await Promise.all(smsResults.map((result, i) => supabase.from('audit_logs').insert({
             action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',
@@ -298,7 +298,7 @@ serve(async (req: Request): Promise<Response> => {
         if (member?.phone_number) {
           const firstName = (member.name || '').split(' ')[0] || 'Valued Member'
           const balance = Number(member.wallet_balance || 0).toLocaleString('en-KE')
-          const smsMessage = `Dear ${firstName}, Payment received KES ${transAmount.toLocaleString('en-KE')} from ${senderName}. M-Pesa Ref: ${normalizedTransID}. Balance: KES ${balance}. Thank you!`
+          const smsMessage = `Mpendwa ${firstName}, Malipo ya KES ${transAmount.toLocaleString('en-KE')} kutoka kwa ${senderName} yamepokelewa. M-Pesa Ref: ${normalizedTransID}. Salio: KES ${balance}. Asante!`
           const smsResults = await sendSmsMessage([member.phone_number], smsMessage)
           await Promise.all(smsResults.map((result, i) => supabase.from('audit_logs').insert({
             action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',

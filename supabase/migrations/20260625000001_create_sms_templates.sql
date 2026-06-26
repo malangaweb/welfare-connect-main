@@ -21,18 +21,18 @@ COMMENT ON TABLE public.sms_templates IS 'Editable SMS message templates used by
 
 -- Seed current templates
 INSERT INTO public.sms_templates (trigger_key, label, description, category, raw_template) VALUES
-  ('welcome_member', 'Welcome Member', 'Send right after a member is registered.', 'member',
-   'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.'),
-  ('case_opened', 'Case Opened', 'Notify members when a new case has been opened.', 'case',
-   'Malanga Welfare: Case {caseNumber} has been opened. Member: {name}. Deadline: {deadline}.'),
-  ('payment_received', 'Payment Received', 'Confirm a successful contribution or wallet payment.', 'payment',
-   'Malanga Welfare: Payment received KES {amount}. Current balance: {balance}.'),
-  ('payment_failed', 'Payment Failed', 'Let the member know a payment did not complete.', 'payment',
-   'Malanga Welfare: Your payment could not be completed, {name}. Please retry or contact support.'),
-  ('case_due', 'Case Due Reminder', 'Remind members before case contribution deadlines.', 'case',
-   'Malanga Welfare: Reminder for case {caseNumber}. Contribution due: KES {amount}. Deadline: {deadline}.'),
-  ('overdue_reminder', 'Overdue Reminder', 'Follow up on unpaid case contributions.', 'case',
-   'Malanga Welfare: Your case contribution is overdue for case {caseNumber}. Please settle KES {amount} as soon as possible.'),
-  ('renewal_reminder', 'Renewal Reminder', 'Notify members before renewal falls due.', 'renewal',
-   'Malanga Welfare: Your membership renewal is coming up. Due date: {deadline}. Please make your payment on time.')
+  ('welcome_member', 'Karibu Mwanachama', 'Tumwa mwanachama anaposajiliwa.', 'member',
+   'Malanga Welfare: Karibu {name}. Nambari yako ya mwanachama ni {memberNumber}.'),
+  ('case_opened', 'Kesi Imefunguliwa', 'Wajulishe wanachama kesi mpya inapofunguliwa.', 'case',
+   'Malanga Welfare: Kesi {caseNumber} imefunguliwa. Mwanachama: {name}. Tarehe: {deadline}.'),
+  ('payment_received', 'Malipo Yamepokelewa', 'Thibitisha malipo ya mchango au wallet.', 'payment',
+   'Malanga Welfare: Malipo KES {amount} yamepokelewa. Salio: KES {balance}.'),
+  ('payment_failed', 'Malipo Yameshindikana', 'Mjulishe mwanachama malipo hayajakamilika.', 'payment',
+   'Malanga Welfare: Malipo yako hayajakamilika, {name}. Tafadhali jaribu tena au wasiliana nasi.'),
+  ('case_due', 'Kesi Inakaribia', 'Wakumbushe wanachama kabla ya tarehe ya mwisho.', 'case',
+   'Mwanachama mpendwa, hujalipa case {caseNumber}. Tafadhali lipa KES {amount} kwa paybill 4164179 account {memberNumber} kabla {deadline}.'),
+  ('overdue_reminder', 'Kesi Imechelewa', 'Fuata malipo ya kesi yaliyochelewa.', 'case',
+   'Mwanachama mpendwa, malipo ya case {caseNumber} yamechelewa. Tafadhali lipa KES {amount} haraka iwezekanavyo.'),
+  ('renewal_reminder', 'Ukumbusho wa Usajili', 'Wajulishe wanachama usajili unakaribia.', 'renewal',
+   'Malanga Welfare: Usajili wako unakaribia kufikia mwisho. Tafadhali lipa kabla ya {deadline}.')
 ON CONFLICT (trigger_key) DO NOTHING;
