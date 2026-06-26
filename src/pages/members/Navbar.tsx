@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bell, Search, User, Settings, LogOut } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -12,13 +12,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { AppNotification, fetchNotifications } from '@/lib/notificationsApi';
+import { AppNotification, fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationsApi';
 
 const Navbar = () => {
   const [searchValue, setSearchValue] = useState('');
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const result = await fetchNotifications(20);
+      setNotifications(result.notifications);
+      setUnreadCount(result.unread_count);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
+  }, []);
 
   // Check if a member is logged in (localStorage)
   const isMemberLoggedIn = !!localStorage.getItem("member_member_id");
@@ -33,16 +44,8 @@ const Navbar = () => {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      try {
-        const result = await fetchNotifications(20);
-        if (cancelled) return;
-        setNotifications(result.notifications);
-        setUnreadCount(result.unread_count);
-      } catch {
-        if (cancelled) return;
-        setNotifications([]);
-        setUnreadCount(0);
-      }
+      await loadNotifications();
+      if (cancelled) return;
     };
     void load();
     const id = window.setInterval(load, 60000);
@@ -50,7 +53,7 @@ const Navbar = () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [loadNotifications]);
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur-md flex items-center px-6">
@@ -99,7 +102,14 @@ const Navbar = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <div className="p-3 border-b border-slate-100 flex items-center justify-between">
+                <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
+                {unreadCount > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 text-[10px] text-primary" onClick={async () => { await markAllNotificationsRead(); await loadNotifications(); }}>
+                    Mark all read
+                  </Button>
+                )}
+              </div>
               <DropdownMenuSeparator />
               <div className="max-h-[60vh] overflow-y-auto">
                 <div className="flex flex-col gap-2 py-2 px-1">
@@ -107,7 +117,14 @@ const Navbar = () => {
                     <p className="text-center text-sm text-muted-foreground py-4">No notifications</p>
                   ) : (
                     notifications.map((item) => (
-                      <div key={item.id} className="rounded-md border p-2 border-slate-100 bg-white">
+                      <div
+                        key={item.id}
+                        className={`rounded-md border p-2 cursor-pointer transition-colors ${item.is_read ? 'border-slate-50 bg-slate-50/50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                        onClick={async () => {
+                          await markNotificationRead(item.id);
+                          await loadNotifications();
+                        }}
+                      >
                         <p className="text-sm font-semibold">{item.title}</p>
                         <p className="text-xs text-muted-foreground mt-1">{item.message}</p>
                         <p className="text-[10px] text-slate-400 mt-1">

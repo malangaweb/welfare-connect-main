@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Bell, Search, User, Settings, LogOut, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { clearAppToken } from '@/lib/appAuth';
-import { AppNotification, fetchNotifications } from '@/lib/notificationsApi';
+import { AppNotification, fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationsApi';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -27,8 +27,20 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
   const [showSearch, setShowSearch] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [markingId, setMarkingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const result = await fetchNotifications(20);
+      setNotifications(result.notifications);
+      setUnreadCount(result.unread_count);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
+  }, []);
 
   useEffect(() => {
     // Get logged-in user name from localStorage
@@ -46,16 +58,8 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      try {
-        const result = await fetchNotifications(20);
-        if (cancelled) return;
-        setNotifications(result.notifications);
-        setUnreadCount(result.unread_count);
-      } catch {
-        if (cancelled) return;
-        setNotifications([]);
-        setUnreadCount(0);
-      }
+      await loadNotifications();
+      if (cancelled) return;
     };
     void load();
     const id = window.setInterval(load, 60000);
@@ -63,7 +67,7 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [loadNotifications]);
 
   const handleLogout = () => {
     clearAppToken();
@@ -156,15 +160,29 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-72 sm:w-80 p-0 shadow-lg border-slate-200">
-              <div className="p-3 sm:p-4 border-b border-slate-100 bg-slate-50/50">
+              <div className="p-3 sm:p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Notifications</h3>
+                {unreadCount > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 text-[10px] text-primary" onClick={async () => { await markAllNotificationsRead(); await loadNotifications(); }}>
+                    Mark all read
+                  </Button>
+                )}
               </div>
               <div className="max-h-80 overflow-y-auto p-2">
                 {notifications.length === 0 ? (
                   <p className="text-center text-xs text-muted-foreground py-8">No notifications</p>
                 ) : (
                   notifications.map((item) => (
-                    <div key={item.id} className="rounded-md border border-slate-100 p-2 mb-2 bg-white">
+                    <div
+                      key={item.id}
+                      className={`rounded-md border p-2 mb-2 cursor-pointer transition-colors ${item.is_read ? 'border-slate-50 bg-slate-50/50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                      onClick={async () => {
+                        setMarkingId(item.id);
+                        await markNotificationRead(item.id);
+                        await loadNotifications();
+                        setMarkingId(null);
+                      }}
+                    >
                       <p className="text-xs font-semibold text-slate-800">{item.title}</p>
                       <p className="text-xs text-slate-600 mt-1">{item.message}</p>
                       <p className="text-[10px] text-slate-400 mt-1">

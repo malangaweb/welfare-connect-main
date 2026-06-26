@@ -24,3 +24,15 @@ export async function fetchNotifications(limit = 20): Promise<NotificationsRespo
     notifications: Array.isArray(data?.notifications) ? data.notifications : [],
   };
 }
+
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  await invokeWithAppToken("api-notifications-mark-read", {
+    notification_id: notificationId,
+  });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await invokeWithAppToken("api-notifications-mark-read", {
+    mark_all: true,
+  });
+}

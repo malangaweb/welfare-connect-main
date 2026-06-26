@@ -2058,6 +2058,7 @@ const Members = () => {
 
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="sr-only">Send SMS</DialogTitle>
           <SmsMessageComposer
             recipients={messageRecipients}
             audienceLabel={messageAudienceLabel}

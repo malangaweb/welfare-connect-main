@@ -27,6 +27,7 @@ function resolveTags(text: string, data: Record<string, string>): string {
 async function buildRecipientContext(
   supabase: ReturnType<typeof createClient>,
   recipient: RecipientData,
+  triggerKey?: string,
 ): Promise<Record<string, string>> {
   const ctx: Record<string, string> = {
     name: recipient.name || 'Member',
@@ -39,10 +40,10 @@ async function buildRecipientContext(
     balance: '',
   };
 
-  if (recipient.memberId && (!recipient.name || !recipient.memberNumber)) {
+  if (recipient.memberId) {
     const { data: member } = await supabase
       .from('members')
-      .select('name, member_number, wallet_balance')
+      .select('name, member_number, phone_number, wallet_balance')
       .eq('id', recipient.memberId)
       .single();
     if (member) {
@@ -50,14 +51,46 @@ async function buildRecipientContext(
       if (!recipient.memberNumber) ctx.memberNumber = member.member_number || '';
       ctx.balance = String(member.wallet_balance ?? '');
     }
-  } else if (recipient.memberId) {
-    const { data: member } = await supabase
-      .from('members')
-      .select('wallet_balance')
-      .eq('id', recipient.memberId)
-      .single();
-    if (member) {
-      ctx.balance = String(member.wallet_balance ?? '');
+
+    // For case-related triggers, fetch unpaid case obligations if tags are empty
+    if (triggerKey === 'case_due' || triggerKey === 'overdue_reminder' || triggerKey === 'case_opened') {
+      if (!ctx.caseNumber || !ctx.amount || !ctx.deadline) {
+        const { data: obligations } = await supabase
+          .rpc('get_member_unpaid_case_obligations', { p_member_id: recipient.memberId });
+        if (Array.isArray(obligations) && obligations.length > 0) {
+          const ob = obligations[0];
+          if (!ctx.caseNumber) ctx.caseNumber = ob.case_number || '';
+          if (!ctx.amount) ctx.amount = String(ob.contribution_per_member || 0);
+          if (!ctx.deadline) ctx.deadline = ob.case_date?.slice(0, 10) || '';
+        }
+      }
+    }
+
+    // For renewal_reminder, fetch member expiry if deadline is empty
+    if (triggerKey === 'renewal_reminder' && !ctx.deadline) {
+      const { data: memberFull } = await supabase
+        .from('members')
+        .select('expiry_date')
+        .eq('id', recipient.memberId)
+        .single();
+      if (memberFull?.expiry_date) {
+        ctx.deadline = String(memberFull.expiry_date).slice(0, 10);
+      }
+    }
+
+    // For payment_received, fetch wallet_balance if balance is empty
+    if (triggerKey === 'payment_received' && !ctx.balance && !ctx.amount) {
+      // balance already fetched above; for amount, check recent transaction
+      const { data: lastTx } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('member_id', recipient.memberId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastTx) {
+        ctx.amount = String(lastTx.amount || 0);
+      }
     }
   }
 
@@ -78,7 +111,7 @@ function toRecipient(input: unknown): RecipientData | null {
       phoneNumber,
       name: String(obj.name || '').trim() || undefined,
       memberNumber: String(obj.memberNumber || obj.member_number || '').trim() || undefined,
-      memberId: String(obj.memberId || obj.member_id || '').trim() || undefined,
+      memberId: String(obj.memberId || obj.member_id || obj.id || '').trim() || undefined,
       amount: String(obj.amount || '').trim() || undefined,
       caseNumber: String(obj.caseNumber || obj.case_number || '').trim() || undefined,
       deadline: String(obj.deadline || '').trim() || undefined,
@@ -135,7 +168,7 @@ serve(async (req) => {
     const allResults: Array<{ phoneNumber: string; message: string; result: Awaited<ReturnType<typeof sendSmsMessage>>[0] }> = [];
 
     for (const recipient of recipients) {
-      const context = await buildRecipientContext(supabase, recipient);
+      const context = await buildRecipientContext(supabase, recipient, triggerKey);
       const personalMessage = resolveTags(message, context);
       const results = await sendSmsMessage([recipient.phoneNumber], personalMessage);
       allResults.push({ phoneNumber: recipient.phoneNumber, message: personalMessage, result: results[0] });

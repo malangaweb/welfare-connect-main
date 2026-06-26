@@ -186,7 +186,7 @@ serve(async (req) => {
         // STEP 3: Try to find member by phone
         const { data: member, error: memberError } = await supabase
           .from('members')
-          .select('id, member_number, name')
+          .select('id, member_number, name, wallet_balance')
           .eq('phone_number', normalizedPhone)
           .single()
 

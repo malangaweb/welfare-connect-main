@@ -80,6 +80,18 @@ serve(async (req) => {
           continue;
         }
 
+        // Dedup: skip if reminder already sent today for this member+case
+        const { data: existing } = await supabase
+          .from("audit_logs")
+          .select("id")
+          .eq("table_name", "sms")
+          .eq("metadata->>source", "cron_case_reminder")
+          .eq("metadata->>case_number", ob.case_number)
+          .eq("metadata->>phone_number", phone)
+          .gte("created_at", today)
+          .limit(1);
+        if (existing?.length) continue;
+
         // Fetch wallet balance from DB
         let balance = "";
         const { data: wallet } = await supabase
@@ -93,7 +105,7 @@ serve(async (req) => {
           name: member.name || "Mwanachama",
           memberNumber: String(member.member_number || ""),
           amount: String(ob.contribution_per_member || 0),
-          caseNumber: ob.case_number,
+          caseNumber: ob.case_number || "",
           deadline: deadline,
           balance,
           ref: "",

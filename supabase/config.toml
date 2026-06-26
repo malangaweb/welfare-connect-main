@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.api-sms-templates]
 verify_jwt = true
+
+[functions.api-notifications-mark-read]
+verify_jwt = false

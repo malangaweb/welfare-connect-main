@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Save, Edit, X, MessageSquare, PenLine } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { RefreshCw, Save, Edit, X, MessageSquare, PenLine, ChevronDown, ChevronRight } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -62,6 +62,9 @@ type SmsSummary = {
     timestamp: string;
     metadata?: Record<string, unknown> | null;
   }>;
+  total: number;
+  page: number;
+  page_size: number;
 };
 
 type MembersListResponse = {
@@ -107,6 +110,9 @@ const Settings = () => {
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
   const [editingRawTemplate, setEditingRawTemplate] = useState('');
   const [smsTemplatesSaving, setSmsTemplatesSaving] = useState(false);
+  const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [smsPage, setSmsPage] = useState(1);
+  const [smsPageSize] = useState(20);
   const [settingsMeta, setSettingsMeta] = useState<Pick<
     SettingsData,
     'has_mpesa_consumer_key' | 'has_mpesa_consumer_secret' | 'has_mpesa_passkey' | 'has_mpesa_initiator_password'
@@ -197,7 +203,9 @@ const Settings = () => {
   }, [refreshTrigger, form]);
 
   useEffect(() => {
-    void fetchSmsData();
+    void fetchSmsData(1);
+    const id = window.setInterval(() => fetchSmsData(), 30000);
+    return () => window.clearInterval(id);
   }, []);
 
   const handleRefresh = () => {
@@ -208,11 +216,12 @@ const Settings = () => {
     handleRefresh();
   };
 
-  const fetchSmsData = async () => {
+  const fetchSmsData = async (page?: number) => {
+    const currentPage = page ?? smsPage;
     setSmsLoading(true);
     try {
       const [summary, membersResult, templatesResult] = await Promise.all([
-        invokeWithAppToken<SmsSummary>('api-sms-summary', {}),
+        invokeWithAppToken<SmsSummary>('api-sms-summary', { page: currentPage, page_size: smsPageSize }),
         invokeWithAppToken<MembersListResponse>('api-members-list', {
           status: 'active',
           limit: 300,
@@ -1170,46 +1179,110 @@ const Settings = () => {
                   <MessageSquare className="h-4 w-4" />
                   Recent SMS Activity
                 </CardTitle>
-                <CardDescription>Latest SMS audit entries recorded by Edge Functions.</CardDescription>
+                <CardDescription>
+                  {smsSummary?.total != null ? `${smsSummary.total.toLocaleString()} total entries` : 'Loading...'} — Page {smsSummary?.page || 1} of {smsSummary?.total != null ? Math.max(1, Math.ceil(smsSummary.total / smsPageSize)) : 1}. Click a row to expand.
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Action</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Recipient</TableHead>
-                      <TableHead>Source</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(smsSummary?.recent || []).length === 0 ? (
+              <CardContent className="p-0">
+                <div className="max-h-[480px] overflow-y-auto">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground">
-                          No SMS activity recorded yet.
-                        </TableCell>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Trigger</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Message</TableHead>
                       </TableRow>
-                    ) : (
-                      (smsSummary?.recent || []).map((row, index) => {
-                        const metadata = row.metadata || {};
-                        return (
-                          <TableRow key={`${row.timestamp}-${index}`}>
-                            <TableCell>{row.timestamp ? new Date(row.timestamp).toLocaleString() : '-'}</TableCell>
-                            <TableCell>{row.action}</TableCell>
-                            <TableCell>
-                              <Badge variant={row.status === 'error' ? 'destructive' : 'secondary'}>
-                                {row.status || 'unknown'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{String(metadata.phone_number || '-')}</TableCell>
-                            <TableCell>{String(metadata.source || '-')}</TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {(smsSummary?.recent || []).length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground">
+                            {smsLoading ? 'Loading SMS logs...' : 'No SMS activity recorded yet.'}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        (smsSummary?.recent || []).map((row, index) => {
+                          const metadata = row.metadata || {};
+                          const logKey = `sms-${index}`;
+                          const isOpen = expandedLog === logKey;
+                          const msg = String(metadata.message || '');
+                          const trigger = String(metadata.trigger_key || '-');
+                          return (
+                            <React.Fragment key={logKey}>
+                              <TableRow
+                                className="cursor-pointer hover:bg-muted/50"
+                                onClick={() => setExpandedLog(isOpen ? null : logKey)}
+                              >
+                                <TableCell>{isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</TableCell>
+                                <TableCell className="text-xs whitespace-nowrap">{row.timestamp ? new Date(row.timestamp).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="text-xs font-mono">{String(metadata.phone_number || '-')}</TableCell>
+                                <TableCell><Badge variant="outline" className="text-[10px]">{trigger}</Badge></TableCell>
+                                <TableCell>
+                                  <Badge variant={row.status === 'error' ? 'destructive' : 'secondary'}>
+                                    {row.status || 'unknown'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-xs max-w-[300px] truncate">{msg || '-'}</TableCell>
+                              </TableRow>
+                              {isOpen && msg && (
+                                <TableRow key={`${logKey}-expanded`}>
+                                  <TableCell colSpan={6} className="bg-muted/20 p-3">
+                                    <pre className="text-xs whitespace-pre-wrap font-sans break-words">{msg}</pre>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                {/* Pagination */}
+                {smsSummary?.total != null && smsSummary.total > smsPageSize && (
+                  <div className="flex items-center justify-between border-t px-4 py-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={smsPage <= 1 || smsLoading}
+                      onClick={() => { setSmsPage(1); void fetchSmsData(1); }}
+                    >
+                      First
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={smsPage <= 1 || smsLoading}
+                        onClick={() => { const p = smsPage - 1; setSmsPage(p); void fetchSmsData(p); }}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Page {smsPage} of {Math.ceil(smsSummary.total / smsPageSize)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={smsPage >= Math.ceil(smsSummary.total / smsPageSize) || smsLoading}
+                        onClick={() => { const p = smsPage + 1; setSmsPage(p); void fetchSmsData(p); }}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={smsPage >= Math.ceil(smsSummary.total / smsPageSize) || smsLoading}
+                      onClick={() => { const p = Math.ceil(smsSummary.total / smsPageSize); setSmsPage(p); void fetchSmsData(p); }}
+                    >
+                      Last
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

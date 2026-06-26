@@ -20,16 +20,29 @@ serve(async (req) => {
     const claims = await verifyAppJwtFromRequest(req);
     requirePrivilegedRole(claims.role);
 
+    const body = await req.json().catch(() => ({}));
+    const page = Math.max(1, Number(body.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(body.page_size || 20)));
+    const offset = (page - 1) * pageSize;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const [sentCount, deliveredCount, failedCount, recentRows, balanceResult] = await Promise.all([
-      supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("table_name", "sms").eq("action", "SMS_SENT"),
-      supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("table_name", "sms").eq("action", "SMS_DELIVERED"),
-      supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("table_name", "sms").eq("action", "SMS_FAILED"),
-      supabase.from("audit_logs").select("action, status, metadata, timestamp").eq("table_name", "sms").order("timestamp", { ascending: false }).limit(12),
+    const smsQuery = () => supabase.from("audit_logs").select("id", { count: "exact", head: true }).eq("table_name", "sms");
+
+    const [sentCount, deliveredCount, failedCount, recentRows, totalCount, balanceResult] = await Promise.all([
+      smsQuery().eq("action", "SMS_SENT"),
+      smsQuery().eq("action", "SMS_DELIVERED"),
+      smsQuery().eq("action", "SMS_FAILED"),
+      supabase
+        .from("audit_logs")
+        .select("action, status, metadata, timestamp")
+        .eq("table_name", "sms")
+        .order("timestamp", { ascending: false })
+        .range(offset, offset + pageSize - 1),
+      smsQuery(),
       fetchSmsBalance().catch((error) => ({ balance: null, raw: { error: error instanceof Error ? error.message : String(error) } })),
     ]);
 
@@ -39,6 +52,9 @@ serve(async (req) => {
       failed: failedCount.count || 0,
       balance: balanceResult.balance,
       recent: recentRows.data || [],
+      total: totalCount.count || 0,
+      page,
+      page_size: pageSize,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
