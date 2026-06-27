@@ -215,7 +215,7 @@ class _SuspenseQueueScreenState extends ConsumerState<SuspenseQueueScreen> {
 
     return AdminShell(
       title: 'Suspense Queue',
-      currentIndex: 4,
+      route: '/admin/suspense-queue',
       actions: [
         IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
         IconButton(onPressed: _autoMatch, icon: const Icon(Icons.auto_fix_high)),

@@ -61,7 +61,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     return AdminShell(
       title: 'Admin Dashboard',
-      currentIndex: 0,
+      route: '/admin/dashboard',
       actions: [
         IconButton(
           onPressed: () => context.go('/admin/settings'),

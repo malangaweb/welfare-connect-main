@@ -102,6 +102,65 @@ class _AdminTransactionsScreenState
     }
   }
 
+  Future<void> _editTransaction(Map<String, dynamic> tx) async {
+    final txId = (tx['id'] ?? '').toString();
+    if (txId.isEmpty) return;
+
+    final descCtrl = TextEditingController(text: tx['description']?.toString() ?? '');
+    final caseIdCtrl = TextEditingController(text: tx['case_id']?.toString() ?? '');
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Transaction'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: descCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                hintText: 'Enter transaction description',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: caseIdCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Link to Case (optional)',
+                hintText: 'Enter case ID or leave empty',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await _service.updateTransactionDescription(
+        transactionId: txId,
+        description: descCtrl.text.trim(),
+        caseId: caseIdCtrl.text.trim().isEmpty ? null : caseIdCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transaction updated successfully.')),
+      );
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Update failed: $e')),
+      );
+    }
+  }
+
   Future<void> _bulkReverse() async {
     if (_selected.isEmpty || _bulkBusy) return;
     final reasonCtrl = TextEditingController(text: 'Bulk reversal');
@@ -159,7 +218,7 @@ class _AdminTransactionsScreenState
         locale: 'en_KE', symbol: 'KES ', decimalDigits: 2);
     return AdminShell(
       title: 'Transactions',
-      currentIndex: 3,
+      route: '/admin/transactions',
       actions: [
         IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
         IconButton(
@@ -248,14 +307,19 @@ class _AdminTransactionsScreenState
                       items: const [
                         DropdownMenuItem(value: 'all', child: Text('All Types')),
                         DropdownMenuItem(
-                            value: 'wallet_funding', child: Text('Wallet funding')),
+                            value: 'contribution', child: Text('Contribution')),
                         DropdownMenuItem(
-                            value: 'case_wallet_deduction',
-                            child: Text('Case deduction')),
-                        DropdownMenuItem(value: 'contribution', child: Text('Contribution')),
-                        DropdownMenuItem(value: 'arrears', child: Text('Arrears')),
+                            value: 'contribution_refund', child: Text('Contribution Refund')),
+                        DropdownMenuItem(
+                            value: 'disbursement', child: Text('Disbursement')),
+                        DropdownMenuItem(
+                            value: 'registration', child: Text('Registration Fee')),
+                        DropdownMenuItem(
+                            value: 'renewal', child: Text('Renewal Fee')),
                         DropdownMenuItem(value: 'penalty', child: Text('Penalty')),
-                        DropdownMenuItem(value: 'disbursement', child: Text('Disbursement')),
+                        DropdownMenuItem(value: 'arrears', child: Text('Arrears')),
+                        DropdownMenuItem(
+                            value: 'wallet_funding', child: Text('Wallet Funding')),
                       ],
                       onChanged: (value) {
                         if (value == null) return;
@@ -373,11 +437,16 @@ class _AdminTransactionsScreenState
                               money.format(amount.abs()),
                               style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
-                            if (!reversed)
+                            if (!reversed) ...[
+                              TextButton(
+                                onPressed: () => _editTransaction(r),
+                                child: const Text('Edit'),
+                              ),
                               TextButton(
                                 onPressed: () => _reverseTransaction(r),
-                                child: const Text('Reverse'),
+                                child: const Text('Revert'),
                               ),
+                            ],
                           ],
                         ),
                       ],

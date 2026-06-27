@@ -1302,4 +1302,351 @@ class LiveDataService {
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString()) ?? 0;
   }
+
+  Future<List<Map<String, dynamic>>> fetchReportContributions({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final monthlyData = (report['monthly_contributions'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+      return monthlyData;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReportTransactions({required String appToken, Map<String, dynamic>? filters}) async {
+    final limit = (filters?['limit'] as int?) ?? 200;
+    final offset = (filters?['offset'] as int?) ?? 0;
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-transactions-list',
+        body: {
+          'limit': limit,
+          'offset': offset,
+          'type': filters?['type'],
+        },
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      return (payload['transactions'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReportDefaulters({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-members-list',
+        body: {'status': 'all'},
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final members = (payload['members'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .where((m) => _toDouble(m['wallet_balance']) < 0)
+          .toList() ?? const <Map<String, dynamic>>[];
+      return members;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReportMembers({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-members-list',
+        body: {'status': 'all'},
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      return (payload['members'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReportDiscipline({required String appToken, Map<String, dynamic>? filters}) async {
+    final days = (filters?['days'] as int?) ?? 180;
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-discipline-report',
+        body: {'days': days},
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final transitions = (payload['transitions'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+      return transitions;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchFiscalStats({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const {};
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      return (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchFiscalContributions({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      return (report['monthly_contributions'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCaseFundingSummary({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-cases-list',
+        body: {
+          'status': filters?['status'],
+          'type': filters?['type'],
+        },
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      return (payload['cases'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMemberContributionsReport({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-members-list',
+        body: {'status': 'all'},
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final members = (payload['members'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+      return members;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchComplianceCasePayments({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      return (report['case_payments_compliance'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAuditTrail({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      return (report['audit_entries'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReversalsAudit({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      return (report['reversals'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchComplianceIssues({required String appToken, Map<String, dynamic>? filters}) async {
+    try {
+      final response = await _supabaseService.invokeFunction(
+        'api-reports-summary',
+        headers: {'x-app-token': appToken},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        return const <Map<String, dynamic>>[];
+      }
+      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      return (report['compliance_issues'] as List?)
+          ?.whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList() ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> updateTransactionDescription({
+    required String transactionId,
+    required String description,
+    String? caseId,
+  }) async {
+    await _client.from('transactions').update({
+      'description': description,
+      }).eq('id', transactionId);
+  }
+
+  Future<void> deleteCase({required String caseId}) async {
+    await _client.from('cases').delete().eq('id', caseId);
+  }
+
+  Future<void> deleteMember({required String memberId}) async {
+    await _client.from('members').delete().eq('id', memberId);
+  }
+
+  Future<Map<String, dynamic>> importMembers({
+    required String appToken,
+    required List<Map<String, dynamic>> members,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-members-import',
+      body: {'members': members},
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Failed to import members');
+    }
+    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return payload;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSmsTemplates({required String appToken}) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-sms-templates',
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception('Failed to load SMS templates');
+    }
+    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['templates'] as List?)
+        ?.whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList() ?? const <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> updateSmsTemplate({
+    required String appToken,
+    required String triggerKey,
+    required Map<String, dynamic> updates,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-sms-templates',
+      body: {'trigger_key': triggerKey, ...updates},
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Failed to update template');
+    }
+    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['template'] as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<bool> testMpesaConnection({required String appToken}) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-mpesa-test',
+      headers: {'x-app-token': appToken},
+    );
+    return response.status >= 200 && response.status < 300;
+  }
 }

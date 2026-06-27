@@ -115,6 +115,7 @@ serve(async (req) => {
         let msg = rawTemplate;
         for (const [key, value] of Object.entries(context)) {
           msg = msg.replaceAll(`{${key}}`, value || "");
+          msg = msg.replaceAll(`[${key}]`, value || "");
         }
 
         const results = await sendSmsMessage([phone], msg);

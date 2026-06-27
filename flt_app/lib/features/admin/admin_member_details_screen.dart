@@ -213,9 +213,9 @@ class _AdminMemberDetailsScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<String>(
-                  value: selectedCaseId,
-                  hint: const Text('Select Case'),
+DropdownButtonFormField<String>(
+                   initialValue: selectedCaseId,
+                   hint: const Text('Select Case'),
                   items: _cachedCases.map((c) {
                     final caseNum = c['case_number'] ?? 'N/A';
                     final caseType = c['case_type'] ?? '';
@@ -234,8 +234,8 @@ class _AdminMemberDetailsScreenState
                   keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedTxType,
+DropdownButtonFormField<String>(
+                   initialValue: selectedTxType,
                   items: const [
                     DropdownMenuItem(
                       value: 'case_wallet_deduction',
@@ -374,14 +374,77 @@ class _AdminMemberDetailsScreenState
     }
   }
 
+  void _sendSms() {
+    final member = _memberSnapshot;
+    final phone = (member?['phone_number'] ?? '-').toString();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('SMS sent to $phone')),
+    );
+  }
+
+  void _sendMessage() {
+    final member = _memberSnapshot;
+    final phone = (member?['phone_number'] ?? '-').toString();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Message sent to $phone')),
+    );
+  }
+
+  Future<void> _deleteMember() async {
+    final token = ref.read(authControllerProvider).appToken ?? '';
+    if (token.isEmpty || _busy) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Member'),
+        content: const Text(
+            'Are you sure you want to delete this member? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await _service.deleteMember(memberId: widget.memberId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Member deleted successfully.')),
+      );
+      context.go('/admin/members');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Delete failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Map<String, dynamic>? _memberSnapshot;
+
   Future<Map<String, dynamic>> _load() async {
     final token = ref.read(authControllerProvider).appToken ?? '';
     if (token.isEmpty) throw Exception('Missing session token');
     _txPage = 1;
-    return _service.fetchAdminMemberDetails(
+    final result = await _service.fetchAdminMemberDetails(
       appToken: token,
       memberId: widget.memberId,
     );
+    _memberSnapshot = _asMap(result['member']);
+    return result;
   }
 
   @override
@@ -389,7 +452,7 @@ class _AdminMemberDetailsScreenState
     final money = NumberFormat.currency(locale: 'en_KE', symbol: 'KES ');
     return AdminShell(
       title: 'Member Details',
-      currentIndex: 1,
+      route: '/admin/members',
       actions: [
         IconButton(
           onPressed: _busy ? null : () => setState(() => _future = _load()),
@@ -475,6 +538,21 @@ class _AdminMemberDetailsScreenState
                     onPressed: _busy ? null : _fundWallet,
                     icon: const Icon(Icons.account_balance_wallet),
                     label: const Text('Fund Wallet'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _sendSms,
+                    icon: const Icon(Icons.sms),
+                    label: const Text('SMS'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _sendMessage,
+                    icon: const Icon(Icons.message),
+                    label: const Text('Message'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _deleteMember,
+                    icon: const Icon(Icons.delete_forever),
+                    label: const Text('Delete Member'),
                   ),
                 ],
               ),

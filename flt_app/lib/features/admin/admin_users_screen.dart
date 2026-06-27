@@ -279,7 +279,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
   Widget build(BuildContext context) {
     return AdminShell(
       title: 'Users',
-      currentIndex: 6,
+      route: '/admin/users',
       actions: [
         IconButton(
           tooltip: 'Create User',
