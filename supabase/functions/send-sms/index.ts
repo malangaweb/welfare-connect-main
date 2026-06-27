@@ -12,6 +12,8 @@ type RecipientData = {
   amount?: string;
   caseNumber?: string;
   deadline?: string;
+  unpaid?: string;
+  due?: string;
   ref?: string;
   senderName?: string;
 };
@@ -24,11 +26,17 @@ function resolveTags(text: string, data: Record<string, string>): string {
   return result;
 }
 
+type BuildResult = {
+  context: Record<string, string>;
+  skip: boolean;
+  skipReason?: string;
+};
+
 async function buildRecipientContext(
   supabase: ReturnType<typeof createClient>,
   recipient: RecipientData,
   triggerKey?: string,
-): Promise<Record<string, string>> {
+): Promise<BuildResult> {
   const ctx: Record<string, string> = {
     name: recipient.name || 'Member',
     memberNumber: recipient.memberNumber || '',
@@ -37,8 +45,13 @@ async function buildRecipientContext(
     deadline: recipient.deadline || '',
     ref: recipient.ref || '',
     senderName: recipient.senderName || '',
+    unpaid: recipient.unpaid || '',
+    due: recipient.due || '',
     balance: '',
   };
+
+  let skip = false;
+  let skipReason = '';
 
   if (recipient.memberId) {
     const { data: member } = await supabase
@@ -52,22 +65,30 @@ async function buildRecipientContext(
       ctx.balance = String(member.wallet_balance ?? '');
     }
 
-    // For case-related triggers, fetch unpaid case obligations if tags are empty
+    // Fetch unpaid case obligations for all triggers to populate unpaid/due tags
+    const { data: obligations } = await supabase
+      .rpc('get_member_unpaid_case_obligations', { p_member_id: recipient.memberId });
+    const unpaidList = Array.isArray(obligations) ? obligations : [];
+    ctx.unpaid = String(unpaidList.length);
+    ctx.due = unpaidList.length > 0
+      ? String(unpaidList.reduce((sum, o) => sum + Number(o.contribution_per_member || 0), 0))
+      : '';
+
+    // For case-related triggers, fill case details from first obligation
     if (triggerKey === 'case_due' || triggerKey === 'overdue_reminder' || triggerKey === 'case_opened') {
-      if (!ctx.caseNumber || !ctx.amount || !ctx.deadline) {
-        const { data: obligations } = await supabase
-          .rpc('get_member_unpaid_case_obligations', { p_member_id: recipient.memberId });
-        if (Array.isArray(obligations) && obligations.length > 0) {
-          const ob = obligations[0];
-          if (!ctx.caseNumber) ctx.caseNumber = ob.case_number || '';
-          if (!ctx.amount) ctx.amount = String(ob.contribution_per_member || 0);
-          if (!ctx.deadline) ctx.deadline = ob.case_date?.slice(0, 10) || '';
-        }
+      if (unpaidList.length > 0) {
+        const ob = unpaidList[0];
+        ctx.caseNumber = ob.case_number || '';
+        ctx.amount = String(ob.contribution_per_member || 0);
+        ctx.deadline = ob.case_date?.slice(0, 10) || '';
+      } else if (!recipient.caseNumber && !recipient.amount) {
+        skip = true;
+        skipReason = 'No unpaid obligations for this member';
       }
     }
 
-    // For renewal_reminder, fetch member expiry if deadline is empty
-    if (triggerKey === 'renewal_reminder' && !ctx.deadline) {
+    // For renewal_reminder, skip if no expiry date
+    if (triggerKey === 'renewal_reminder') {
       const { data: memberFull } = await supabase
         .from('members')
         .select('expiry_date')
@@ -75,12 +96,28 @@ async function buildRecipientContext(
         .single();
       if (memberFull?.expiry_date) {
         ctx.deadline = String(memberFull.expiry_date).slice(0, 10);
+      } else if (!recipient.deadline) {
+        skip = true;
+        skipReason = 'No expiry date set for this member';
       }
     }
 
-    // For payment_received, fetch wallet_balance if balance is empty
+    // For welcome_member, skip if already welcomed
+    if (triggerKey === 'welcome_member') {
+      const { data: existing } = await supabase
+        .from('audit_logs')
+        .select('id')
+        .eq('table_name', 'sms')
+        .contains('metadata', { trigger_key: 'welcome_member', phone_number: recipient.phoneNumber })
+        .limit(1);
+      if (existing?.length) {
+        skip = true;
+        skipReason = 'Welcome message already sent to this member';
+      }
+    }
+
+    // For payment_received, fetch recent transaction if amount is empty
     if (triggerKey === 'payment_received' && !ctx.balance && !ctx.amount) {
-      // balance already fetched above; for amount, check recent transaction
       const { data: lastTx } = await supabase
         .from('transactions')
         .select('amount')
@@ -94,7 +131,7 @@ async function buildRecipientContext(
     }
   }
 
-  return ctx;
+  return { context: ctx, skip, skipReason };
 }
 
 function toRecipient(input: unknown): RecipientData | null {
@@ -115,6 +152,8 @@ function toRecipient(input: unknown): RecipientData | null {
       amount: String(obj.amount || '').trim() || undefined,
       caseNumber: String(obj.caseNumber || obj.case_number || '').trim() || undefined,
       deadline: String(obj.deadline || '').trim() || undefined,
+      unpaid: String(obj.unpaid || '').trim() || undefined,
+      due: String(obj.due || '').trim() || undefined,
       ref: String(obj.ref || obj.mpesaRef || obj.mpesa_reference || obj.receipt || '').trim() || undefined,
       senderName: String(obj.senderName || obj.sender_name || obj.sender || '').trim() || undefined,
     };
@@ -165,17 +204,21 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const allResults: Array<{ phoneNumber: string; message: string; result: Awaited<ReturnType<typeof sendSmsMessage>>[0] }> = [];
+    const allResults: Array<{ phoneNumber: string; message: string; result: Awaited<ReturnType<typeof sendSmsMessage>>[0]; recipient: RecipientData }> = [];
+    const skipped: Array<{ phoneNumber: string; reason: string; name?: string }> = [];
 
     for (const recipient of recipients) {
-      const context = await buildRecipientContext(supabase, recipient, triggerKey);
-      const personalMessage = resolveTags(message, context);
+      const built = await buildRecipientContext(supabase, recipient, triggerKey);
+      if (built.skip) {
+        skipped.push({ phoneNumber: recipient.phoneNumber, reason: built.skipReason || 'Skipped', name: recipient.name });
+        continue;
+      }
+      const personalMessage = resolveTags(message, built.context);
       const results = await sendSmsMessage([recipient.phoneNumber], personalMessage);
-      allResults.push({ phoneNumber: recipient.phoneNumber, message: personalMessage, result: results[0] });
+      allResults.push({ phoneNumber: recipient.phoneNumber, message: personalMessage, result: results[0], recipient });
     }
 
-    await Promise.all(allResults.map(async ({ phoneNumber, message: personalMessage, result }, index) => {
-      const recipient = recipients[index];
+    await Promise.all(allResults.map(async ({ phoneNumber, message: personalMessage, result, recipient }) => {
       const action = isSmsFailure(result) ? 'SMS_FAILED' : result.status === 'delivered' ? 'SMS_DELIVERED' : 'SMS_SENT';
       const isSuccess = !isSmsFailure(result);
 
@@ -188,8 +231,6 @@ serve(async (req) => {
           source,
           trigger_key: triggerKey,
           provider: result.provider,
-          recipient_index: index,
-          recipient_count: allResults.length,
           phone_number: phoneNumber,
           message: personalMessage,
           provider_message_id: result.providerMessageId,
@@ -223,7 +264,9 @@ serve(async (req) => {
         sent,
         delivered,
         failed,
-        recipients: results.length,
+        skipped: skipped.length,
+        ...(skipped.length ? { skippedDetails: skipped } : {}),
+        recipients: allResults.length + skipped.length,
         results,
         ...(success ? {} : { error: errorMessage || 'One or more SMS messages failed' }),
       }),

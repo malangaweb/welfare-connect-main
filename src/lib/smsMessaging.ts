@@ -19,6 +19,8 @@ export type SmsRecipient = {
   amount?: string;
   caseNumber?: string;
   deadline?: string;
+  unpaid?: string;
+  due?: string;
 };
 
 export type SmsTemplateContext = {

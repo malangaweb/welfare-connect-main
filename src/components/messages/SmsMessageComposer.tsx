@@ -24,7 +24,7 @@ type SmsMessageComposerProps = {
   showRecipientCount?: boolean;
 };
 
-const TAGS = ['{name}', '{memberNumber}', '{balance}', '{amount}', '{caseNumber}', '{deadline}'] as const;
+const TAGS = ['{name}', '{memberNumber}', '{balance}', '{amount}', '{caseNumber}', '{deadline}', '{unpaid}', '{due}'] as const;
 
 function buildContextFromRecipient(first: SmsRecipient | null) {
   return {

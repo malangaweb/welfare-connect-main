@@ -469,15 +469,21 @@ const Members = () => {
     });
   };
 
-  const memberToSmsRecipient = (member: Member): SmsRecipient => ({
-    id: member.id,
-    memberId: member.id,
-    name: member.name,
-    memberNumber: member.memberNumber,
-    phoneNumber: String(member.phoneNumber || '').trim(),
-    residence: member.residence,
-    status: member.status,
-  });
+  const memberToSmsRecipient = (member: Member): SmsRecipient => {
+    const obligations = member.unpaidCaseObligations || [];
+    const totalDue = obligations.reduce((sum, o) => sum + Number(o.contribution_per_member || 0), 0);
+    return {
+      id: member.id,
+      memberId: member.id,
+      name: member.name,
+      memberNumber: member.memberNumber,
+      phoneNumber: String(member.phoneNumber || '').trim(),
+      residence: member.residence,
+      status: member.status,
+      unpaid: String(member.unpaidCaseContributionCount || 0),
+      due: totalDue > 0 ? String(totalDue) : '',
+    };
+  };
 
   const buildSmsRecipientsFromMembers = (memberList: Member[]): SmsRecipient[] => memberList
     .map(memberToSmsRecipient)
