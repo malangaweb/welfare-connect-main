@@ -26,11 +26,35 @@ function isInvalidUuidError(error: { code?: string; message?: string } | null): 
   return error.code === "22P02" || msg.includes("invalid input syntax for type uuid");
 }
 
+function parseDateOnly(value: unknown): number | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const datePart = raw.slice(0, 10);
+  const time = Date.parse(`${datePart}T00:00:00Z`);
+  return Number.isFinite(time) ? time : null;
+}
+
+function caseAppliesToMember(member: Record<string, unknown>, caseRow: Record<string, unknown>): boolean {
+  if (Boolean(caseRow.is_active)) return true;
+  if (!Boolean(caseRow.is_finalized)) return false;
+
+  const memberStart =
+    parseDateOnly(member.registration_date) ??
+    parseDateOnly(member.created_at) ??
+    Date.now();
+  const caseEffectiveEnd =
+    parseDateOnly(caseRow.end_date) ??
+    parseDateOnly(caseRow.start_date) ??
+    parseDateOnly(caseRow.created_at);
+
+  return caseEffectiveEnd != null && caseEffectiveEnd >= memberStart;
+}
+
 async function resolveMember(
   supabase: ReturnType<typeof createClient>,
   selectors: string[],
 ) {
-  const memberSelect = "id, member_number, name, wallet_balance, is_active, status";
+  const memberSelect = "id, member_number, name, wallet_balance, is_active, status, registration_date, created_at";
 
   for (const selector of selectors) {
     const [byId, byMemberNumber] = await Promise.all([
@@ -130,7 +154,7 @@ serve(async (req) => {
 
     // Run independent reads in parallel; avoid loading full case history (was limit 1000).
     const casesSelect =
-      "id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date";
+      "id, case_number, case_type, contribution_per_member, is_active, is_finalized, start_date, end_date, created_at";
     const payableCaseFilter =
       "is_active.eq.true,is_finalized.eq.true,end_date.not.is.null";
 
@@ -166,7 +190,8 @@ serve(async (req) => {
 
     if (isEligible) {
       const payableCandidates = (allCases || []).filter((c: any) =>
-        Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date),
+        (Boolean(c?.is_active) || Boolean(c?.is_finalized) || Boolean(c?.end_date)) &&
+        caseAppliesToMember(member as Record<string, unknown>, c as Record<string, unknown>)
       );
       const caseIds = payableCandidates.map((c) => c.id);
       const netByCase = new Map<string, number>();
