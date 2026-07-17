@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown, Upload, Pencil, Settings, Trash2, ArrowRight, Briefcase, MessageSquare } from 'lucide-react';
+import { Plus, Search, Filter, Download, UserPlus, ArrowUpDown, Upload, Pencil, Settings, Trash2, ArrowRight, MessageSquare } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { clearAppToken, getAppToken, invokeWithAppToken, isAppTokenExpired, normalizePhone } from '@/lib/appAuth';
+import { clearAppToken, invokeWithAppToken, normalizePhone } from '@/lib/appAuth';
 import { Badge } from '@/components/ui/badge';
 import MemberForm from '@/components/forms/MemberForm';
 import { MemberStatusBadge } from '@/components/members/MemberStatusBadge';
@@ -87,36 +87,7 @@ type MembersListApiResponse = {
   has_more: boolean;
 };
 
-type DeductPreviewStatus = 'eligible' | 'paid' | 'insufficient' | 'ineligible' | 'unknown';
 type MemberStatusFilter = 'all' | 'active' | 'inactive' | 'probation' | 'deceased';
-type DeductPreviewRow = {
-  member_id: string;
-  member_number: string;
-  name: string;
-  wallet_balance: number;
-  is_active: boolean;
-  status: string;
-  preview_status: DeductPreviewStatus;
-};
-
-function toErrorMessage(value: unknown, fallback: string): string {
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value instanceof Error) return value.message || fallback;
-  if (Array.isArray(value)) {
-    const parts = value.map((item) => toErrorMessage(item, '')).filter(Boolean);
-    if (parts.length > 0) return parts.join(', ');
-  }
-  if (value && typeof value === 'object') {
-    try {
-      const json = JSON.stringify(value);
-      if (json && json !== '{}') return json;
-    } catch {
-      return fallback;
-    }
-  }
-  return fallback;
-}
 
 const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTransfer, onMessage, showBulkSelect, selected, onToggleSelect }: {
   member: Member,
@@ -436,14 +407,6 @@ const Members = () => {
   const [messageAudienceLabel, setMessageAudienceLabel] = useState('');
   const [messageSending, setMessageSending] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
-  const [deductDialogOpen, setDeductDialogOpen] = useState(false);
-  const [deductCases, setDeductCases] = useState<{ id: string; case_number: string; contribution_per_member: number }[]>([]);
-  const [deductCaseId, setDeductCaseId] = useState('');
-  const [deductSubmitting, setDeductSubmitting] = useState(false);
-  const [deductPreviewLoading, setDeductPreviewLoading] = useState(false);
-  const [deductPreviewRows, setDeductPreviewRows] = useState<DeductPreviewRow[]>([]);
-  const [deductPreviewNotice, setDeductPreviewNotice] = useState<string>('');
-  const [deductInlineMessage, setDeductInlineMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -659,243 +622,6 @@ const Members = () => {
     }
   };
 
-  const openDeductDialog = async () => {
-    if (selectedMemberIds.size === 0) return;
-    try {
-      const { data, error } = await supabase
-        .from('cases')
-        .select('id, case_number, contribution_per_member')
-        .eq('is_active', true)
-        .eq('is_finalized', false)
-        .order('case_number');
-      if (error) throw error;
-      const rows = (data || []) as { id: string; case_number: string; contribution_per_member: number }[];
-      if (rows.length === 0) {
-        toast({
-          title: 'No active cases',
-          description: 'Open a case (active, not finalized) before running wallet deductions.',
-        });
-        return;
-      }
-      setDeductCases(rows);
-      setDeductCaseId(rows[0]?.id || '');
-      setDeductDialogOpen(true);
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: 'destructive',
-        title: 'Could not load cases',
-        description: error instanceof Error ? error.message : 'Try again.',
-      });
-    }
-  };
-
-  const runCaseDeduct = async () => {
-    setDeductInlineMessage('');
-    if (!deductCaseId || selectedMemberIds.size === 0) {
-      toast({ variant: 'destructive', title: 'Select a case and at least one member' });
-      setDeductInlineMessage('Select a case and at least one member.');
-      return;
-    }
-    const eligibleMemberIds = deductPreviewRows
-      .filter((r) => r.preview_status === 'eligible')
-      .map((r) => r.member_id);
-    const memberIdsToSubmit = eligibleMemberIds;
-    if (memberIdsToSubmit.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'No eligible members to deduct',
-        description: 'All selected members are already paid, ineligible, or have insufficient balance for this case.',
-      });
-      setDeductInlineMessage('No eligible members to deduct for the selected case.');
-      return;
-    }
-    const token = getAppToken();
-    if (!token || isAppTokenExpired(token)) {
-      clearAppToken();
-      toast({ variant: 'destructive', title: 'Session expired', description: 'Please log in again.' });
-      setDeductInlineMessage('Session expired. Please log in again.');
-      return;
-    }
-    setDeductSubmitting(true);
-    setDeductInlineMessage(`Submitting deduction for ${memberIdsToSubmit.length.toLocaleString()} member(s)...`);
-    try {
-      const d = await invokeWithAppToken<{
-        success?: boolean;
-        error?: string;
-        deducted?: string[];
-        skipped_already_paid?: string[];
-        skipped_ineligible?: unknown[];
-        skipped_insufficient?: unknown[];
-        required_amount?: number;
-      }>('api-case-bulk-deduct', {
-        case_id: deductCaseId,
-        member_ids: memberIdsToSubmit,
-      });
-      if (!d?.success) {
-        throw new Error(toErrorMessage(d?.error, 'Deduction failed'));
-      }
-      const deductedCount = d.deducted?.length ?? 0;
-      const toastVariant = deductedCount > 0 ? undefined : 'destructive';
-      const toastTitle = deductedCount > 0 ? 'Deduct to case finished' : 'No deductions applied';
-      console.log('Deduction response:', d);
-      console.log('Skipped insufficient:', d.skipped_insufficient);
-      console.log('Skipped ineligible:', d.skipped_ineligible);
-      console.log('Skipped already paid:', d.skipped_already_paid);
-      toast({
-        variant: toastVariant,
-        title: toastTitle,
-        description: `Deducted: ${deductedCount}. Already paid: ${d.skipped_already_paid?.length ?? 0}. Ineligible: ${d.skipped_ineligible?.length ?? 0}. Insufficient / other: ${d.skipped_insufficient?.length ?? 0}.`,
-      });
-      if (deductedCount > 0) {
-        setDeductInlineMessage('Deduction completed successfully.');
-        setDeductDialogOpen(false);
-        setSelectedMemberIds(new Set());
-        setDeductPreviewRows([]);
-      } else {
-        const insufficient = (d.skipped_insufficient || [])[0] as any;
-        const reasons: string[] = [];
-        if (insufficient?.reason) {
-          reasons.push(`Insufficient: ${insufficient.reason}`);
-          if (insufficient.wallet_balance !== undefined) {
-            reasons.push(`wallet ${insufficient.wallet_balance}`);
-          }
-          if (insufficient.detail) {
-            reasons.push(`detail ${String(insufficient.detail).slice(0, 180)}`);
-          }
-          if (insufficient.retry_detail) {
-            reasons.push(`retry ${String(insufficient.retry_detail).slice(0, 180)}`);
-          }
-        }
-        const ineligible = (d.skipped_ineligible || [])[0] as any;
-        if (ineligible?.reason) {
-          reasons.push(`Ineligible: ${ineligible.reason}`);
-          if (ineligible.status) reasons.push(`status ${ineligible.status}`);
-        }
-        const reasonStr = reasons.length > 0 ? reasons.join(', ') : 'unknown reason';
-        setDeductInlineMessage(
-          `No members deducted. Case requires KES ${d.required_amount}. First skip: ${reasonStr}.`
-        );
-      }
-      await fetchMembers();
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: 'destructive',
-        title: 'Deduction failed',
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-      setDeductInlineMessage(error instanceof Error ? error.message : 'Deduction failed.');
-    } finally {
-      setDeductSubmitting(false);
-    }
-  };
-
-  const loadDeductPreview = async () => {
-    if (!deductDialogOpen || !deductCaseId || selectedMemberIds.size === 0) {
-      setDeductPreviewRows([]);
-      setDeductPreviewNotice('');
-      return;
-    }
-    try {
-      setDeductPreviewLoading(true);
-      setDeductPreviewNotice('');
-      const selectedIds = Array.from(selectedMemberIds);
-      const selectedCase = deductCases.find((c) => c.id === deductCaseId);
-      const requiredAmount = Number(selectedCase?.contribution_per_member || 0);
-
-      const chunkSize = 200;
-      const memberRows: any[] = [];
-      for (let i = 0; i < selectedIds.length; i += chunkSize) {
-        const chunk = selectedIds.slice(i, i + chunkSize);
-        const { data, error } = await supabase
-          .from('members')
-          .select('id, member_number, name, wallet_balance, is_active, status')
-          .in('id', chunk);
-        if (error) throw error;
-        memberRows.push(...(data || []));
-      }
-
-      const netPaidByMember = new Map<string, number>();
-      for (let i = 0; i < selectedIds.length; i += chunkSize) {
-        const chunk = selectedIds.slice(i, i + chunkSize);
-        const { data: txRows, error: txError } = await supabase
-          .from('transactions')
-          .select('member_id, transaction_type, amount')
-          .eq('case_id', deductCaseId)
-          .in('transaction_type', ['contribution', 'case_wallet_deduction', 'contribution_refund', 'case_wallet_refund'])
-          .or('status.eq.completed,status.is.null')
-          .in('member_id', chunk);
-        if (txError) throw txError;
-        (txRows || []).forEach((t: any) => {
-          if (!t.member_id) return;
-          const memberId = String(t.member_id);
-          const txType = String(t.transaction_type || '').toLowerCase();
-          const amount = Number(t.amount) || 0;
-          const current = netPaidByMember.get(memberId) || 0;
-          let delta = 0;
-          if (txType === 'contribution' || txType === 'case_wallet_deduction') {
-            delta = Math.abs(amount);
-          } else if (txType === 'contribution_refund' || txType === 'case_wallet_refund') {
-            delta = amount >= 0 ? -amount : amount;
-          }
-          netPaidByMember.set(memberId, current + delta);
-        });
-      }
-
-      const preview: DeductPreviewRow[] = selectedIds.map((memberId) => {
-        const row = memberRows.find((m) => String(m.id) === memberId);
-        if (!row) {
-          return {
-            member_id: memberId,
-            member_number: '',
-            name: 'Unknown',
-            wallet_balance: 0,
-            is_active: false,
-            status: '',
-            preview_status: 'unknown',
-          };
-        }
-
-        const wallet = Number(row.wallet_balance) || 0;
-        const status = normalizeMemberStatus(row.status, row.is_active);
-        const isEligibleByMemberState = Boolean(row.is_active) && (status === 'active' || status === 'probation');
-        const netPaid = netPaidByMember.get(memberId) || 0;
-        const isPaid = netPaid + 1e-6 >= requiredAmount;
-        const hasSufficient = wallet + 1e-6 >= requiredAmount;
-
-        let previewStatus: DeductPreviewStatus = 'eligible';
-        if (!isEligibleByMemberState) previewStatus = 'ineligible';
-        else if (isPaid) previewStatus = 'paid';
-        else if (!hasSufficient) previewStatus = 'insufficient';
-
-        return {
-          member_id: memberId,
-          member_number: String(row.member_number || ''),
-          name: String(row.name || 'Unknown'),
-          wallet_balance: wallet,
-          is_active: Boolean(row.is_active),
-          status: String(row.status || ''),
-          preview_status: previewStatus,
-        };
-      });
-
-      setDeductPreviewRows(preview);
-      setDeductPreviewNotice('');
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: 'destructive',
-        title: 'Failed to load deduction preview',
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-      setDeductPreviewRows([]);
-      setDeductPreviewNotice('Preview check failed. Please retry selecting the case.');
-    } finally {
-      setDeductPreviewLoading(false);
-    }
-  };
-
   const handleTransferFromMember = (m: Member) => {
     setTransferFromMember(m);
     setTransferOpen(true);
@@ -1108,10 +834,6 @@ const Members = () => {
   useEffect(() => {
     setSelectedMemberIds(new Set());
   }, [debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
-
-  useEffect(() => {
-    void loadDeductPreview();
-  }, [deductDialogOpen, deductCaseId, selectedMemberIds, deductCases]);
 
   const paginatedMembers = members;
 
@@ -1862,10 +1584,7 @@ const Members = () => {
                 <MessageSquare className="h-4 w-4 mr-2" />
                 Message
               </Button>
-              <Button type="button" size="sm" onClick={() => void openDeductDialog()}>
-                <Briefcase className="h-4 w-4 mr-2" />
-                Deduct to Case
-              </Button>
+
             </div>
           </div>
         )}
@@ -2010,80 +1729,6 @@ const Members = () => {
         )}
       </div>
 
-      <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Deduct to Case</DialogTitle>
-            <DialogDescription>
-              Debits each selected member&apos;s wallet by this case&apos;s per-member amount. Members who already paid
-              (M-Pesa or prior deduction) or have insufficient balance are skipped.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Active case</Label>
-              <Select value={deductCaseId} onValueChange={setDeductCaseId} disabled={deductCases.length === 0}>
-                <SelectTrigger>
-                  <SelectValue placeholder={deductCases.length ? 'Choose case' : 'No open cases'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {deductCases.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      #{c.case_number} — KES {Number(c.contribution_per_member || 0).toLocaleString()} / member
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Applying to <strong>{selectedMemberIds.size}</strong> selected member(s).
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Eligible members only: <strong>is_active = true</strong> and status <strong>active</strong> or <strong>probation</strong>.
-            </p>
-            {deductPreviewLoading ? (
-              <p className="text-xs text-muted-foreground">Checking paid / wallet eligibility for selected case...</p>
-            ) : deductPreviewNotice ? (
-              <p className="text-xs text-muted-foreground">{deductPreviewNotice}</p>
-            ) : deductPreviewRows.length > 0 ? (
-              <div className="space-y-2 rounded-md border p-2">
-                <div className="text-xs text-muted-foreground">
-                  Eligible: <strong>{deductPreviewRows.filter((r) => r.preview_status === 'eligible').length}</strong> | Paid:{' '}
-                  <strong>{deductPreviewRows.filter((r) => r.preview_status === 'paid').length}</strong> | Insufficient:{' '}
-                  <strong>{deductPreviewRows.filter((r) => r.preview_status === 'insufficient').length}</strong> | Ineligible:{' '}
-                  <strong>{deductPreviewRows.filter((r) => r.preview_status === 'ineligible').length}</strong>
-                </div>
-                {selectedMemberIds.size <= 300 ? (
-                  <details>
-                    <summary className="cursor-pointer text-xs text-muted-foreground">View member breakdown</summary>
-                    <div className="mt-2 max-h-36 overflow-y-auto space-y-1 pr-1">
-                      {deductPreviewRows.map((row) => (
-                        <div key={row.member_id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
-                          <span className="truncate mr-2">#{row.member_number || '-'} {row.name}</span>
-                          <span className="font-medium capitalize">{row.preview_status}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Member breakdown hidden for large selections.</p>
-                )}
-              </div>
-            ) : null}
-            {deductInlineMessage ? (
-              <p className="text-xs text-muted-foreground">{deductInlineMessage}</p>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => setDeductDialogOpen(false)} disabled={deductSubmitting}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={() => void runCaseDeduct()} disabled={deductSubmitting || !deductCaseId}>
-              {deductSubmitting ? 'Working…' : 'Run deduction'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

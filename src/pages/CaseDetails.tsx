@@ -1100,9 +1100,7 @@ const CaseDetails = () => {
                     <div className="space-y-2">
                       {!caseData.isFinalized && (
                         <p className="text-sm text-muted-foreground rounded-md border border-dashed p-3">
-                          To deduct from member wallets for this case, go to{' '}
-                          <strong>People</strong>, select members, then use <strong>Deduct to Case</strong>{' '}
-                          (active cases only).
+                          Contributions are automatically deducted from member wallets when they top up via M-Pesa. No manual deduction needed.
                         </p>
                       )}
                       {!caseData.isFinalized && (

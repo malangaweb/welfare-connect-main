@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Transaction } from '@/lib/types';
 import AccountSummaryCard from './AccountSummaryCard';
 import AccountTransactionsList from './AccountTransactionsList';
-import FeeCollectionDialog from './FeeCollectionDialog';
 import BulkRenewalFeeDialog from './BulkRenewalFeeDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
@@ -90,12 +89,6 @@ const RenewalAccount = () => {
         />
         <div className="pl-4">
           <div className="flex flex-col gap-2">
-            <FeeCollectionDialog 
-              feeType="renewal"
-              buttonLabel="Collect Renewal Fee"
-              defaultAmount={defaultFee}
-              onSuccess={handleFeeCollectionSuccess}
-            />
             <BulkRenewalFeeDialog
               defaultAmount={defaultFee}
               onSuccess={handleFeeCollectionSuccess}

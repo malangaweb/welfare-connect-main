@@ -11,26 +11,15 @@ import { memberLinks, memberLogout } from "./memberLinks";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { toast } from "@/components/ui/use-toast";
 import { invokeWithAppToken } from "@/lib/appAuth";
 import { walletRowDelta } from "@/lib/walletEffect";
 
-type ActiveCaseSummary = {
-  id: string;
-  case_number: string;
-  case_type: string;
-  contribution_per_member: number;
-  is_active?: boolean;
-  is_finalized?: boolean;
-  paid: boolean;
-  late_payment?: boolean;
-};
-
 const MemberDashboard = () => {
   const [member, setMember] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [activeCasesSummary, setActiveCasesSummary] = useState<ActiveCaseSummary[]>([]);
+
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [totalDue, setTotalDue] = useState<{ unpaid_case_total: number; reinstatement_penalty_due: number; total_due: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,16 +38,7 @@ const MemberDashboard = () => {
   const [changePinOpen, setChangePinOpen] = useState(false);
   const [pinData, setPinData] = useState({ oldPin: "", newPin: "", confirmPin: "" });
   const [isChangingPin, setIsChangingPin] = useState(false);
-  const [payToCaseOpen, setPayToCaseOpen] = useState(false);
-  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
-  const [isPayingCase, setIsPayingCase] = useState(false);
   const navigate = useNavigate();
-  const payableCases = activeCasesSummary.filter((c) => !c.paid);
-  const selectedPayableCases = payableCases.filter((c) => selectedCaseIds.includes(c.id));
-  const selectedTotalRequired = selectedPayableCases.reduce(
-    (sum, c) => sum + Math.max(0, Number(c.contribution_per_member) || 0),
-    0,
-  );
 
   const fetchData = async () => {
     const member_id = localStorage.getItem("member_member_id");
@@ -76,7 +56,6 @@ const MemberDashboard = () => {
 
       setMember(memberData);
       setTransactions(allTransData || []);
-      setActiveCasesSummary(summary?.active_cases_summary || []);
       // Prefer stored wallet_balance maintained by DB triggers; fallback to calculated sum
       const balanceFromMember = Number(memberData?.wallet_balance) || 0;
       const balanceFromTx = (allTransData || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -258,147 +237,6 @@ const MemberDashboard = () => {
       });
     } finally {
       setIsChangingPin(false);
-    }
-  };
-
-  const handlePayToCase = async () => {
-    if (!member?.id) return;
-    if (selectedCaseIds.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Select cases",
-        description: "Choose one or more cases to pay first.",
-      });
-      return;
-    }
-
-    const selectedCases = payableCases.filter((c) => selectedCaseIds.includes(c.id));
-    if (selectedCases.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Cases not found",
-        description: "Please reselect cases and try again.",
-      });
-      return;
-    }
-
-    const invalidAmountCases = selectedCases.filter((c) => (Number(c.contribution_per_member) || 0) <= 0);
-    if (invalidAmountCases.length > 0) {
-      toast({
-        variant: "destructive",
-        title: "Invalid case amount",
-        description: `Case(s) ${invalidAmountCases.map((c) => `#${c.case_number}`).join(", ")} have no valid contribution amount.`,
-      });
-      return;
-    }
-
-    if (walletBalance < selectedTotalRequired) {
-      toast({
-        variant: "destructive",
-        title: "Insufficient funds",
-        description: `Required KES ${selectedTotalRequired.toLocaleString()}, but your wallet has KES ${walletBalance.toLocaleString()}.`,
-      });
-      return;
-    }
-
-    try {
-      setIsPayingCase(true);
-
-      const { data: existingPayment, error: checkError } = await supabase
-        .from("transactions")
-        .select("case_id, status, amount, transaction_type")
-        .eq("member_id", member.id)
-        .in("case_id", selectedCaseIds)
-        .in("transaction_type", [
-          "contribution",
-          "case_wallet_deduction",
-          "arrears",
-          "contribution_refund",
-          "case_wallet_refund",
-        ]);
-
-      if (checkError) throw checkError;
-
-      const paidByCase = new Map<string, number>();
-      (existingPayment || []).forEach((tx) => {
-        if (tx.status && tx.status !== "completed") return;
-        const caseId = String(tx.case_id || "");
-        if (!caseId) return;
-        const txType = String(tx.transaction_type || "");
-        const amount = Number(tx.amount) || 0;
-        const current = paidByCase.get(caseId) || 0;
-        if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
-          paidByCase.set(caseId, current + Math.abs(amount));
-        } else if (txType === "contribution_refund" || txType === "case_wallet_refund") {
-          paidByCase.set(caseId, current - Math.abs(amount));
-        }
-      });
-
-      const alreadyPaidCases = selectedCases.filter((c) => (paidByCase.get(c.id) || 0) > 0);
-      if (alreadyPaidCases.length > 0) {
-        toast({
-          title: "Already paid",
-          description: `Already paid: ${alreadyPaidCases.map((c) => `#${c.case_number}`).join(", ")}.`,
-        });
-        return;
-      }
-
-      const rows = selectedCases.map((selectedCase) => {
-        const requiredAmount = Number(selectedCase.contribution_per_member) || 0;
-        const isLatePayment = Boolean(selectedCase.is_finalized || selectedCase.late_payment);
-        return {
-          member_id: member.id,
-          case_id: selectedCase.id,
-          amount: requiredAmount,
-          transaction_type: isLatePayment ? "arrears" : "case_wallet_deduction",
-          status: "completed",
-          description: isLatePayment
-            ? `Late case payment (default account) for case #${selectedCase.case_number} (member portal)`
-            : `Case wallet deduction for case #${selectedCase.case_number} (member portal)`,
-          metadata: {
-            source: "member_portal_pay_to_case",
-            late_case_payment: isLatePayment,
-            paid_case_number: selectedCase.case_number,
-          },
-        };
-      });
-
-      const { error: insertError } = await supabase.from("transactions").insert(rows as any);
-
-      if (insertError) {
-        const maybeCode = (insertError as { code?: string }).code;
-        if (maybeCode === "23505") {
-          const conflictMessage =
-            (insertError as { message?: string }).message ||
-            "Active case payment already exists for this member and case.";
-          toast({
-            variant: "destructive",
-            title: "Payment blocked",
-            description: conflictMessage,
-          });
-          await fetchData();
-          return;
-        }
-        throw insertError;
-      }
-
-      toast({
-        title: "Payment successful",
-        description: `Paid ${selectedCases.length} case(s), total KES ${selectedTotalRequired.toLocaleString()}. Closed-case payments were recorded as late payments in default account.`,
-      });
-
-      setPayToCaseOpen(false);
-      setSelectedCaseIds([]);
-      await fetchData();
-    } catch (error) {
-      console.error("Pay to case error:", error);
-      toast({
-        variant: "destructive",
-        title: "Payment failed",
-        description: error instanceof Error ? error.message : "Could not pay to case.",
-      });
-    } finally {
-      setIsPayingCase(false);
     }
   };
 
@@ -825,88 +663,7 @@ const MemberDashboard = () => {
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={payToCaseOpen} onOpenChange={setPayToCaseOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full mt-2">
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Pay to Case
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Pay to Case</DialogTitle>
-                    <DialogDescription>
-                      Select a case and pay the required contribution from your wallet.
-                    </DialogDescription>
-                  </DialogHeader>
 
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label>Select Case</Label>
-                      <div className="max-h-56 overflow-auto rounded-md border p-2 space-y-2">
-                        {payableCases.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No payable cases</p>
-                        ) : (
-                          payableCases.map((c) => (
-                            <label key={c.id} className="flex items-start gap-2 text-sm">
-                              <Checkbox
-                                checked={selectedCaseIds.includes(c.id)}
-                                onCheckedChange={(checked) => {
-                                  setSelectedCaseIds((prev) => {
-                                    if (checked) return prev.includes(c.id) ? prev : [...prev, c.id];
-                                    return prev.filter((id) => id !== c.id);
-                                  });
-                                }}
-                              />
-                              <span>
-                                #{c.case_number} - KES {Number(c.contribution_per_member || 0).toLocaleString()}
-                                {c.late_payment ? " (Closed - Late Payment)" : ""}
-                              </span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {selectedCaseIds.length > 0 && (
-                      <div className="rounded-md border p-3 text-sm">
-                        <div className="space-y-1">
-                          <p>Selected cases: <strong>{selectedPayableCases.length}</strong></p>
-                          <p>Total required amount: <strong>KES {selectedTotalRequired.toLocaleString()}</strong></p>
-                          <p>Wallet balance: <strong>KES {walletBalance.toLocaleString()}</strong></p>
-                          {selectedPayableCases.some((c) => c.late_payment) && (
-                            <p className="text-amber-700">Includes closed case payments: these will be recorded in default account as late payments.</p>
-                          )}
-                          {walletBalance < selectedTotalRequired ? (
-                            <p className="text-red-600">Insufficient balance. Add KES {(selectedTotalRequired - walletBalance).toLocaleString()} more.</p>
-                          ) : (
-                            <p className="text-green-700">You have enough balance to pay selected cases.</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setPayToCaseOpen(false);
-                        setSelectedCaseIds([]);
-                      }}
-                      disabled={isPayingCase}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handlePayToCase}
-                      disabled={selectedCaseIds.length === 0 || isPayingCase || payableCases.length === 0}
-                    >
-                      {isPayingCase ? "Paying..." : "Pay"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
             </CardContent>
           </Card>
           

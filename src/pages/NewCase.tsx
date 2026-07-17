@@ -194,7 +194,7 @@ const NewCase = () => {
       persistentCache.invalidate('cases-mpesa-v2');
 
       toast.success("Case created successfully", {
-        description: "Case saved. Open the case details page to deduct contributions from member wallets when ready.",
+        description: "Case saved. Members can now fund their wallets — contributions will be processed automatically.",
       });
 
       // Send SMS notification for new case

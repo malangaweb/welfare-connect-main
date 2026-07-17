@@ -2,27 +2,10 @@ import { useState, useEffect } from 'react';
 import { Transaction } from '@/lib/types';
 import AccountSummaryCard from './AccountSummaryCard';
 import AccountTransactionsList from './AccountTransactionsList';
-import FeeCollectionDialog from './FeeCollectionDialog';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchSafeSettings } from '@/lib/settingsClient';
 
 const RegistrationAccount = () => {
-  const [defaultFee, setDefaultFee] = useState(1000); // Default registration fee amount
   const [total, setTotal] = useState(0);
-
-  useEffect(() => {
-    const fetchDefaultFee = async () => {
-      try {
-        const settingsData = await fetchSafeSettings();
-        if (settingsData?.registration_fee) {
-          setDefaultFee(settingsData.registration_fee);
-        }
-      } catch (error) {
-        console.error('Failed to fetch registration fee setting:', error);
-      }
-    };
-    fetchDefaultFee();
-  }, []);
 
   useEffect(() => {
     const fetchTotal = async () => {
@@ -48,14 +31,6 @@ const RegistrationAccount = () => {
           debits={0}
           isLoading={false}
         />
-        <div className="pl-4">
-          <FeeCollectionDialog 
-            feeType="registration"
-            buttonLabel="Collect Registration Fee"
-            defaultAmount={defaultFee}
-            onSuccess={() => {}}
-          />
-        </div>
       </div>
       
       <AccountTransactionsList 
