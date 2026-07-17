@@ -44,6 +44,12 @@ serve(async (req) => {
     if (currentError) throw currentError;
     if (!current) return jsonResponse(404, { error: "Member not found" });
 
+    if (current.status === "inactive" && ["active", "probation"].includes(nextStatus)) {
+      return jsonResponse(400, {
+        error: "Inactive members are reactivated automatically after wallet top-ups settle the reinstatement penalty.",
+      });
+    }
+
     const nextIsActive = nextStatus !== "inactive" && nextStatus !== "deceased";
 
     const { error: updateError } = await supabase

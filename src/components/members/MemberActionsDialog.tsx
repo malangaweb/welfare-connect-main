@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
 import { Member } from '@/lib/types'
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
 import { invokeWithAppToken } from '@/lib/appAuth'
 
@@ -27,18 +27,6 @@ interface MemberActionsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
-}
-
-type ReinstatementPrecheck = {
-  member_id: string
-  current_status: string
-  is_active: boolean
-  wallet_balance: number
-  penalty_required: number
-  unpaid_case_count: number
-  unpaid_total: number
-  blockers: string[]
-  eligible: boolean
 }
 
 type TransitionHistoryRow = {
@@ -61,15 +49,11 @@ export function MemberActionsDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyRows, setHistoryRows] = useState<TransitionHistoryRow[]>([])
-  const [precheckLoading, setPrecheckLoading] = useState(false)
-  const [executeLoading, setExecuteLoading] = useState(false)
-  const [precheck, setPrecheck] = useState<ReinstatementPrecheck | null>(null)
 
   useEffect(() => {
     if (!member) return
     setNewStatus((member.status || 'active') as 'probation' | 'active' | 'inactive' | 'deceased')
     setShowDeleteConfirm(false)
-    setPrecheck(null)
     setHistoryRows([])
   }, [member, open])
 
@@ -106,8 +90,6 @@ export function MemberActionsDialog({
     }
   }, [open, member])
 
-  const blockers = precheck?.blockers || []
-
   if (!member) {
     return null
   }
@@ -141,58 +123,6 @@ export function MemberActionsDialog({
       })
     } finally {
       setIsProcessing(false)
-    }
-  }
-
-  const runReinstatementPrecheck = async () => {
-    setPrecheckLoading(true)
-    try {
-      const data = await invokeWithAppToken<{ precheck: ReinstatementPrecheck }>('api-reinstatement-precheck', {
-        member_id: member.id,
-      })
-      setPrecheck(data.precheck)
-      if (data.precheck?.eligible) {
-        toast({ title: 'Precheck passed', description: 'Member is eligible for reinstatement.' })
-      } else {
-        toast({ title: 'Precheck blocked', description: 'Resolve blockers before reinstatement.' })
-      }
-    } catch (error: any) {
-      setPrecheck(null)
-      toast({
-        variant: 'destructive',
-        title: 'Precheck failed',
-        description: error?.message || 'Could not evaluate reinstatement requirements.',
-      })
-    } finally {
-      setPrecheckLoading(false)
-    }
-  }
-
-  const executeReinstatement = async () => {
-    setExecuteLoading(true)
-    try {
-      const result = await invokeWithAppToken<{ success: boolean; probation_end_date?: string }>('api-reinstatement-execute', {
-        member_id: member.id,
-      })
-      if (!result.success) {
-        throw new Error('Reinstatement failed')
-      }
-
-      toast({
-        title: 'Reinstatement complete',
-        description: `Member moved to probation until ${result.probation_end_date || 'scheduled end date'}.`,
-      })
-
-      onSuccess()
-      onOpenChange(false)
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Reinstatement failed',
-        description: error?.message || 'Unable to complete reinstatement.',
-      })
-    } finally {
-      setExecuteLoading(false)
     }
   }
 
@@ -249,7 +179,7 @@ export function MemberActionsDialog({
           <DialogHeader>
             <DialogTitle>Manage Member</DialogTitle>
             <DialogDescription>
-              Update member status, run reinstatement checks, or remove from system
+              Update eligible member statuses or remove a member from the system
             </DialogDescription>
           </DialogHeader>
 
@@ -283,63 +213,32 @@ export function MemberActionsDialog({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="status">Member Status</Label>
-              <Select value={newStatus} onValueChange={(v) => setNewStatus(v as any)}>
-                <SelectTrigger id="status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="probation">Probation</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="deceased">Deceased</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Inactive and deceased members are automatically marked `is_active = false`.
-              </p>
-            </div>
-
             {isInactive && (
               <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium">Reinstatement Workflow</p>
-                    <p className="text-xs text-muted-foreground">Precheck validates penalty, unpaid obligations, and status before reinstatement.</p>
-                  </div>
-                  <Button onClick={runReinstatementPrecheck} disabled={precheckLoading || executeLoading} variant="outline">
-                    {precheckLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Run Precheck
-                  </Button>
-                </div>
+                <p className="font-medium">Automatic Reactivation</p>
+                <p className="text-sm text-muted-foreground">
+                  Wallet top-ups first settle the KES 300 reinstatement penalty. Once fully paid, the member automatically moves to probation; finalized and active cases are then paid in priority order when fully affordable.
+                </p>
+              </div>
+            )}
 
-                {precheck && (
-                  <div className="space-y-2 text-sm">
-                    <p>
-                      Eligible: <strong>{precheck.eligible ? 'Yes' : 'No'}</strong> | Penalty: <strong>KES {Number(precheck.penalty_required || 0).toLocaleString()}</strong> | Wallet: <strong>KES {Number(precheck.wallet_balance || 0).toLocaleString()}</strong>
-                    </p>
-                    <p>
-                      Unpaid obligations: <strong>{precheck.unpaid_case_count}</strong> case(s), total <strong>KES {Number(precheck.unpaid_total || 0).toLocaleString()}</strong>
-                    </p>
-                    {!precheck.eligible && blockers.length > 0 && (
-                      <div>
-                        <p className="font-medium text-destructive">Blockers</p>
-                        <ul className="list-disc ml-5 text-xs text-muted-foreground">
-                          {blockers.map((b) => (
-                            <li key={b}>{b}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {precheck.eligible && (
-                      <Button onClick={executeReinstatement} disabled={executeLoading || precheckLoading}>
-                        {executeLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Execute Reinstatement
-                      </Button>
-                    )}
-                  </div>
-                )}
+            {!isInactive && (
+              <div className="space-y-2">
+                <Label htmlFor="status">Member Status</Label>
+                <Select value={newStatus} onValueChange={(v) => setNewStatus(v as any)}>
+                  <SelectTrigger id="status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="probation">Probation</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="deceased">Deceased</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Inactive members can only be reactivated automatically through wallet top-ups.
+                </p>
               </div>
             )}
 
@@ -414,10 +313,10 @@ export function MemberActionsDialog({
           </div>
 
           <DialogFooter className="sm:justify-start">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing || precheckLoading || executeLoading}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing}>
               Cancel
             </Button>
-            <Button onClick={handleStatusChange} disabled={isProcessing || precheckLoading || executeLoading}>
+            <Button onClick={handleStatusChange} disabled={isProcessing || isInactive}>
               {isProcessing ? 'Updating...' : 'Update Status'}
             </Button>
           </DialogFooter>

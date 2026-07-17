@@ -69,6 +69,23 @@ type CaseContributionActivity = {
   lastActivity: string | null;
 };
 
+type CasePaymentComplianceRow = {
+  case_id: string;
+  case_number: string;
+  member_id: string;
+  member_number: string;
+  member_name: string;
+  member_status: string;
+  expected_amount: number | string | null;
+  gross_paid: number | string | null;
+  total_refunded: number | string | null;
+  net_paid: number | string | null;
+  outstanding_amount: number | string | null;
+  reinstatement_penalty_due: number | string | null;
+  total_due: number | string | null;
+  payment_compliance: 'paid' | 'partial' | 'unpaid';
+};
+
 const PAGE_SIZE = 1000;
 const WALLET_BALANCE_EPSILON = 0.009;
 
@@ -310,192 +327,118 @@ const fetchCasePageData = async (caseId: string) => {
 
 // Contributions Tab Component
 function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKey }: {
-  caseId: string; 
+  caseId: string;
   caseNumber: string;
   contributionPerMember: number;
   refreshKey: number;
 }) {
-  const [contributions, setContributions] = useState<CaseContributionActivity[]>([]);
+  const [contributions, setContributions] = useState<CasePaymentComplianceRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
 
-  const exportContributionRows = () => {
-    return contributions.map((tx) => {
-      const isPaid = tx.netContributed >= contributionPerMember - WALLET_BALANCE_EPSILON;
-      const isRefunded = tx.netContributed <= WALLET_BALANCE_EPSILON && tx.refunded > WALLET_BALANCE_EPSILON;
-      const isPartial = tx.netContributed > WALLET_BALANCE_EPSILON && !isPaid;
-      const status = isPaid ? 'Paid' : isRefunded ? 'Refunded' : isPartial ? 'Partial' : 'Not paid';
-
-      return {
-        memberNumber: tx.memberNumber || '',
-        memberName: tx.memberName,
-        chargedKes: Number(tx.grossContributed.toFixed(2)),
-        refundedKes: Number(tx.refunded.toFixed(2)),
-        netKes: Number(Math.max(tx.netContributed, 0).toFixed(2)),
-        lastActivity: tx.lastActivity ? new Date(tx.lastActivity).toLocaleDateString() : '',
-        status,
-      };
-    });
+  const rows = contributions.map((row) => ({
+    ...row,
+    expectedAmount: Number(row.expected_amount) || 0,
+    grossPaid: Number(row.gross_paid) || 0,
+    refunded: Number(row.total_refunded) || 0,
+    netPaid: Number(row.net_paid) || 0,
+    outstanding: Number(row.outstanding_amount) || 0,
+    penaltyDue: Number(row.reinstatement_penalty_due) || 0,
+    totalDue: Number(row.total_due) || 0,
+  }));
+  const visibleRows = statusFilter === 'all' ? rows : rows.filter((row) => row.payment_compliance === statusFilter);
+  const countFor = (status: 'paid' | 'partial' | 'unpaid') => rows.filter((row) => row.payment_compliance === status).length;
+  const exportHeaders = [
+    { key: 'memberNumber', label: 'Member Number' },
+    { key: 'memberName', label: 'Member Name' },
+    { key: 'memberStatus', label: 'Member Status' },
+    { key: 'expectedKes', label: 'Expected (KES)' },
+    { key: 'grossPaidKes', label: 'Gross Paid (KES)' },
+    { key: 'refundedKes', label: 'Refunded (KES)' },
+    { key: 'netPaidKes', label: 'Net Paid (KES)' },
+    { key: 'outstandingKes', label: 'Outstanding Case Balance (KES)' },
+    { key: 'penaltyDueKes', label: 'Reinstatement Penalty Due (KES)' },
+    { key: 'totalDueKes', label: 'Total Due (KES)' },
+    { key: 'paymentStatus', label: 'Payment Status' },
+  ];
+  const exportRows = () => rows.map((row) => ({
+    memberNumber: row.member_number || '', memberName: row.member_name, memberStatus: row.member_status,
+    expectedKes: Number(row.expectedAmount.toFixed(2)), grossPaidKes: Number(row.grossPaid.toFixed(2)),
+    refundedKes: Number(row.refunded.toFixed(2)), netPaidKes: Number(row.netPaid.toFixed(2)),
+    outstandingKes: Number(row.outstanding.toFixed(2)), penaltyDueKes: Number(row.penaltyDue.toFixed(2)),
+    totalDueKes: Number(row.totalDue.toFixed(2)), paymentStatus: row.payment_compliance,
+  }));
+  const ensureExportRows = () => {
+    if (rows.length > 0) return true;
+    toast({ title: 'No data to export', description: 'There are no applicable member obligations for this case.', variant: 'destructive' });
+    return false;
   };
-
-  const handleExportContributionsXlsx = async () => {
-    if (contributions.length === 0) {
-      toast({
-        title: 'No data to export',
-        description: 'There are no contribution rows for this case yet.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const rows = exportContributionRows();
-    const headers = [
-      { key: 'memberNumber', label: 'Member Number' },
-      { key: 'memberName', label: 'Member Name' },
-      { key: 'chargedKes', label: 'Charged (KES)' },
-      { key: 'refundedKes', label: 'Refunded (KES)' },
-      { key: 'netKes', label: 'Net (KES)' },
-      { key: 'lastActivity', label: 'Last Activity' },
-      { key: 'status', label: 'Status' },
-    ];
-    await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_member_contributions`, 'xlsx'), rows, headers);
-    toast({ title: 'Export complete', description: `Exported ${rows.length} contribution rows.` });
+  const handleExportXlsx = async () => {
+    if (!ensureExportRows()) return;
+    await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_payment_status`, 'xlsx'), exportRows(), exportHeaders);
+    toast({ title: 'Export complete', description: `Exported ${rows.length} member payment statuses.` });
   };
-
-  const handleExportContributionsCsv = () => {
-    if (contributions.length === 0) {
-      toast({
-        title: 'No data to export',
-        description: 'There are no contribution rows for this case yet.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const rows = exportContributionRows();
-    const headers = [
-      { key: 'memberNumber', label: 'Member Number' },
-      { key: 'memberName', label: 'Member Name' },
-      { key: 'chargedKes', label: 'Charged (KES)' },
-      { key: 'refundedKes', label: 'Refunded (KES)' },
-      { key: 'netKes', label: 'Net (KES)' },
-      { key: 'lastActivity', label: 'Last Activity' },
-      { key: 'status', label: 'Status' },
-    ];
-    exportRowsToCSV(createReportFilename(`case_${caseNumber}_member_contributions`, 'csv'), rows, headers);
-    toast({ title: 'Export complete', description: `Exported ${rows.length} contribution rows.` });
+  const handleExportCsv = () => {
+    if (!ensureExportRows()) return;
+    exportRowsToCSV(createReportFilename(`case_${caseNumber}_payment_status`, 'csv'), exportRows(), exportHeaders);
+    toast({ title: 'Export complete', description: `Exported ${rows.length} member payment statuses.` });
   };
 
   useEffect(() => {
     const loadContributions = async () => {
       try {
         setLoading(true);
-        const transactions = await fetchCaseContributionTransactions(caseId, caseNumber);
-        setContributions(buildContributionActivity(transactions));
+        const { data, error } = await (supabase as any).rpc('get_case_payment_compliance_rows_for_case', { p_case_id: caseId });
+        if (error) throw error;
+        setContributions((data || []) as CasePaymentComplianceRow[]);
       } catch (error) {
-        console.error('Error loading contributions:', error);
+        console.error('Error loading case payment status:', error);
+        toast({ title: 'Could not load payment status', description: 'Please refresh and try again.', variant: 'destructive' });
       } finally {
         setLoading(false);
       }
     };
-
     void loadContributions();
-  }, [caseId, caseNumber, refreshKey]);
+  }, [caseId, refreshKey]);
 
-  if (loading) {
-    return <div className="text-center py-8">Loading contributions...</div>;
-  }
+  if (loading) return <div className="text-center py-8">Loading member payment status...</div>;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <p className="font-medium">Contribution Summary</p>
-          <p className="text-sm text-muted-foreground">
-            Expected: KES {contributionPerMember.toLocaleString()} per member
-          </p>
+          <p className="font-medium">Member Payment Status</p>
+          <p className="text-sm text-muted-foreground">Applicable members, including auto-inactive members with a reinstatement penalty. Expected: KES {contributionPerMember.toLocaleString()} per member.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline">
-            {contributions.length} members
-          </Badge>
-          <Button variant="outline" size="sm" onClick={handleExportContributionsXlsx}>
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
-            Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportContributionsCsv}>
-            <FileText className="h-4 w-4 mr-2" />
-            CSV
-          </Button>
+          <Badge variant="outline">{rows.length} members</Badge>
+          <Button variant="outline" size="sm" onClick={handleExportXlsx}><FileSpreadsheet className="h-4 w-4 mr-2" />Excel</Button>
+          <Button variant="outline" size="sm" onClick={handleExportCsv}><FileText className="h-4 w-4 mr-2" />CSV</Button>
         </div>
       </div>
-
-      <div className="border rounded-md">
+      <div className="border rounded-md overflow-x-auto">
+        <div className="flex flex-wrap gap-2 border-b p-3">
+          <Button size="sm" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>All ({rows.length})</Button>
+          <Button size="sm" variant={statusFilter === 'paid' ? 'default' : 'outline'} onClick={() => setStatusFilter('paid')}>Paid ({countFor('paid')})</Button>
+          <Button size="sm" variant={statusFilter === 'partial' ? 'default' : 'outline'} onClick={() => setStatusFilter('partial')}>Partial ({countFor('partial')})</Button>
+          <Button size="sm" variant={statusFilter === 'unpaid' ? 'default' : 'outline'} onClick={() => setStatusFilter('unpaid')}>Unpaid ({countFor('unpaid')})</Button>
+        </div>
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead className="text-right">Charged</TableHead>
-              <TableHead className="text-right">Refunded</TableHead>
-              <TableHead className="text-right">Net</TableHead>
-              <TableHead className="text-right">Last Activity</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
+          <TableHeader><TableRow><TableHead>Member</TableHead><TableHead className="text-right">Expected</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Refunded</TableHead><TableHead className="text-right">Net</TableHead><TableHead className="text-right">Case Due</TableHead><TableHead className="text-right">Penalty Due</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
           <TableBody>
-            {contributions.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  No contributions yet
-                </TableCell>
+            {visibleRows.length === 0 ? <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No members match this payment status</TableCell></TableRow> : visibleRows.map((row) => (
+              <TableRow key={row.member_id}>
+                <TableCell><div><div className="font-medium">{row.member_name}</div><div className="text-xs text-muted-foreground">#{row.member_number || ''} · {row.member_status}</div></div></TableCell>
+                <TableCell className="text-right">KES {row.expectedAmount.toLocaleString()}</TableCell>
+                <TableCell className="text-right">KES {row.grossPaid.toLocaleString()}</TableCell>
+                <TableCell className="text-right">KES {row.refunded.toLocaleString()}</TableCell>
+                <TableCell className="text-right">KES {row.netPaid.toLocaleString()}</TableCell>
+                <TableCell className="text-right">KES {row.outstanding.toLocaleString()}</TableCell>
+                <TableCell className="text-right">{row.penaltyDue > 0 ? `KES ${row.penaltyDue.toLocaleString()}` : '-'}</TableCell>
+                <TableCell className="text-right font-medium">KES {row.totalDue.toLocaleString()}</TableCell>
+                <TableCell>{row.payment_compliance === 'paid' ? <Badge className="bg-green-600">Paid</Badge> : row.payment_compliance === 'partial' ? <Badge variant="outline">Partial</Badge> : <Badge variant="destructive">Unpaid</Badge>}</TableCell>
               </TableRow>
-            ) : (
-              contributions.map((tx) => {
-                const isPaid = tx.netContributed >= contributionPerMember - WALLET_BALANCE_EPSILON;
-                const isRefunded = tx.netContributed <= WALLET_BALANCE_EPSILON && tx.refunded > WALLET_BALANCE_EPSILON;
-                const isPartial = tx.netContributed > WALLET_BALANCE_EPSILON && !isPaid;
-
-                return (
-                <TableRow key={tx.memberId}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{tx.memberName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        #{tx.memberNumber || ''}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    KES {tx.grossContributed.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    KES {tx.refunded.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    KES {Math.max(tx.netContributed, 0).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-sm text-muted-foreground">
-                    {tx.lastActivity ? new Date(tx.lastActivity).toLocaleDateString() : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {isPaid && (
-                      <Badge variant="default" className="bg-green-600">
-                        Paid
-                      </Badge>
-                    )}
-                    {isRefunded && (
-                      <Badge variant="secondary">
-                        Refunded
-                      </Badge>
-                    )}
-                    {isPartial && (
-                      <Badge variant="outline">
-                        Partial
-                      </Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              )})
-            )}
+            ))}
           </TableBody>
         </Table>
       </div>
