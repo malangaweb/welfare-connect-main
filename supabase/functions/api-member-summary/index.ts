@@ -248,6 +248,14 @@ serve(async (req) => {
       });
     }
 
+    // Fetch total due (case outstanding + penalty) in parallel
+    let totalDue: Record<string, unknown> | null = null;
+    if (isEligible || memberStatus === "inactive") {
+      const { data: dueData } = await supabase
+        .rpc("get_member_total_due", { p_member_id: resolvedMemberId });
+      totalDue = (Array.isArray(dueData) && dueData.length > 0 ? dueData[0] : null) as Record<string, unknown> | null;
+    }
+
     return jsonResponse(200, {
       member: {
         id: member.id,
@@ -258,6 +266,12 @@ serve(async (req) => {
         status: (member as any).status || null,
       },
       wallet_balance: member.wallet_balance,
+      total_due: {
+        unpaid_case_count: Number((totalDue as any)?.unpaid_case_count || 0),
+        unpaid_case_total: Number((totalDue as any)?.unpaid_case_total || 0),
+        reinstatement_penalty_due: Number((totalDue as any)?.reinstatement_penalty_due || 0),
+        total_due: Number((totalDue as any)?.total_due || 0),
+      },
       discipline: {
         consecutive_default_streak: Number((streakRow as any)?.current_streak || 0),
         last_case_defaulted: Boolean((streakRow as any)?.last_defaulted || false),

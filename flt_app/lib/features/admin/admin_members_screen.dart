@@ -240,7 +240,7 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
                   'Selected members preview:',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-const SizedBox(height: 8),
+                const SizedBox(height: 8),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
@@ -293,8 +293,7 @@ const SizedBox(height: 8),
     );
   }
 
-  Future<void> _submitBulkDeduct(
-      BuildContext ctx, StateSetter setLocal) async {
+  Future<void> _submitBulkDeduct(BuildContext ctx, StateSetter setLocal) async {
     final caseId = _deductCaseIdCtrl.text.trim();
     final memberIdTexts = _deductMemberIdsCtrl.text
         .split(',')
@@ -319,9 +318,11 @@ const SizedBox(height: 8),
         headers: {'x-app-token': token},
       );
 
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       final deducted = (payload['deducted'] as List?)?.length ?? 0;
-      final skippedPaid = (payload['skipped_already_paid'] as List?)?.length ?? 0;
+      final skippedPaid =
+          (payload['skipped_already_paid'] as List?)?.length ?? 0;
       final skippedIneligible =
           (payload['skipped_ineligible'] as List?)?.length ?? 0;
       final skippedInsufficient =
@@ -339,6 +340,7 @@ const SizedBox(height: 8),
             ),
           );
         }
+        if (!ctx.mounted) return;
         Navigator.of(ctx).pop();
       } else {
         if (mounted) {
@@ -358,7 +360,8 @@ const SizedBox(height: 8),
     }
   }
 
-  Future<void> _showUnpaidObligations(String memberId, String memberName) async {
+  Future<void> _showUnpaidObligations(
+      String memberId, String memberName) async {
     try {
       final data = await Supabase.instance.client.rpc(
         'get_member_unpaid_case_obligations',
@@ -453,10 +456,10 @@ const SizedBox(height: 8),
               int cmp;
               switch (_sortField) {
                 case 'member_number':
-                  final aNum = _memberNumberOrder(
-                      (a['member_number'] ?? '').toString());
-                  final bNum = _memberNumberOrder(
-                      (b['member_number'] ?? '').toString());
+                  final aNum =
+                      _memberNumberOrder((a['member_number'] ?? '').toString());
+                  final bNum =
+                      _memberNumberOrder((b['member_number'] ?? '').toString());
                   cmp = aNum.compareTo(bNum);
                   if (cmp != 0) return _sortAsc ? cmp : -cmp;
                   cmp = (a['member_number'] ?? '')
@@ -479,10 +482,10 @@ const SizedBox(height: 8),
             });
           } else {
             sortedRows.sort((a, b) {
-              final aNum = _memberNumberOrder(
-                  (a['member_number'] ?? '').toString());
-              final bNum = _memberNumberOrder(
-                  (b['member_number'] ?? '').toString());
+              final aNum =
+                  _memberNumberOrder((a['member_number'] ?? '').toString());
+              final bNum =
+                  _memberNumberOrder((b['member_number'] ?? '').toString());
               final numCmp = aNum.compareTo(bNum);
               if (numCmp != 0) return numCmp;
               return (a['member_number'] ?? '')
@@ -492,8 +495,8 @@ const SizedBox(height: 8),
           }
 
           final allSelected = sortedRows.isNotEmpty &&
-              sortedRows.every((r) =>
-                  _selectedIds.contains((r['id'] ?? '').toString()));
+              sortedRows.every(
+                  (r) => _selectedIds.contains((r['id'] ?? '').toString()));
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
@@ -527,11 +530,10 @@ const SizedBox(height: 8),
                     ),
                     if (_selectedIds.isNotEmpty)
                       ElevatedButton.icon(
-                        onPressed: () => _openBulkDeductDialog(
-                            sortedRows, money),
+                        onPressed: () =>
+                            _openBulkDeductDialog(sortedRows, money),
                         icon: const Icon(Icons.payments_rounded),
-                        label: Text(
-                            'Bulk Deduct (${_selectedIds.length})'),
+                        label: Text('Bulk Deduct (${_selectedIds.length})'),
                       ),
                   ],
                 ),
@@ -575,15 +577,16 @@ const SizedBox(height: 8),
                         ),
                         items: const [
                           DropdownMenuItem(value: 'all', child: Text('All')),
-                          DropdownMenuItem(value: 'active', child: Text('Active')),
-                          DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                          DropdownMenuItem(
+                              value: 'active', child: Text('Active')),
+                          DropdownMenuItem(
+                              value: 'inactive', child: Text('Inactive')),
                         ],
-                        onChanged: (v) =>
-                            setState(() {
-                              _activeFilter = v ?? 'all';
-                              _page = 1;
-                              _future = _loadPage();
-                            }),
+                        onChanged: (v) => setState(() {
+                          _activeFilter = v ?? 'all';
+                          _page = 1;
+                          _future = _loadPage();
+                        }),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -595,18 +598,22 @@ const SizedBox(height: 8),
                           border: OutlineInputBorder(),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All statuses')),
-                          DropdownMenuItem(value: 'active', child: Text('ACTIVE')),
-                          DropdownMenuItem(value: 'inactive', child: Text('INACTIVE')),
-                          DropdownMenuItem(value: 'probation', child: Text('PROBATION')),
-                          DropdownMenuItem(value: 'deceased', child: Text('DECEASED')),
+                          DropdownMenuItem(
+                              value: 'all', child: Text('All statuses')),
+                          DropdownMenuItem(
+                              value: 'active', child: Text('ACTIVE')),
+                          DropdownMenuItem(
+                              value: 'inactive', child: Text('INACTIVE')),
+                          DropdownMenuItem(
+                              value: 'probation', child: Text('PROBATION')),
+                          DropdownMenuItem(
+                              value: 'deceased', child: Text('DECEASED')),
                         ],
-                        onChanged: (v) =>
-                            setState(() {
-                              _statusFilter = v ?? 'all';
-                              _page = 1;
-                              _future = _loadPage();
-                            }),
+                        onChanged: (v) => setState(() {
+                          _statusFilter = v ?? 'all';
+                          _page = 1;
+                          _future = _loadPage();
+                        }),
                       ),
                     ),
                   ],
@@ -617,14 +624,13 @@ const SizedBox(height: 8),
                   child: DataTable(
                     showCheckboxColumn: false,
                     columnSpacing: 16,
-                    headingRowColor: WidgetStateProperty.all(
-                        const Color(0xFFF1F5F9)),
+                    headingRowColor:
+                        WidgetStateProperty.all(const Color(0xFFF1F5F9)),
                     columns: [
                       DataColumn(
                         label: Checkbox(
                           value: allSelected,
-                          onChanged: (v) =>
-                              _toggleSelectAll(v, sortedRows),
+                          onChanged: (v) => _toggleSelectAll(v, sortedRows),
                         ),
                       ),
                       DataColumn(
@@ -744,8 +750,7 @@ const SizedBox(height: 8),
                                   color: unpaid > 0
                                       ? const Color(0xFFFEE2E2)
                                       : const Color(0xFFF1F5F9),
-                                  borderRadius:
-                                      BorderRadius.circular(999),
+                                  borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
                                     color: unpaid > 0
                                         ? const Color(0xFFEF4444)
@@ -772,7 +777,8 @@ const SizedBox(height: 8),
                                 IconButton(
                                   tooltip: 'View Details',
                                   icon: const Icon(Icons.visibility, size: 18),
-                                  onPressed: () => context.go('/admin/members/$id'),
+                                  onPressed: () =>
+                                      context.go('/admin/members/$id'),
                                 ),
                                 IconButton(
                                   tooltip: 'SMS',
@@ -780,7 +786,8 @@ const SizedBox(height: 8),
                                   onPressed: () {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                          content: Text('SMS composer coming soon')),
+                                          content:
+                                              Text('SMS composer coming soon')),
                                     );
                                   },
                                 ),
@@ -790,7 +797,8 @@ const SizedBox(height: 8),
                                   onPressed: () {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                          content: Text('Transfer coming soon')),
+                                          content:
+                                              Text('Transfer coming soon')),
                                     );
                                   },
                                 ),
@@ -917,7 +925,8 @@ const SizedBox(height: 8),
 
       final excel = Excel.decodeBytes(bytes);
       final sheetNames = excel.sheets.keys.toList();
-      final sheet = sheetNames.isNotEmpty ? excel.sheets[sheetNames.first] : null;
+      final sheet =
+          sheetNames.isNotEmpty ? excel.sheets[sheetNames.first] : null;
       if (sheet == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -938,7 +947,8 @@ const SizedBox(height: 8),
         }
         final rowData = <String, dynamic>{};
         for (var i = 0; i < headers.length && i < row.length; i++) {
-          rowData[headers[i].toLowerCase().replaceAll(' ', '_')] = row[i]?.value;
+          rowData[headers[i].toLowerCase().replaceAll(' ', '_')] =
+              row[i]?.value;
         }
         rows.add(rowData);
         rowIndex++;
@@ -953,11 +963,13 @@ const SizedBox(height: 8),
       }
 
       final token = ref.read(authControllerProvider).appToken ?? '';
-      final importResult = await _service.importMembers(appToken: token, members: rows);
+      final importResult =
+          await _service.importMembers(appToken: token, members: rows);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported ${importResult['created'] ?? 0} members')),
+        SnackBar(
+            content: Text('Imported ${importResult['created'] ?? 0} members')),
       );
 
       setState(() {

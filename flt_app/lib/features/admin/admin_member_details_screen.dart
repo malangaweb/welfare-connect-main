@@ -56,8 +56,12 @@ class _AdminMemberDetailsScreenState
             },
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Update')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Update')),
           ],
         ),
       ),
@@ -71,11 +75,13 @@ class _AdminMemberDetailsScreenState
         status: selected,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Status updated.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Status updated.')));
       setState(() => _future = _load());
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Status update failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Status update failed: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -100,7 +106,8 @@ class _AdminMemberDetailsScreenState
                 DropdownButtonFormField<String>(
                   initialValue: feeType,
                   items: const [
-                    DropdownMenuItem(value: 'registration', child: Text('Registration')),
+                    DropdownMenuItem(
+                        value: 'registration', child: Text('Registration')),
                     DropdownMenuItem(value: 'renewal', child: Text('Renewal')),
                     DropdownMenuItem(value: 'penalty', child: Text('Penalty')),
                   ],
@@ -109,15 +116,26 @@ class _AdminMemberDetailsScreenState
                     setLocal(() => feeType = v);
                   },
                 ),
-                TextField(controller: amountCtrl, decoration: const InputDecoration(labelText: 'Amount')),
-                TextField(controller: referenceCtrl, decoration: const InputDecoration(labelText: 'Reference')),
-                TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description')),
+                TextField(
+                    controller: amountCtrl,
+                    decoration: const InputDecoration(labelText: 'Amount')),
+                TextField(
+                    controller: referenceCtrl,
+                    decoration: const InputDecoration(labelText: 'Reference')),
+                TextField(
+                    controller: descCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'Description')),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Collect')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Collect')),
           ],
         ),
       ),
@@ -132,15 +150,19 @@ class _AdminMemberDetailsScreenState
         memberId: widget.memberId,
         feeType: feeType,
         amount: amount,
-        reference: referenceCtrl.text.trim().isEmpty ? null : referenceCtrl.text.trim(),
+        reference: referenceCtrl.text.trim().isEmpty
+            ? null
+            : referenceCtrl.text.trim(),
         description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fee collected.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Fee collected.')));
       setState(() => _future = _load());
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fee collection failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Fee collection failed: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -157,13 +179,21 @@ class _AdminMemberDetailsScreenState
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: toCtrl, decoration: const InputDecoration(labelText: 'To Member ID')),
-            TextField(controller: amountCtrl, decoration: const InputDecoration(labelText: 'Amount')),
+            TextField(
+                controller: toCtrl,
+                decoration: const InputDecoration(labelText: 'To Member ID')),
+            TextField(
+                controller: amountCtrl,
+                decoration: const InputDecoration(labelText: 'Amount')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Transfer')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Transfer')),
         ],
       ),
     );
@@ -179,11 +209,13 @@ class _AdminMemberDetailsScreenState
         toMemberNumber: toCtrl.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transfer completed.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Transfer completed.')));
       setState(() => _future = _load());
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Transfer failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Transfer failed: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -213,9 +245,9 @@ class _AdminMemberDetailsScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-DropdownButtonFormField<String>(
-                   initialValue: selectedCaseId,
-                   hint: const Text('Select Case'),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCaseId,
+                  hint: const Text('Select Case'),
                   items: _cachedCases.map((c) {
                     final caseNum = c['case_number'] ?? 'N/A';
                     final caseType = c['case_type'] ?? '';
@@ -234,8 +266,8 @@ DropdownButtonFormField<String>(
                   keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: 12),
-DropdownButtonFormField<String>(
-                   initialValue: selectedTxType,
+                DropdownButtonFormField<String>(
+                  initialValue: selectedTxType,
                   items: const [
                     DropdownMenuItem(
                       value: 'case_wallet_deduction',
@@ -274,6 +306,7 @@ DropdownButtonFormField<String>(
     if (ok != true || selectedCaseId == null) return;
     final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
     if (amount <= 0) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Amount must be greater than zero')),
       );
@@ -325,7 +358,8 @@ DropdownButtonFormField<String>(
             ),
             TextField(
               controller: descCtrl,
-              decoration: const InputDecoration(labelText: 'Description (optional)'),
+              decoration:
+                  const InputDecoration(labelText: 'Description (optional)'),
             ),
           ],
         ),
@@ -345,6 +379,7 @@ DropdownButtonFormField<String>(
     if (ok != true) return;
     final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
     if (amount <= 0) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Amount must be greater than zero')),
       );
@@ -508,7 +543,8 @@ DropdownButtonFormField<String>(
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 14),
-              const Text('Actions', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text('Actions',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -557,17 +593,22 @@ DropdownButtonFormField<String>(
                 ],
               ),
               const Divider(height: 24),
-              Text('Cases (${cases.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text('Cases (${cases.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
               ...cases.take(20).map((c) => ListTile(
                     dense: true,
-                    title: Text('#${c['case_number']} • ${(c['case_type'] ?? '').toString().toUpperCase()}'),
-                    subtitle: Text('Contribution: ${money.format(_toDouble(c['contribution_per_member']))}'),
+                    title: Text(
+                        '#${c['case_number']} • ${(c['case_type'] ?? '').toString().toUpperCase()}'),
+                    subtitle: Text(
+                        'Contribution: ${money.format(_toDouble(c['contribution_per_member']))}'),
                   )),
               const Divider(height: 24),
-              Text('Transactions (${tx.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text('Transactions (${tx.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
               ...txPageItems.map((t) => ListTile(
                     dense: true,
-                    title: Text('${t['description'] ?? t['transaction_type'] ?? '-'}'),
+                    title: Text(
+                        '${t['description'] ?? t['transaction_type'] ?? '-'}'),
                     subtitle: Text('${t['status'] ?? '-'}'),
                     trailing: Text(money.format(_toDouble(t['amount']).abs())),
                     onLongPress: () {
@@ -614,7 +655,10 @@ DropdownButtonFormField<String>(
 
   List<Map<String, dynamic>> _asMapList(dynamic value) {
     if (value is! List) return const <Map<String, dynamic>>[];
-    return value.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+    return value
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
   }
 
   double _toDouble(dynamic value) {

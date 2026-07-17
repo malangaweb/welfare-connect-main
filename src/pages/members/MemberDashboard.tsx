@@ -32,6 +32,7 @@ const MemberDashboard = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [activeCasesSummary, setActiveCasesSummary] = useState<ActiveCaseSummary[]>([]);
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [totalDue, setTotalDue] = useState<{ unpaid_case_total: number; reinstatement_penalty_due: number; total_due: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
@@ -80,6 +81,15 @@ const MemberDashboard = () => {
       const balanceFromMember = Number(memberData?.wallet_balance) || 0;
       const balanceFromTx = (allTransData || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
       setWalletBalance(Number.isFinite(balanceFromMember) ? balanceFromMember : balanceFromTx);
+      if (summary?.total_due) {
+        setTotalDue({
+          unpaid_case_total: Number(summary.total_due.unpaid_case_total || 0),
+          reinstatement_penalty_due: Number(summary.total_due.reinstatement_penalty_due || 0),
+          total_due: Number(summary.total_due.total_due || 0),
+        });
+      } else {
+        setTotalDue(null);
+      }
     } catch (error) {
       console.error("Error fetching data:", error);
       if (error instanceof Error && /session expired/i.test(error.message)) {
@@ -607,14 +617,31 @@ const MemberDashboard = () => {
               <div className="text-3xl font-bold text-green-600">
                 KES {walletBalance.toLocaleString()}
               </div>
-              <div className="text-sm text-muted-foreground mt-1 mb-4">
+              {totalDue && totalDue.total_due > 0 && (
+                <div className="mt-3 space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Unpaid cases</span>
+                    <span className="font-semibold">KES {totalDue.unpaid_case_total.toLocaleString()}</span>
+                  </div>
+                  {totalDue.reinstatement_penalty_due > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Reinstatement penalty</span>
+                      <span className="font-semibold text-amber-700">KES {totalDue.reinstatement_penalty_due.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs font-bold border-t border-amber-200 pt-1 mt-1">
+                    <span>Total Due</span>
+                    <span>KES {totalDue.total_due.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground mt-2">
                 Last updated: {new Date().toLocaleDateString()}
               </div>
 
               {String(member.status || "").toLowerCase() === "inactive" && (
                 <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-                  Inactive due to default discipline. You can still settle case obligations (including closed cases) as late payments.
-                  Status is cleared only through reinstatement with KES 300 penalty.
+                  Inactive due to default discipline. You can still settle case obligations (including closed cases) as late payments. Wallet top-ups automatically pay down the KES 300 reinstatement penalty first.
                 </div>
               )}
 

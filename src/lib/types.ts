@@ -66,6 +66,8 @@ export interface Member {
     case_status: string;
     case_date: string;
   }>;
+  reinstatementPenaltyDue?: number;
+  totalDue?: number;
   pinHash?: string;
   pinAttempts?: number;
   pinLockedUntil?: Date;

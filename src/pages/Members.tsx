@@ -217,21 +217,38 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
       <TableCell className="py-3 px-2 md:px-4 whitespace-nowrap text-center">
         {(() => {
           const obligations = member.unpaidCaseObligations || [];
-          if (obligations.length === 0) {
+          const penaltyDue = Number(member.reinstatementPenaltyDue || 0);
+          const caseTotal = obligations.reduce((s, o) => s + Number(o.contribution_per_member || 0), 0);
+          const combinedTotal = caseTotal + penaltyDue;
+
+          if (obligations.length === 0 && penaltyDue === 0) {
             return <span className="text-xs md:text-sm font-semibold text-slate-900">KES 0</span>;
           }
 
+          const items: React.ReactNode[] = [];
+          obligations.forEach((o) => {
+            items.push(
+              <div key={o.case_id} className="flex justify-between gap-4 text-xs">
+                <span>{o.case_number}</span>
+                <span className="font-semibold">KES {Number(o.contribution_per_member || 0).toLocaleString()}</span>
+              </div>
+            );
+          });
+          if (penaltyDue > 0) {
+            items.push(
+              <div key="penalty" className="flex justify-between gap-4 text-xs text-amber-700">
+                <span>Penalty (reinstatement)</span>
+                <span className="font-semibold">KES {penaltyDue.toLocaleString()}</span>
+              </div>
+            );
+          }
+
           const tooltipContent = (
-            <div className="space-y-1 min-w-[180px]">
-              {obligations.map((o) => (
-                <div key={o.case_id} className="flex justify-between gap-4 text-xs">
-                  <span>{o.case_number}</span>
-                  <span className="font-semibold">KES {Number(o.contribution_per_member || 0).toLocaleString()}</span>
-                </div>
-              ))}
+            <div className="space-y-1 min-w-[200px]">
+              {items}
               <div className="border-t pt-1 mt-1 flex justify-between gap-4 text-xs font-bold">
-                <span>Total</span>
-                <span>KES {obligations.reduce((s, o) => s + Number(o.contribution_per_member || 0), 0).toLocaleString()}</span>
+                <span>Total Due</span>
+                <span>KES {combinedTotal.toLocaleString()}</span>
               </div>
             </div>
           );
@@ -240,8 +257,8 @@ const MemberRow = ({ member, index, navigate, onEdit, onManage, onDelete, onTran
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="text-xs md:text-sm font-semibold text-slate-900 cursor-help border-b border-dotted border-slate-400">
-                    KES {obligations.reduce((s, o) => s + Number(o.contribution_per_member || 0), 0).toLocaleString()}
+                  <span className={`text-xs md:text-sm font-semibold ${combinedTotal > 0 ? 'text-amber-700' : 'text-slate-900'} cursor-help border-b border-dotted border-slate-400`}>
+                    KES {combinedTotal.toLocaleString()}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="center" className="p-3">
@@ -951,20 +968,26 @@ const Members = () => {
       });
       const membersWithObligations = await Promise.all(
         membersWithBalances.map(async (member) => {
-          const { data: obligations, error } = await supabase.rpc('get_member_unpaid_case_obligations', {
-            p_member_id: member.id,
-          });
+          const [{ data: obligations, error: oblError }, { data: due, error: dueError }] = await Promise.all([
+            supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
+            supabase.rpc('get_member_total_due', { p_member_id: member.id }),
+          ]);
 
-          if (error) {
-            console.error(`Failed to load unpaid case obligations for member ${member.id}:`, error);
-            return { ...member, unpaidCaseContributionCount: 0, unpaidCaseObligations: [] };
+          if (oblError) {
+            console.error(`Failed to load unpaid case obligations for member ${member.id}:`, oblError);
+          }
+          if (dueError) {
+            console.error(`Failed to load total due for member ${member.id}:`, dueError);
           }
 
           const rows = Array.isArray(obligations) ? obligations : [];
+          const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
           return {
             ...member,
             unpaidCaseContributionCount: rows.length,
             unpaidCaseObligations: rows,
+            reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
+            totalDue: Number(dueRow?.total_due || 0),
           };
         })
       );
