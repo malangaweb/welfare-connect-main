@@ -363,7 +363,7 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
     { key: 'totalDueKes', label: 'Total Due (KES)' },
     { key: 'paymentStatus', label: 'Payment Status' },
   ];
-  const exportRows = () => eligibleRows.map((row) => ({
+  const exportRows = () => visibleRows.map((row) => ({
     memberNumber: row.member_number || '', memberName: row.member_name, memberStatus: row.member_status,
     expectedKes: Number(row.expectedAmount.toFixed(2)), grossPaidKes: Number(row.grossPaid.toFixed(2)),
     refundedKes: Number(row.refunded.toFixed(2)), netPaidKes: Number(row.netPaid.toFixed(2)),
@@ -371,19 +371,19 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
     totalDueKes: Number(row.totalDue.toFixed(2)), paymentStatus: row.payment_compliance,
   }));
   const ensureExportRows = () => {
-    if (eligibleRows.length > 0) return true;
-    toast({ title: 'No data to export', description: 'There are no eligible member obligations for this case.', variant: 'destructive' });
+    if (visibleRows.length > 0) return true;
+    toast({ title: 'No data to export', description: `${statusFilter === 'all' ? 'No eligible members' : `No members with status "${statusFilter}"`} for this case.`, variant: 'destructive' });
     return false;
   };
   const handleExportXlsx = async () => {
     if (!ensureExportRows()) return;
     await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_payment_status`, 'xlsx'), exportRows(), exportHeaders);
-    toast({ title: 'Export complete', description: `Exported ${eligibleRows.length} member payment statuses.` });
+    toast({ title: 'Export complete', description: `Exported ${visibleRows.length} member payment statuses.` });
   };
   const handleExportCsv = () => {
     if (!ensureExportRows()) return;
     exportRowsToCSV(createReportFilename(`case_${caseNumber}_payment_status`, 'csv'), exportRows(), exportHeaders);
-    toast({ title: 'Export complete', description: `Exported ${eligibleRows.length} member payment statuses.` });
+    toast({ title: 'Export complete', description: `Exported ${visibleRows.length} member payment statuses.` });
   };
 
   useEffect(() => {
