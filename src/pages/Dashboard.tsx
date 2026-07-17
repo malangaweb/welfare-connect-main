@@ -100,20 +100,33 @@ const Dashboard = () => {
 
       // --- Summary Stats ---
       let totalMembers = 0, activeCasesCount = 0, totalContributions = 0, defaultersCount = 0;
+      let activeMemberCount = 0;
       if (!summaryResult.error && summaryResult.data?.length > 0) {
         const s = summaryResult.data[0];
         totalMembers = s.total_members || 0;
         activeCasesCount = s.active_cases || 0;
         totalContributions = Number(s.total_contributions) || 0;
         defaultersCount = s.defaulters_count || 0;
-      } else {
-        // Fallback: simple count queries in parallel
-        const [mc, cc] = await Promise.all([
-          supabase.from('members').select('id', { count: 'exact', head: true }),
-          supabase.from('cases').select('id', { count: 'exact', head: true }).eq('is_active', true),
-        ]);
-        totalMembers = mc.count || 0;
-        activeCasesCount = cc.count || 0;
+      }
+      // Fetch active+probation member count for expected amount calculation
+      const { count: ac } = await supabase
+        .from('members')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['active', 'probation']);
+      activeMemberCount = ac || 0;
+      // Fallback total member count if summary unavailable
+      if (!totalMembers) {
+        const { count: mc } = await supabase
+          .from('members')
+          .select('id', { count: 'exact', head: true });
+        totalMembers = mc || 0;
+      }
+      // Fallback active cases count if summary unavailable
+      if (!activeCasesCount) {
+        const { count: cc } = await supabase
+          .from('cases')
+          .select('id', { count: 'exact', head: true }).eq('is_active', true);
+        activeCasesCount = cc || 0;
       }
 
       // --- Recent Members ---
@@ -153,7 +166,7 @@ const Dashboard = () => {
         contributionPerMember: c.contribution_per_member,
         startDate: c.start_date ? new Date(c.start_date) : new Date(),
         endDate: c.end_date ? new Date(c.end_date) : new Date(),
-        expectedAmount: c.contribution_per_member * (totalMembers || 1),
+        expectedAmount: c.contribution_per_member * (activeMemberCount || 1),
         actualAmount: 0, // populated from transactions if needed
         isActive: c.is_active,
         isFinalized: c.is_finalized,

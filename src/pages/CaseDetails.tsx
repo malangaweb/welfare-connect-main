@@ -309,7 +309,8 @@ const fetchCasePageData = async (caseId: string) => {
 
   const { count: memberCount, error: membersError } = await supabase
     .from('members')
-    .select('id', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true })
+    .in('status', ['active', 'probation']);
 
   if (membersError) throw membersError;
 
@@ -346,8 +347,9 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
     penaltyDue: Number(row.reinstatement_penalty_due) || 0,
     totalDue: Number(row.total_due) || 0,
   }));
-  const visibleRows = statusFilter === 'all' ? rows : rows.filter((row) => row.payment_compliance === statusFilter);
-  const countFor = (status: 'paid' | 'partial' | 'unpaid') => rows.filter((row) => row.payment_compliance === status).length;
+  const eligibleRows = rows.filter((row) => row.member_status === 'active' || row.member_status === 'probation');
+  const visibleRows = statusFilter === 'all' ? eligibleRows : eligibleRows.filter((row) => row.payment_compliance === statusFilter);
+  const countFor = (status: 'paid' | 'partial' | 'unpaid') => eligibleRows.filter((row) => row.payment_compliance === status).length;
   const exportHeaders = [
     { key: 'memberNumber', label: 'Member Number' },
     { key: 'memberName', label: 'Member Name' },
@@ -361,7 +363,7 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
     { key: 'totalDueKes', label: 'Total Due (KES)' },
     { key: 'paymentStatus', label: 'Payment Status' },
   ];
-  const exportRows = () => rows.map((row) => ({
+  const exportRows = () => eligibleRows.map((row) => ({
     memberNumber: row.member_number || '', memberName: row.member_name, memberStatus: row.member_status,
     expectedKes: Number(row.expectedAmount.toFixed(2)), grossPaidKes: Number(row.grossPaid.toFixed(2)),
     refundedKes: Number(row.refunded.toFixed(2)), netPaidKes: Number(row.netPaid.toFixed(2)),
@@ -369,19 +371,19 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
     totalDueKes: Number(row.totalDue.toFixed(2)), paymentStatus: row.payment_compliance,
   }));
   const ensureExportRows = () => {
-    if (rows.length > 0) return true;
-    toast({ title: 'No data to export', description: 'There are no applicable member obligations for this case.', variant: 'destructive' });
+    if (eligibleRows.length > 0) return true;
+    toast({ title: 'No data to export', description: 'There are no eligible member obligations for this case.', variant: 'destructive' });
     return false;
   };
   const handleExportXlsx = async () => {
     if (!ensureExportRows()) return;
     await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_payment_status`, 'xlsx'), exportRows(), exportHeaders);
-    toast({ title: 'Export complete', description: `Exported ${rows.length} member payment statuses.` });
+    toast({ title: 'Export complete', description: `Exported ${eligibleRows.length} member payment statuses.` });
   };
   const handleExportCsv = () => {
     if (!ensureExportRows()) return;
     exportRowsToCSV(createReportFilename(`case_${caseNumber}_payment_status`, 'csv'), exportRows(), exportHeaders);
-    toast({ title: 'Export complete', description: `Exported ${rows.length} member payment statuses.` });
+    toast({ title: 'Export complete', description: `Exported ${eligibleRows.length} member payment statuses.` });
   };
 
   useEffect(() => {
@@ -411,14 +413,14 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
           <p className="text-sm text-muted-foreground">Applicable members, including auto-inactive members with a reinstatement penalty. Expected: KES {contributionPerMember.toLocaleString()} per member.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline">{rows.length} members</Badge>
+          <Badge variant="outline">{eligibleRows.length} of {rows.length} eligible</Badge>
           <Button variant="outline" size="sm" onClick={handleExportXlsx}><FileSpreadsheet className="h-4 w-4 mr-2" />Excel</Button>
           <Button variant="outline" size="sm" onClick={handleExportCsv}><FileText className="h-4 w-4 mr-2" />CSV</Button>
         </div>
       </div>
       <div className="border rounded-md overflow-x-auto">
         <div className="flex flex-wrap gap-2 border-b p-3">
-          <Button size="sm" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>All ({rows.length})</Button>
+          <Button size="sm" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>All ({eligibleRows.length})</Button>
           <Button size="sm" variant={statusFilter === 'paid' ? 'default' : 'outline'} onClick={() => setStatusFilter('paid')}>Paid ({countFor('paid')})</Button>
           <Button size="sm" variant={statusFilter === 'partial' ? 'default' : 'outline'} onClick={() => setStatusFilter('partial')}>Partial ({countFor('partial')})</Button>
           <Button size="sm" variant={statusFilter === 'unpaid' ? 'default' : 'outline'} onClick={() => setStatusFilter('unpaid')}>Unpaid ({countFor('unpaid')})</Button>

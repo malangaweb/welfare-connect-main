@@ -19,7 +19,7 @@ interface CacheEntry<T> {
   version: number;   // bump to force-invalidate old schema entries
 }
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_PREFIX = 'mwg_cache_';
 
 export const persistentCache = {

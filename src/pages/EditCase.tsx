@@ -176,7 +176,8 @@ const EditCase = () => {
 
       const { count: memberCount, error: countError } = await supabase
         .from('members')
-        .select('id', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['active', 'probation']);
 
       if (countError) throw countError;
 

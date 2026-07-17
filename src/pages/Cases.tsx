@@ -207,8 +207,8 @@ const Cases = () => {
           return acc;
         }, {});
 
-        // Get all members to determine the count
-        const memberCount = allMembers.length;
+        // Get applicable member count (active/probation only)
+        const memberCount = allMembers.filter(m => m.status === 'active' || m.status === 'probation').length;
 
         // Map database cases to the application Case model
         const mappedCases = casesData.map(dbCase => {

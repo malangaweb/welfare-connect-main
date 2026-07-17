@@ -52,7 +52,8 @@ const MemberCases = () => {
       try {
         const { count: memberTotal, error: memberCountErr } = await supabase
           .from("members")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "exact", head: true })
+          .in("status", ["active", "probation"]);
         if (memberCountErr) throw memberCountErr;
         const memberCountNum = memberTotal ?? 0;
 
@@ -235,12 +236,13 @@ const MemberCases = () => {
     };
   };
 
-  // Calculate progress for a case
+  // Calculate progress for a case — denominator is active+probation members only
   const calculateProgress = (caseItem: any) => {
-    if (!caseItem.expected_amount || caseItem.expected_amount === 0) return 0;
+    const expectedAmount = Number(caseItem.contribution_per_member) * memberCount;
+    if (!expectedAmount || expectedAmount === 0) return 0;
     return Math.max(
       0,
-      Math.min(100, (caseItem.actual_amount / caseItem.expected_amount) * 100),
+      Math.min(100, (caseItem.actual_amount / expectedAmount) * 100),
     );
   };
 
@@ -364,7 +366,7 @@ const MemberCases = () => {
                                     KES {(c.actual_amount || 0).toLocaleString()}
                                   </span>
                                   <span className="text-muted-foreground">
-                                    KES {(c.expected_amount || 0).toLocaleString()}
+                                    KES {(Number(c.contribution_per_member) * memberCount || 0).toLocaleString()}
                                   </span>
                                 </div>
                               </div>
