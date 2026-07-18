@@ -450,8 +450,6 @@ const Members = () => {
   };
 
   const memberToSmsRecipient = (member: Member): SmsRecipient => {
-    const obligations = member.unpaidCaseObligations || [];
-    const totalDue = obligations.reduce((sum, o) => sum + Number(o.contribution_per_member || 0), 0);
     return {
       id: member.id,
       memberId: member.id,
@@ -461,7 +459,7 @@ const Members = () => {
       residence: member.residence,
       status: member.status,
       unpaid: String(member.unpaidCaseContributionCount || 0),
-      due: totalDue > 0 ? String(totalDue) : '',
+      due: member.totalDue > 0 ? String(member.totalDue) : '',
     };
   };
 

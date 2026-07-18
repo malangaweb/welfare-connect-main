@@ -66,14 +66,16 @@ async function buildRecipientContext(
       ctx.balance = String(member.wallet_balance ?? '');
     }
 
-    // Fetch unpaid case obligations for all triggers to populate unpaid/due tags
-    const { data: obligations } = await supabase
-      .rpc('get_member_unpaid_case_obligations', { p_member_id: recipient.memberId });
-    const unpaidList = Array.isArray(obligations) ? obligations : [];
+    // Fetch unpaid case obligations + total due in parallel
+    const [oblResult, dueResult] = await Promise.all([
+      supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: recipient.memberId }),
+      supabase.rpc('get_member_total_due', { p_member_id: recipient.memberId }),
+    ]);
+    const unpaidList = Array.isArray(oblResult.data) ? oblResult.data : [];
     ctx.unpaid = String(unpaidList.length);
-    ctx.due = unpaidList.length > 0
-      ? String(unpaidList.reduce((sum, o) => sum + Number(o.contribution_per_member || 0), 0))
-      : '';
+
+    const dueRow = Array.isArray(dueResult.data) && dueResult.data.length > 0 ? dueResult.data[0] : null;
+    ctx.due = dueRow?.total_due ? String(dueRow.total_due) : '';
 
     // For case-related triggers, fill case details from first obligation
     if (triggerKey === 'case_due' || triggerKey === 'overdue_reminder' || triggerKey === 'case_opened') {

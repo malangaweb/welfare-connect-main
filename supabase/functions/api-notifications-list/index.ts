@@ -38,8 +38,12 @@ serve(async (req) => {
     );
 
     // Role-targeted + direct user/member-targeted notifications.
+    // Members should NOT match by role — role.eq.member would return every
+    // notification since all are inserted with role='member'.  Only admins
+    // match by role so they can receive admin-role notifications.
     const orClauses: string[] = [];
-    if (role) orClauses.push(`role.eq.${role}`);
+    const isMemberRole = role === 'member';
+    if (role && !isMemberRole) orClauses.push(`role.eq.${role}`);
     if (userId) orClauses.push(`user_id.eq.${userId}`);
     if (memberId) orClauses.push(`member_id.eq.${memberId}`);
     if (orClauses.length === 0) {
