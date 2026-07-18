@@ -146,7 +146,7 @@ const WalletFundingDialog = ({
           {isStkMode ? "Fund Wallet (STK)" : "Add Funds (Manual)"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="w-[95vw] sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>{isStkMode ? "Fund Member Wallet (STK Push)" : "Add Funds Manually"}</DialogTitle>
           <DialogDescription>

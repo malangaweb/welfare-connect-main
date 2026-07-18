@@ -737,7 +737,7 @@ END $$;`}
 
       {/* Member Search Dialog */}
       <Dialog open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="w-[95vw] sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Match to Member</DialogTitle>
           </DialogHeader>

@@ -115,7 +115,7 @@ const WalletBalanceEditorDialog = ({
           Edit Balance
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="w-[95vw] sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Edit Wallet Balance</DialogTitle>
           <DialogDescription>

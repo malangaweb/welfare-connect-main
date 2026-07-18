@@ -970,12 +970,13 @@ const ComplianceReports = () => {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid grid-cols-4 gap-4 w-full">
+          <div className="overflow-x-auto"><TabsList className="grid grid-cols-4 gap-4 w-full">
             <TabsTrigger value="case-payments">Case Payments</TabsTrigger>
             <TabsTrigger value="audit">Audit Trail</TabsTrigger>
             <TabsTrigger value="reversals">Reversals Audit</TabsTrigger>
             <TabsTrigger value="compliance">Compliance Issues</TabsTrigger>
           </TabsList>
+          </div>
 
           <TabsContent value="case-payments" className="space-y-4">
             <Card>
@@ -1060,7 +1061,7 @@ const ComplianceReports = () => {
                   </Select>
                 </div>
 
-                <div className="border rounded-lg">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1122,7 +1123,7 @@ const ComplianceReports = () => {
                         />
                       </div>
                       <Select value={casePaymentStatusFilter} onValueChange={(value: 'all' | 'paid' | 'partial' | 'unpaid') => setCasePaymentStatusFilter(value)}>
-                        <SelectTrigger className="w-[170px]"><SelectValue placeholder="Payment status" /></SelectTrigger>
+                        <SelectTrigger className="w-full sm:w-[170px]"><SelectValue placeholder="Payment status" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Payments</SelectItem>
                           <SelectItem value="paid">Paid</SelectItem>
@@ -1242,7 +1243,7 @@ const ComplianceReports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="border rounded-lg">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1343,7 +1344,7 @@ const ComplianceReports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="border rounded-lg">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>

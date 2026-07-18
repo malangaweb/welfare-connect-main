@@ -1750,7 +1750,7 @@ const Members = () => {
 
 
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogTitle className="sr-only">Send SMS</DialogTitle>
           <SmsMessageComposer
             recipients={messageRecipients}
@@ -1764,7 +1764,7 @@ const Members = () => {
 
       {/* Edit Member Modal */}
       <Dialog open={editMemberOpen} onOpenChange={setEditMemberOpen}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Edit Member</DialogTitle>
           </DialogHeader>

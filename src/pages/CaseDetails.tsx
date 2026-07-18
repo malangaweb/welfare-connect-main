@@ -486,7 +486,7 @@ function DisbursementsTab({ caseId, refreshKey }: { caseId: string; refreshKey: 
   }
 
   return (
-    <div className="border rounded-md">
+    <div className="border rounded-md overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -1074,11 +1074,12 @@ const CaseDetails = () => {
         </div>
 
         <Tabs defaultValue="details">
-          <TabsList>
+          <div className="overflow-x-auto"><TabsList>
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="contributions">Contributions</TabsTrigger>
             <TabsTrigger value="disbursements">Disbursements</TabsTrigger>
           </TabsList>
+          </div>
           
           <TabsContent value="details" className="space-y-6">
             <Card>
@@ -1215,7 +1216,7 @@ const CaseDetails = () => {
       </div>
 
       <AlertDialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[95vw] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Revert Contributions</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1236,7 +1237,7 @@ const CaseDetails = () => {
 
       {/* Finalize Confirmation Dialog */}
       <AlertDialog open={finalizeDialogOpen} onOpenChange={setFinalizeDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[95vw] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Finalize Case</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1257,7 +1258,7 @@ const CaseDetails = () => {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[95vw] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Case</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1278,7 +1279,7 @@ const CaseDetails = () => {
       </AlertDialog>
 
       <Dialog open={disbursementDialogOpen} onOpenChange={setDisbursementDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="w-[95vw] sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Record Disbursement</DialogTitle>
           </DialogHeader>

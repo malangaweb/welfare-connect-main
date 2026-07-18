@@ -156,7 +156,7 @@ const AssignTransactionDialog = ({
           Assign to Member
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="w-[95vw] sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Assign Transaction to Member</DialogTitle>
           <DialogDescription>
@@ -190,7 +190,7 @@ const AssignTransactionDialog = ({
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[400px] p-0">
+                    <PopoverContent className="w-[95vw] sm:w-[400px] p-0">
                       <Command>
                         <CommandInput placeholder="Search members..." />
                         <CommandEmpty>No member found.</CommandEmpty>

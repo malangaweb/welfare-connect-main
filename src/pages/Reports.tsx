@@ -1099,7 +1099,7 @@ const Reports = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 p-1 md:p-6 min-h-screen bg-background">
+      <div className="space-y-8 p-3 sm:p-6 min-h-screen bg-background">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
           <Card className="shadow-sm border-l-4 border-primary/70 hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
@@ -1168,7 +1168,7 @@ const Reports = () => {
               initialEndDate={dateRange.endDate}
             />
             <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="w-[200px] border-2 font-medium bg-white">
+              <SelectTrigger className="w-full sm:w-[200px] border-2 font-medium bg-white">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Filter by Location" />
               </SelectTrigger>
@@ -1183,13 +1183,14 @@ const Reports = () => {
         <ReportsSubnav />
 
         <Tabs defaultValue="contributions" className="space-y-8" onValueChange={setActiveTab}>
-          <TabsList className="bg-white p-1 border shadow-sm rounded-xl">
+          <div className="overflow-x-auto"><TabsList className="bg-white p-1 border shadow-sm rounded-xl">
             <TabsTrigger value="contributions" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Contributions</TabsTrigger>
             <TabsTrigger value="transactions" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Transactions</TabsTrigger>
             <TabsTrigger value="defaulters" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Defaulters</TabsTrigger>
             <TabsTrigger value="members" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Member List</TabsTrigger>
             <TabsTrigger value="discipline" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Discipline</TabsTrigger>
           </TabsList>
+          </div>
 
           <TabsContent value="contributions" className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1327,11 +1328,11 @@ const Reports = () => {
                 <div className="flex gap-2">
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="lg" className="border-2 font-bold min-w-[220px] justify-start">
+                      <Button variant="outline" size="lg" className="border-2 font-bold w-full sm:min-w-[220px] justify-start">
                         {selectedCaseIds.length === 0 ? 'All cases' : `${selectedCaseIds.length} case(s) selected`}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[320px] p-3" align="end">
+                    <PopoverContent className="w-[95vw] sm:w-[320px] p-3" align="end">
                       <div className="space-y-3">
                         <Input
                           placeholder="Search cases..."
@@ -1399,8 +1400,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50 font-bold border-b-2">
                       <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('id')}>
                         Transaction ID {sortColumn === 'id' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
@@ -1450,7 +1451,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
 
                 {!loading && renderPagination(paginatedContributions.totalPages)}
               </CardContent>
@@ -1551,8 +1552,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50 border-b-2">
                       <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('id')}>Transaction ID</TableHead>
                       <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('created_at')}>Date</TableHead>
@@ -1601,7 +1602,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
 
                 {!loading && renderPagination(paginatedTransactionDetails.totalPages)}
               </CardContent>
@@ -1646,8 +1647,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50 border-b-2">
                       <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('memberNumber')}>
                         Member # {sortColumn === 'memberNumber' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
@@ -1683,7 +1684,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
 
                 {renderPagination(paginatedDefaulters.totalPages)}
               </CardContent>
@@ -1709,7 +1710,7 @@ const Reports = () => {
                       placeholder="Search members..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 w-[250px]"
+                      className="pl-10 w-full sm:w-[250px]"
                     />
                   </div>
                   <Button 
@@ -1729,8 +1730,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow className="border-b-2 bg-muted/50 hover:bg-muted/50">
                       <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('memberNumber')}>
                         Member # {sortColumn === 'memberNumber' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
@@ -1782,7 +1783,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
 
                 {renderPagination(paginatedMembers.totalPages)}
               </CardContent>
@@ -1836,7 +1837,7 @@ const Reports = () => {
                 {disciplineStatusDistributionData.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No status distribution data available.</p>
                 ) : (
-                  <Table>
+                  <div className="overflow-x-auto"><Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Status</TableHead>
@@ -1851,7 +1852,7 @@ const Reports = () => {
                         </TableRow>
                       ))}
                     </TableBody>
-                  </Table>
+                  </Table></div>
                 )}
               </CardContent>
             </Card>
@@ -1921,8 +1922,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Member</TableHead>
@@ -1946,7 +1947,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
               </CardContent>
             </Card>
 
@@ -1966,8 +1967,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow>
                       <TableHead>Member</TableHead>
                       <TableHead>Status</TableHead>
@@ -1991,7 +1992,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
               </CardContent>
             </Card>
 
@@ -2011,8 +2012,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Member</TableHead>
@@ -2038,7 +2039,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
               </CardContent>
             </Card>
 
@@ -2058,8 +2059,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Member</TableHead>
@@ -2085,7 +2086,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
               </CardContent>
             </Card>
 
@@ -2105,8 +2106,8 @@ const Reports = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
+<div className="overflow-x-auto"><Table>
+                      <TableHeader>
                     <TableRow>
                       <TableHead>Member</TableHead>
                       <TableHead>Status</TableHead>
@@ -2128,7 +2129,7 @@ const Reports = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
               </CardContent>
             </Card>
           </TabsContent>

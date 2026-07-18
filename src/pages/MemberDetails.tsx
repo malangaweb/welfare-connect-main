@@ -489,11 +489,12 @@ const MemberDetails = () => {
           
           <div className="md:w-2/3">
             <Tabs defaultValue="details">
-              <TabsList>
+              <div className="overflow-x-auto"><TabsList>
                 <TabsTrigger value="details">Personal Details</TabsTrigger>
                 <TabsTrigger value="dependants">Dependants</TabsTrigger>
                 <TabsTrigger value="cases">Cases</TabsTrigger>
               </TabsList>
+              </div>
               
               <TabsContent value="details" className="space-y-6">
                 <PersonalDetailsCard member={member} onEdit={handleEditClick} />
@@ -506,7 +507,7 @@ const MemberDetails = () => {
                   onAddDependant={handleAddDependant}
                 />
                 <Dialog open={addDependantOpen} onOpenChange={setAddDependantOpen}>
-                  <DialogContent>
+                  <DialogContent className="w-[95vw] sm:max-w-lg">
                     <DialogHeader>
                       <DialogTitle>Add Dependant</DialogTitle>
                     </DialogHeader>
@@ -568,7 +569,7 @@ const MemberDetails = () => {
 
       {/* Edit Member Dialog */}
       <Dialog open={editMemberOpen} onOpenChange={setEditMemberOpen}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Edit Member Information</DialogTitle>
           </DialogHeader>
@@ -585,7 +586,7 @@ const MemberDetails = () => {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Delete Member</DialogTitle>
           </DialogHeader>

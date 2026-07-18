@@ -174,7 +174,7 @@ const BulkRenewalFeeDialog = ({
           {buttonLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="w-[95vw] sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>Collect Renewal Fee for All Members</DialogTitle>
           <DialogDescription>

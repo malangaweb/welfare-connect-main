@@ -728,7 +728,7 @@ const FiscalReports = () => {
                   </div>
                   <div className="flex gap-2">
                     <Select value={contributionTypeFilter} onValueChange={(value: 'all' | 'contribution' | 'contribution_refund') => setContributionTypeFilter(value)}>
-                      <SelectTrigger className="w-[190px]">
+                      <SelectTrigger className="w-full sm:w-[190px]">
                         <SelectValue placeholder="Filter by type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -739,11 +739,11 @@ const FiscalReports = () => {
                     </Select>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" className="min-w-[220px] justify-start">
+                        <Button variant="outline" className="w-full sm:min-w-[220px] justify-start">
                           {selectedCaseIds.length === 0 ? 'All cases' : `${selectedCaseIds.length} case(s) selected`}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[320px] p-3" align="end">
+                      <PopoverContent className="w-[95vw] sm:w-[320px] p-3" align="end">
                         <div className="space-y-3">
                           <Input
                             placeholder="Search cases..."
@@ -901,7 +901,7 @@ const FiscalReports = () => {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center">
                   <div className="relative max-w-sm flex-1"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search by case number or type..." value={casesSearch} onChange={(e) => { setCasesSearch(e.target.value); setCasesPage(1) }} className="pl-8" /></div>
                   <Select value={caseFundingStatusFilter} onValueChange={(value: 'all' | 'active' | 'finalized' | 'closed') => setCaseFundingStatusFilter(value)}>
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="w-full sm:w-[180px]">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -912,7 +912,7 @@ const FiscalReports = () => {
                     </SelectContent>
                   </Select>
                   <Select value={caseFundingTypeFilter} onValueChange={setCaseFundingTypeFilter}>
-                    <SelectTrigger className="w-[220px]">
+                    <SelectTrigger className="w-full sm:w-[220px]">
                       <SelectValue placeholder="Case Type" />
                     </SelectTrigger>
                     <SelectContent>

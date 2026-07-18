@@ -352,7 +352,7 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="fees">
-          <TabsList>
+          <div className="overflow-x-auto"><TabsList>
             <TabsTrigger value="fees">Fees & Payments</TabsTrigger>
             <TabsTrigger value="ids">ID Configuration</TabsTrigger>
             <TabsTrigger value="residences">Residence Locations</TabsTrigger>
@@ -360,6 +360,7 @@ const Settings = () => {
             <TabsTrigger value="mpesa">M-Pesa API</TabsTrigger>
             <TabsTrigger value="sms">SMS</TabsTrigger>
           </TabsList>
+          </div>
           
           <TabsContent value="fees" className="space-y-4">
             <Card>
@@ -1184,7 +1185,7 @@ const Settings = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="max-h-[480px] overflow-y-auto">
+                <div className="max-h-[480px] overflow-y-auto overflow-x-auto">
                   <Table>
                     <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>

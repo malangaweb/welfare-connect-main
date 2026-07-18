@@ -278,7 +278,7 @@ const MemberTransactions = () => {
               
               <CardContent>
                 <Tabs defaultValue="list" className="mt-2">
-                  <TabsList className="grid grid-cols-2 w-[200px] mb-4">
+                  <TabsList className="grid grid-cols-2 w-full sm:w-[200px] mb-4">
                     <TabsTrigger value="list">List</TabsTrigger>
                     <TabsTrigger value="timeline">Timeline</TabsTrigger>
                   </TabsList>
