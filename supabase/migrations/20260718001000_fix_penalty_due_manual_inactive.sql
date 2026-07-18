@@ -1,5 +1,7 @@
--- Per-member total due: outstanding case balances + reinstatement penalty.
--- Returns both aggregate totals and per-case breakdown for tooltip display.
+-- Fix get_member_total_due to include penalty for manually inactivated members.
+-- The penalty anchor was restricted to auto_inactive_two_consecutive_defaults
+-- transitions only, so the 14 members with manual_status_update never got a
+-- penalty due amount in their total_due (and thus the SMS {due} tag was 0).
 
 CREATE OR REPLACE FUNCTION public.get_member_total_due(p_member_id UUID)
 RETURNS TABLE (
@@ -74,9 +76,8 @@ BEGIN
   FROM outstanding
   WHERE expected_amount - net_paid > 0.009;
 
-  -- Penalty: remaining reinstatement penalty for inactive members.
-  -- Anchored at the latest inactivation transition regardless of reason,
-  -- so manually inactivated members also get the penalty.
+  -- Penalty for inactive members, anchored at the latest inactivation
+  -- regardless of reason (auto or manual).
   IF v_status = 'inactive' THEN
     SELECT st.created_at INTO v_auto_inactivated_at
     FROM public.member_status_transitions st
