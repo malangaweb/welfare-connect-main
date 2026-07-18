@@ -78,7 +78,7 @@ async function buildRecipientContext(
     ctx.due = dueRow?.total_due ? String(dueRow.total_due) : '';
 
     // For case-related triggers, fill case details from first obligation
-    if (triggerKey === 'case_due' || triggerKey === 'overdue_reminder' || triggerKey === 'case_opened') {
+    if (triggerKey === 'case_due' || triggerKey === 'overdue_reminder' || triggerKey === 'amount_due' || triggerKey === 'case_opened') {
       if (unpaidList.length > 0) {
         const ob = unpaidList[0];
         ctx.caseNumber = ob.case_number || '';
@@ -246,7 +246,7 @@ serve(async (req) => {
           member_id: recipient.memberId,
           user_id: claims.sub || null,
           role: 'member',
-          title: triggerKey === 'overdue_reminder' ? 'Malipo Yamechelewa' : triggerKey === 'case_due' ? 'Malipo Yanakaribia' : triggerKey === 'welcome_member' ? 'Karibu' : triggerKey === 'payment_received' ? 'Malipo Yamepokelewa' : triggerKey === 'payment_failed' ? 'Malipo Yameshindikana' : 'Ujumbe',
+          title: triggerKey === 'overdue_reminder' ? 'Malipo Yamechelewa' : triggerKey === 'case_due' ? 'Malipo Yanakaribia' : triggerKey === 'amount_due' ? 'Deni' : triggerKey === 'welcome_member' ? 'Karibu' : triggerKey === 'payment_received' ? 'Malipo Yamepokelewa' : triggerKey === 'payment_failed' ? 'Malipo Yameshindikana' : 'Ujumbe',
           message: personalMessage,
           category: triggerKey,
           data: { sms: true, phone: phoneNumber, trigger_key: triggerKey },

@@ -5,6 +5,7 @@ export type SmsTriggerKey =
   | 'payment_failed'
   | 'case_due'
   | 'overdue_reminder'
+  | 'amount_due'
   | 'renewal_reminder'
   | 'manual_custom';
 
@@ -119,6 +120,21 @@ export const smsTemplates: SmsTemplate[] = [
         amount ? `Tafadhali lipa KES ${amount} haraka iwezekanavyo.` : 'Tafadhali lipa haraka iwezekanavyo.',
       ].join(' '),
     rawTemplate: 'Mwanachama mpendwa, malipo ya case {caseNumber} yamechelewa. Tafadhali lipa KES {amount} haraka iwezekanavyo.',
+  },
+  {
+    key: 'amount_due',
+    label: 'Amount Due',
+    description: 'Notify members about their total outstanding balance (unpaid cases + penalty).',
+    category: 'case',
+    message: ({ memberName, amount, caseNumber, due }) =>
+      [
+        `Malanga Welfare: Mwanachama ${memberName || 'mdarawa'}, una deni la KES ${due || amount || '0'}.`,
+        caseNumber ? `Kesi ${caseNumber}.` : null,
+        'Tafadhali lipa haraka iwezekanavyo.',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    rawTemplate: 'Malanga Welfare: Mwanachama {name}, una deni la KES {due}. {caseNumber} Tafadhali lipa haraka iwezekanavyo.',
   },
   {
     key: 'renewal_reminder',

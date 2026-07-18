@@ -386,8 +386,7 @@ const Members = () => {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
-  const [defaultersFilter, setDefaultersFilter] = useState(false);
-  const [positiveBalanceFilter, setPositiveBalanceFilter] = useState(false);
+  const [balanceFilter, setBalanceFilter] = useState('all');
   const [locations, setLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<Member[]>([]);
@@ -574,9 +573,6 @@ const Members = () => {
       query = query.eq('residence', locationFilter);
     }
 
-    if (defaultersFilter) query = query.lt('wallet_balance', 0);
-    if (positiveBalanceFilter) query = query.gte('wallet_balance', 0);
-
     return query;
   };
 
@@ -666,56 +662,95 @@ const Members = () => {
         registrationDate: 'registration_date',
       };
 
-      let query = buildMembersQuery(true);
-      if (defaultersFilter) query = query.lt('wallet_balance', 0);
-      if (positiveBalanceFilter) query = query.gte('wallet_balance', 0);
-      query = query
-        .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
-        .order('member_number', { ascending: true });
-
       const pageFrom = (currentPage - 1) * itemsPerPage;
       const pageTo = pageFrom + itemsPerPage - 1;
-      const { data: fetchedRows, error, count } = await query.range(pageFrom, pageTo);
-      if (error) throw error;
-      setTotalCount(count || 0);
-      setTotalPages(Math.max(1, Math.ceil((count || 0) / itemsPerPage)));
 
-      // Map members - use stored wallet_balance from database
-      // (RPC calls for every member cause resource exhaustion with large member lists)
-      const membersWithBalances = ((fetchedRows as any[]) || []).map((m: any) => {
-        const baseMember = mapDbMemberToMember(m);
-        return {
-          ...baseMember,
+      if (balanceFilter !== 'all') {
+        // Client-side pagination: fetch all matching IDs, filter, then paginate
+        const allIds = await fetchAllFilteredMemberIds();
+        const totalAll = allIds.length;
+        setTotalCount(totalAll);
+        setTotalPages(Math.max(1, Math.ceil(totalAll / itemsPerPage)));
+
+        const batchIds = allIds.slice(pageFrom, pageTo + 1);
+        if (batchIds.length === 0) {
+          setMembers([]);
+          return;
+        }
+
+        const tmpQuery = supabase.from('members').select(MEMBER_DETAIL_COLUMNS)
+          .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
+          .order('member_number', { ascending: true });
+        const { data: rawRows } = await tmpQuery.in('id', batchIds);
+        const idOrder = new Map(batchIds.map((id, i) => [id, i]));
+        const fetchedRows = ((rawRows as any[]) || []).sort((a, b) => (idOrder.get(a.id) || 0) - (idOrder.get(b.id) || 0));
+
+        const membersWithBalances = fetchedRows.map((m: any) => ({
+          ...mapDbMemberToMember(m),
           walletBalance: Number(m.wallet_balance) || 0,
-          dependants: []
-        };
-      });
-      const membersWithObligations = await Promise.all(
-        membersWithBalances.map(async (member) => {
-          const [{ data: obligations, error: oblError }, { data: due, error: dueError }] = await Promise.all([
-            supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
-            supabase.rpc('get_member_total_due', { p_member_id: member.id }),
-          ]);
+          dependants: [],
+        }));
 
-          if (oblError) {
-            console.error(`Failed to load unpaid case obligations for member ${member.id}:`, oblError);
-          }
-          if (dueError) {
-            console.error(`Failed to load total due for member ${member.id}:`, dueError);
-          }
+        const membersWithObligations = await Promise.all(
+          membersWithBalances.map(async (member) => {
+            const [{ data: obligations }, { data: due }] = await Promise.all([
+              supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
+              supabase.rpc('get_member_total_due', { p_member_id: member.id }),
+            ]);
+            const rows = Array.isArray(obligations) ? obligations : [];
+            const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
+            return {
+              ...member,
+              unpaidCaseContributionCount: rows.length,
+              unpaidCaseObligations: rows,
+              reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
+              totalDue: Number(dueRow?.total_due || 0),
+            };
+          })
+        );
 
-          const rows = Array.isArray(obligations) ? obligations : [];
-          const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
-          return {
-            ...member,
-            unpaidCaseContributionCount: rows.length,
-            unpaidCaseObligations: rows,
-            reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
-            totalDue: Number(dueRow?.total_due || 0),
-          };
-        })
-      );
-      setMembers(membersWithObligations);
+        setMembers(membersWithObligations.filter(m =>
+          balanceFilter === 'negative' ? m.totalDue > 0 : m.totalDue <= 0
+        ));
+      } else {
+        // Server-side pagination (no balance filter)
+        let query = buildMembersQuery(true);
+        query = query
+          .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
+          .order('member_number', { ascending: true });
+
+        const { data: fetchedRows, error, count } = await query.range(pageFrom, pageTo);
+        if (error) throw error;
+        setTotalCount(count || 0);
+        setTotalPages(Math.max(1, Math.ceil((count || 0) / itemsPerPage)));
+
+        const membersWithBalances = ((fetchedRows as any[]) || []).map((m: any) => ({
+          ...mapDbMemberToMember(m),
+          walletBalance: Number(m.wallet_balance) || 0,
+          dependants: [],
+        }));
+
+        const membersWithObligations = await Promise.all(
+          membersWithBalances.map(async (member) => {
+            const [{ data: obligations, error: oblError }, { data: due, error: dueError }] = await Promise.all([
+              supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
+              supabase.rpc('get_member_total_due', { p_member_id: member.id }),
+            ]);
+            if (oblError) console.error(`Failed to load unpaid case obligations for member ${member.id}:`, oblError);
+            if (dueError) console.error(`Failed to load total due for member ${member.id}:`, dueError);
+            const rows = Array.isArray(obligations) ? obligations : [];
+            const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
+            return {
+              ...member,
+              unpaidCaseContributionCount: rows.length,
+              unpaidCaseObligations: rows,
+              reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
+              totalDue: Number(dueRow?.total_due || 0),
+            };
+          })
+        );
+        setMembers(membersWithObligations);
+      }
 
       // Fetch locations from residences table
       if (locations.length === 0) {
@@ -736,8 +771,7 @@ const Members = () => {
           search: debouncedSearch,
           status_filter: statusFilter,
           location_filter: locationFilter,
-          defaulters_filter: defaultersFilter,
-          positive_filter: positiveBalanceFilter,
+          balance_filter: balanceFilter,
           page: currentPage,
         },
       });
@@ -799,8 +833,6 @@ const Members = () => {
       .filter((member) => {
         if (mode === 'defaulters') return member.walletBalance < 0;
         if (mode === 'positive') return member.walletBalance >= 0;
-        if (defaultersFilter) return member.walletBalance < 0;
-        if (positiveBalanceFilter) return member.walletBalance >= 0;
         return true;
       });
 
@@ -809,7 +841,7 @@ const Members = () => {
 
   useEffect(() => {
     fetchMembers();
-  }, [currentPage, debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
+  }, [currentPage, debouncedSearch, statusFilter, locationFilter, balanceFilter, sortConfig]);
 
   // Refresh members when the page becomes visible (e.g., after navigating back from deduction)
   useEffect(() => {
@@ -827,11 +859,11 @@ const Members = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
+  }, [debouncedSearch, statusFilter, locationFilter, balanceFilter, sortConfig]);
 
   useEffect(() => {
     setSelectedMemberIds(new Set());
-  }, [debouncedSearch, statusFilter, locationFilter, defaultersFilter, positiveBalanceFilter, sortConfig]);
+  }, [debouncedSearch, statusFilter, locationFilter, balanceFilter, sortConfig]);
 
   const paginatedMembers = members;
 
@@ -1482,6 +1514,17 @@ const Members = () => {
               </SelectContent>
             </Select>
 
+            <Select value={balanceFilter} onValueChange={setBalanceFilter}>
+              <SelectTrigger className="rounded-lg border-slate-200 h-9 md:h-10 text-sm">
+                <SelectValue placeholder="Balance" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Balances</SelectItem>
+                <SelectItem value="negative">Negative Balance</SelectItem>
+                <SelectItem value="positive">Positive Balance</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div className="flex gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1492,26 +1535,6 @@ const Members = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="font-semibold text-slate-900">Filter by Balance</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    className="cursor-pointer flex items-center gap-2"
-                    onClick={() => setDefaultersFilter(!defaultersFilter)}
-                  >
-                    <input type="checkbox" checked={defaultersFilter} readOnly />
-                    <span>Defaulters</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    className="cursor-pointer flex items-center gap-2"
-                    onClick={() => setPositiveBalanceFilter(!positiveBalanceFilter)}
-                  >
-                    <input type="checkbox" checked={positiveBalanceFilter} readOnly />
-                    <span>Positive Balance</span>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
                   <DropdownMenuLabel className="font-semibold text-slate-900">Export</DropdownMenuLabel>
                   <DropdownMenuItem onClick={handleExportMembers} className="cursor-pointer" disabled={exporting}>
                     <Download className="h-4 w-4 mr-2" />
@@ -1542,7 +1565,6 @@ const Members = () => {
                     <Download className="h-4 w-4 mr-2" />
                     Deceased Members
                   </DropdownMenuItem>
-                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -1553,8 +1575,7 @@ const Members = () => {
               onClick={() => {
                 setStatusFilter('all');
                 setLocationFilter('all');
-                setDefaultersFilter(false);
-                setPositiveBalanceFilter(false);
+                setBalanceFilter('all');
                 setSearchQuery('');
               }}
             >
