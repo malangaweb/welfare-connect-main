@@ -1,5 +1,7 @@
--- Bulk variant of get_member_total_due that processes all members in one SQL pass.
--- Eliminates the N+1 problem when loading the member list with a balance filter.
+-- Fix ambiguous column reference in get_members_bulk_unpaid_totals.
+-- RETURNS TABLE(member_id UUID, ...) creates a PL/pgSQL OUT param named
+-- member_id, which clashes with CTE column names. Renamed CTE columns to
+-- `mid` throughout and use ALIAS FOR to avoid parameter-name conflicts.
 
 CREATE OR REPLACE FUNCTION public.get_members_bulk_unpaid_totals(p_member_ids UUID[])
 RETURNS TABLE(
@@ -110,8 +112,3 @@ BEGIN
   LEFT JOIN member_penalties mp ON mp.mid = u.mid;
 END;
 $$;
-
-COMMENT ON FUNCTION public.get_members_bulk_unpaid_totals(UUID[]) IS
-'Bulk version of get_member_total_due for an array of member IDs. Returns unpaid case counts, totals, penalty amounts, and case details in a single query pass.';
-
-GRANT EXECUTE ON FUNCTION public.get_members_bulk_unpaid_totals(UUID[]) TO service_role, authenticated, anon;

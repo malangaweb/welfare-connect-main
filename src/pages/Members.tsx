@@ -666,7 +666,7 @@ const Members = () => {
       const pageTo = pageFrom + itemsPerPage - 1;
 
       if (balanceFilter !== 'all') {
-        // Client-side pagination: fetch ALL members, filter by balance, then paginate
+        // Phase 1: fetch all matching member IDs (cheap)
         const allIds = await fetchAllFilteredMemberIds();
 
         if (allIds.length === 0) {
@@ -676,26 +676,42 @@ const Members = () => {
           return;
         }
 
-        // Fetch all member data in one query (no batching needed)
-        const { data: rawRows } = await supabase
-          .from('members')
-          .select(MEMBER_DETAIL_COLUMNS)
-          .in('id', allIds);
-
-        // Sort by the configured sort key to match server-side ordering
-        const memberMap = new Map((rawRows as any[] || []).map((r: any) => [r.id, r]));
-        const sortedRows = allIds.map((id: string) => memberMap.get(id)).filter(Boolean) as any[];
-
-        // Fetch all totals in ONE bulk RPC call
-        const { data: bulkTotals } = await supabase.rpc('get_members_bulk_unpaid_totals', {
+        // Phase 2: get total_due for ALL members (lightweight — no JSONB)
+        const { data: lightTotals } = await supabase.rpc('get_members_total_due_light', {
           p_member_ids: allIds,
         });
 
-        const totalsMap = new Map(
-          (bulkTotals as any[] || []).map((r: any) => [r.member_id, r])
+        const totalDueMap = new Map(
+          (lightTotals as any[] || []).map((r: any) => [r.member_id, Number(r.total_due || 0)])
         );
 
-        const enrichedMembers = (sortedRows).map((m: any) => {
+        // Phase 3: filter by balance and compute pagination
+        const filteredIds = allIds.filter((id: string) => {
+          const due = totalDueMap.get(id) || 0;
+          return balanceFilter === 'negative' ? due > 0 : due <= 0;
+        });
+
+        const pageFrom = (currentPage - 1) * itemsPerPage;
+        const pageIds = filteredIds.slice(pageFrom, pageFrom + itemsPerPage);
+
+        setTotalCount(filteredIds.length);
+        setTotalPages(Math.max(1, Math.ceil(filteredIds.length / itemsPerPage)));
+
+        // Phase 4: fetch member data + full case details only for current page
+        const [{ data: rawRows }, { data: pageTotals }] = await Promise.all([
+          pageIds.length > 0
+            ? supabase.from('members').select(MEMBER_DETAIL_COLUMNS).in('id', pageIds)
+            : { data: [] },
+          pageIds.length > 0
+            ? supabase.rpc('get_members_bulk_unpaid_totals', { p_member_ids: pageIds })
+            : { data: [] },
+        ]);
+
+        const totalsMap = new Map(
+          (pageTotals as any[] || []).map((r: any) => [r.member_id, r])
+        );
+
+        const pageMembers = ((rawRows as any[]) || []).map((m: any) => {
           const totals = totalsMap.get(m.id);
           const obligations = (totals?.case_details || []) as any[];
           return {
@@ -705,17 +721,11 @@ const Members = () => {
             unpaidCaseContributionCount: Number(totals?.unpaid_case_count || 0),
             unpaidCaseObligations: obligations,
             reinstatementPenaltyDue: Number(totals?.reinstatement_penalty_due || 0),
-            totalDue: Number(totals?.total_due || 0),
+            totalDue: Number(totals?.total_due || totalDueMap.get(m.id) || 0),
           };
         });
 
-        const filtered = enrichedMembers.filter(m =>
-          balanceFilter === 'negative' ? m.totalDue > 0 : m.totalDue <= 0
-        );
-
-        setMembers(filtered);
-        setTotalCount(filtered.length);
-        setTotalPages(Math.max(1, Math.ceil(filtered.length / itemsPerPage)));
+        setMembers(pageMembers);
       } else {
         // Server-side pagination (no balance filter)
         let query = buildMembersQuery(true);
@@ -754,13 +764,6 @@ const Members = () => {
           };
         });
         setMembers(membersWithObligations);
-      }
-
-      // Fetch locations from residences table
-      if (locations.length === 0) {
-        const { data: locData } = await supabase.from('residences').select('name').not('name', 'is', null);
-        const uniqueLocs = [...new Set(((locData as any[]) || []).map(d => d.name as string))].sort();
-        setLocations(uniqueLocs);
       }
 
     } catch (error) {
@@ -847,6 +850,21 @@ const Members = () => {
     fetchMembers();
   }, [currentPage, debouncedSearch, statusFilter, locationFilter, balanceFilter, sortConfig]);
 
+  // Fetch locations once on mount (separated from fetchMembers to avoid duplicate calls)
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('residences')
+      .select('name')
+      .not('name', 'is', null)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const uniqueLocs = [...new Set(((data as any[]) || []).map(d => d.name as string))].sort();
+        setLocations(uniqueLocs);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   // Refresh members when the page becomes visible (e.g., after navigating back from deduction)
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -869,9 +887,10 @@ const Members = () => {
     setSelectedMemberIds(new Set());
   }, [debouncedSearch, statusFilter, locationFilter, balanceFilter, sortConfig]);
 
-  const paginatedMembers = balanceFilter !== 'all'
-    ? members.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-    : members;
+  // In balance-filter mode, `members` already contains only the current page
+  // (set in fetchMembers via pageIds slice). In server-side mode, it's the full
+  // page returned by the range query. Either way, no client-side slicing needed.
+  const paginatedMembers = members;
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
