@@ -970,13 +970,12 @@ const ComplianceReports = () => {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <div className="overflow-x-auto"><TabsList className="grid grid-cols-4 gap-4 w-full">
-            <TabsTrigger value="case-payments">Case Payments</TabsTrigger>
-            <TabsTrigger value="audit">Audit Trail</TabsTrigger>
-            <TabsTrigger value="reversals">Reversals Audit</TabsTrigger>
-            <TabsTrigger value="compliance">Compliance Issues</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-4">
+            <TabsTrigger value="case-payments" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Case Payments</TabsTrigger>
+            <TabsTrigger value="audit" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Audit Trail</TabsTrigger>
+            <TabsTrigger value="reversals" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Reversals Audit</TabsTrigger>
+            <TabsTrigger value="compliance" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Compliance Issues</TabsTrigger>
           </TabsList>
-          </div>
 
           <TabsContent value="case-payments" className="space-y-4">
             <Card>

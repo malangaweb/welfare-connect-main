@@ -1183,14 +1183,13 @@ const Reports = () => {
         <ReportsSubnav />
 
         <Tabs defaultValue="contributions" className="space-y-8" onValueChange={setActiveTab}>
-          <div className="overflow-x-auto"><TabsList className="bg-white p-1 border shadow-sm rounded-xl">
-            <TabsTrigger value="contributions" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Contributions</TabsTrigger>
-            <TabsTrigger value="transactions" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Transactions</TabsTrigger>
-            <TabsTrigger value="defaulters" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Defaulters</TabsTrigger>
-            <TabsTrigger value="members" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Member List</TabsTrigger>
-            <TabsTrigger value="discipline" className="px-6 py-2 font-bold text-base data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all rounded-lg">Discipline</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border bg-white p-1 shadow-sm sm:grid-cols-5">
+            <TabsTrigger value="contributions" className="min-h-10 whitespace-normal rounded-lg px-2 py-2 text-xs font-bold leading-tight transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:text-sm">Contributions</TabsTrigger>
+            <TabsTrigger value="transactions" className="min-h-10 whitespace-normal rounded-lg px-2 py-2 text-xs font-bold leading-tight transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:text-sm">Transactions</TabsTrigger>
+            <TabsTrigger value="defaulters" className="min-h-10 whitespace-normal rounded-lg px-2 py-2 text-xs font-bold leading-tight transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:text-sm">Defaulters</TabsTrigger>
+            <TabsTrigger value="members" className="min-h-10 whitespace-normal rounded-lg px-2 py-2 text-xs font-bold leading-tight transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:text-sm">Member List</TabsTrigger>
+            <TabsTrigger value="discipline" className="min-h-10 whitespace-normal rounded-lg px-2 py-2 text-xs font-bold leading-tight transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:text-sm">Discipline</TabsTrigger>
           </TabsList>
-          </div>
 
           <TabsContent value="contributions" className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

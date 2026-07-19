@@ -1074,12 +1074,11 @@ const CaseDetails = () => {
         </div>
 
         <Tabs defaultValue="details">
-          <div className="overflow-x-auto"><TabsList>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="contributions">Contributions</TabsTrigger>
-            <TabsTrigger value="disbursements">Disbursements</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-1 gap-1 p-1 sm:grid-cols-3">
+            <TabsTrigger value="details" className="min-h-10 whitespace-normal px-3 py-2">Details</TabsTrigger>
+            <TabsTrigger value="contributions" className="min-h-10 whitespace-normal px-3 py-2">Contributions</TabsTrigger>
+            <TabsTrigger value="disbursements" className="min-h-10 whitespace-normal px-3 py-2">Disbursements</TabsTrigger>
           </TabsList>
-          </div>
           
           <TabsContent value="details" className="space-y-6">
             <Card>

@@ -598,10 +598,10 @@ const FiscalReports = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); setContributionsPage(1); setCasesPage(1); setMembersPage(1) }} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 gap-4">
-            <TabsTrigger value="contributions">Contributions Analysis</TabsTrigger>
-            <TabsTrigger value="cases">Case Funding</TabsTrigger>
-            <TabsTrigger value="members">Member Contributions</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-1 gap-1 p-1 sm:grid-cols-3">
+            <TabsTrigger value="contributions" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Contributions Analysis</TabsTrigger>
+            <TabsTrigger value="cases" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Case Funding</TabsTrigger>
+            <TabsTrigger value="members" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Member Contributions</TabsTrigger>
           </TabsList>
 
           <TabsContent value="contributions" className="space-y-4">

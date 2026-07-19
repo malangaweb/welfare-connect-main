@@ -489,12 +489,11 @@ const MemberDetails = () => {
           
           <div className="md:w-2/3">
             <Tabs defaultValue="details">
-              <div className="overflow-x-auto"><TabsList>
-                <TabsTrigger value="details">Personal Details</TabsTrigger>
-                <TabsTrigger value="dependants">Dependants</TabsTrigger>
-                <TabsTrigger value="cases">Cases</TabsTrigger>
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-3">
+                <TabsTrigger value="details" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Personal Details</TabsTrigger>
+                <TabsTrigger value="dependants" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Dependants</TabsTrigger>
+                <TabsTrigger value="cases" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Cases</TabsTrigger>
               </TabsList>
-              </div>
               
               <TabsContent value="details" className="space-y-6">
                 <PersonalDetailsCard member={member} onEdit={handleEditClick} />

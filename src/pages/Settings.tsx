@@ -352,15 +352,14 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="fees">
-          <div className="overflow-x-auto"><TabsList>
-            <TabsTrigger value="fees">Fees & Payments</TabsTrigger>
-            <TabsTrigger value="ids">ID Configuration</TabsTrigger>
-            <TabsTrigger value="residences">Residence Locations</TabsTrigger>
-            <TabsTrigger value="organization">Organization</TabsTrigger>
-            <TabsTrigger value="mpesa">M-Pesa API</TabsTrigger>
-            <TabsTrigger value="sms">SMS</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-3 lg:grid-cols-6">
+            <TabsTrigger value="fees" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Fees & Payments</TabsTrigger>
+            <TabsTrigger value="ids" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">ID Configuration</TabsTrigger>
+            <TabsTrigger value="residences" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Residence Locations</TabsTrigger>
+            <TabsTrigger value="organization" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">Organization</TabsTrigger>
+            <TabsTrigger value="mpesa" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">M-Pesa API</TabsTrigger>
+            <TabsTrigger value="sms" className="min-h-10 whitespace-normal px-2 py-2 text-xs leading-tight sm:text-sm">SMS</TabsTrigger>
           </TabsList>
-          </div>
           
           <TabsContent value="fees" className="space-y-4">
             <Card>
