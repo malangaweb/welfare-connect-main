@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+const username = process.env.PLAYWRIGHT_ADMIN_USERNAME!;
+const password = process.env.PLAYWRIGHT_ADMIN_PASSWORD!;
+
 test.describe('Members list performance', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.fill('input[name="username"]', 'Malingi');
-    await page.fill('input[name="password"]', 'b1216170');
+    await page.fill('input[name="username"]', username);
+    await page.fill('input[name="password"]', password);
     await page.click('button[type="submit"]');
     await page.waitForURL('**/dashboard', { timeout: 20000 });
   });
@@ -95,5 +98,27 @@ test.describe('Members list performance', () => {
     const unpaidCalls = rpcCalls.filter(u => u.includes('get_member_unpaid_case_obligations'));
     expect(totalDueCalls.length).toBe(0);
     expect(unpaidCalls.length).toBe(0);
+  });
+
+  test('select all honors active and negative balance filters', async ({ page }) => {
+    await page.goto('/members');
+    await page.waitForSelector('table', { timeout: 30000 });
+
+    await page.getByText('All Status', { exact: true }).click();
+    await page.getByRole('option', { name: 'Active', exact: true }).click();
+    await page.getByText('All Balances', { exact: true }).click();
+    await page.getByRole('option', { name: 'Negative Balance', exact: true }).click();
+
+    const totalLocator = page.getByTestId('members-total');
+    await expect(totalLocator).toHaveText(/Total: (?!607\b)\d+ members/, { timeout: 30000 });
+    const selectAll = page.getByRole('checkbox', { name: 'Select all filtered members' });
+    await expect(selectAll).toBeEnabled({ timeout: 30000 });
+
+    const totalText = await totalLocator.textContent();
+    const total = Number(totalText?.match(/\d+/)?.[0]);
+    expect(total).toBeGreaterThan(0);
+
+    await selectAll.click();
+    await expect(page.getByTestId('members-selected-count')).toHaveText(`${total} members selected`, { timeout: 30000 });
   });
 });

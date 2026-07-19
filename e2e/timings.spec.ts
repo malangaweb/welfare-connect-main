@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+const username = process.env.PLAYWRIGHT_ADMIN_USERNAME!;
+const password = process.env.PLAYWRIGHT_ADMIN_PASSWORD!;
+
 test('measure each query in fetchMembers (server-side pagination path)', async ({ page }) => {
   // Login
   await page.goto('/login');
-  await page.fill('input[name="username"]', 'Malingi');
-  await page.fill('input[name="password"]', 'b1216170');
+  await page.fill('input[name="username"]', username);
+  await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 20000 });
 
@@ -40,8 +43,8 @@ test('measure each query in fetchMembers (server-side pagination path)', async (
 
 test('measure balance filter query timings', async ({ page }) => {
   await page.goto('/login');
-  await page.fill('input[name="username"]', 'Malingi');
-  await page.fill('input[name="password"]', 'b1216170');
+  await page.fill('input[name="username"]', username);
+  await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 20000 });
 

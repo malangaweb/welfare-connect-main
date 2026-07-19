@@ -384,6 +384,7 @@ const Members = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchRequestRef = useRef(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
   const [balanceFilter, setBalanceFilter] = useState('all');
@@ -406,6 +407,7 @@ const Members = () => {
   const [messageAudienceLabel, setMessageAudienceLabel] = useState('');
   const [messageSending, setMessageSending] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  const [balanceFilteredMemberIds, setBalanceFilteredMemberIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -594,7 +596,9 @@ const Members = () => {
   const toggleSelectAllFiltered = async (checked: boolean) => {
     setBulkSelecting(true);
     try {
-      const filteredIds = await fetchAllFilteredMemberIds();
+      const filteredIds = balanceFilter !== 'all'
+        ? balanceFilteredMemberIds
+        : await fetchAllFilteredMemberIds();
       setSelectedMemberIds((prev) => {
         const next = new Set(prev);
         if (checked) {
@@ -622,6 +626,9 @@ const Members = () => {
   };
 
   const fetchMembers = async () => {
+    const requestId = ++fetchRequestRef.current;
+    const isCurrentRequest = () => fetchRequestRef.current === requestId;
+
     try {
       setLoading(true);
 
@@ -668,9 +675,11 @@ const Members = () => {
       if (balanceFilter !== 'all') {
         // Phase 1: fetch all matching member IDs (cheap)
         const allIds = await fetchAllFilteredMemberIds();
+        if (!isCurrentRequest()) return;
 
         if (allIds.length === 0) {
           setMembers([]);
+          setBalanceFilteredMemberIds([]);
           setTotalCount(0);
           setTotalPages(1);
           return;
@@ -680,6 +689,7 @@ const Members = () => {
         const { data: lightTotals } = await supabase.rpc('get_members_total_due_light', {
           p_member_ids: allIds,
         });
+        if (!isCurrentRequest()) return;
 
         const totalDueMap = new Map(
           (lightTotals as any[] || []).map((r: any) => [r.member_id, Number(r.total_due || 0)])
@@ -690,6 +700,7 @@ const Members = () => {
           const due = totalDueMap.get(id) || 0;
           return balanceFilter === 'negative' ? due > 0 : due <= 0;
         });
+        setBalanceFilteredMemberIds(filteredIds);
 
         const pageFrom = (currentPage - 1) * itemsPerPage;
         const pageIds = filteredIds.slice(pageFrom, pageFrom + itemsPerPage);
@@ -706,6 +717,7 @@ const Members = () => {
             ? supabase.rpc('get_members_bulk_unpaid_totals', { p_member_ids: pageIds })
             : { data: [] },
         ]);
+        if (!isCurrentRequest()) return;
 
         const totalsMap = new Map(
           (pageTotals as any[] || []).map((r: any) => [r.member_id, r])
@@ -727,6 +739,7 @@ const Members = () => {
 
         setMembers(pageMembers);
       } else {
+        setBalanceFilteredMemberIds([]);
         // Server-side pagination (no balance filter)
         let query = buildMembersQuery(true);
         query = query
@@ -734,6 +747,7 @@ const Members = () => {
           .order('member_number', { ascending: true });
 
         const { data: fetchedRows, error, count } = await query.range(pageFrom, pageTo);
+        if (!isCurrentRequest()) return;
         if (error) throw error;
         setTotalCount(count || 0);
         setTotalPages(Math.max(1, Math.ceil((count || 0) / itemsPerPage)));
@@ -748,6 +762,7 @@ const Members = () => {
         const { data: bulkTotals } = await supabase.rpc('get_members_bulk_unpaid_totals', {
           p_member_ids: pageMemberIds,
         });
+        if (!isCurrentRequest()) return;
         const totalsMap = new Map(
           (bulkTotals as any[] || []).map((r: any) => [r.member_id, r])
         );
@@ -788,7 +803,7 @@ const Members = () => {
         description: 'The system could not load members right now. Please retry shortly.',
       });
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) setLoading(false);
     }
   };
 
@@ -1610,14 +1625,14 @@ const Members = () => {
 
           {/* Results Info */}
           <div className="flex items-center justify-between text-xs md:text-sm text-slate-600 font-medium pt-2 md:pt-3">
-            <span>Total: <strong className="text-slate-900">{totalCount}</strong> members</span>
+            <span data-testid="members-total">Total: <strong className="text-slate-900">{totalCount}</strong> members</span>
             <span className="text-slate-400 hidden sm:inline">Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong></span>
           </div>
         </div>
 
         {canBulkDeduct && selectedMemberIds.size > 0 && (
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3">
-            <p className="text-sm font-medium text-slate-800">
+            <p data-testid="members-selected-count" className="text-sm font-medium text-slate-800">
               {selectedMemberIds.size} member{selectedMemberIds.size !== 1 ? 's' : ''} selected
             </p>
             <div className="flex flex-wrap gap-2">
@@ -1674,7 +1689,7 @@ const Members = () => {
                               const checked = v === true;
                               void toggleSelectAllFiltered(checked);
                             }}
-                            disabled={bulkSelecting || totalCount === 0}
+                            disabled={loading || bulkSelecting || totalCount === 0}
                             aria-label="Select all filtered members"
                           />
                         </TableHead>
