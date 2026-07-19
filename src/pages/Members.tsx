@@ -666,52 +666,55 @@ const Members = () => {
       const pageTo = pageFrom + itemsPerPage - 1;
 
       if (balanceFilter !== 'all') {
-        // Client-side pagination: fetch all matching IDs, filter, then paginate
+        // Client-side pagination: fetch ALL members, filter by balance, then paginate
         const allIds = await fetchAllFilteredMemberIds();
-        const totalAll = allIds.length;
-        setTotalCount(totalAll);
-        setTotalPages(Math.max(1, Math.ceil(totalAll / itemsPerPage)));
 
-        const batchIds = allIds.slice(pageFrom, pageTo + 1);
-        if (batchIds.length === 0) {
-          setMembers([]);
-          return;
+        const MEMBER_BATCH = 60;
+        const allFetched: Member[] = [];
+
+        for (let from = 0; from < allIds.length; from += MEMBER_BATCH) {
+          const batchIds = allIds.slice(from, from + MEMBER_BATCH);
+
+          const tmpQuery = supabase.from('members').select(MEMBER_DETAIL_COLUMNS)
+            .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
+            .order('member_number', { ascending: true });
+          const { data: rawRows } = await tmpQuery.in('id', batchIds);
+          const idOrder = new Map(batchIds.map((id, i) => [id, i]));
+          const fetchedRows = ((rawRows as any[]) || []).sort((a, b) => (idOrder.get(a.id) || 0) - (idOrder.get(b.id) || 0));
+
+          const batchMembers = await Promise.all(
+            fetchedRows.map(async (m: any) => {
+              const member = {
+                ...mapDbMemberToMember(m),
+                walletBalance: Number(m.wallet_balance) || 0,
+                dependants: [],
+              };
+              const [{ data: obligations }, { data: due }] = await Promise.all([
+                supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
+                supabase.rpc('get_member_total_due', { p_member_id: member.id }),
+              ]);
+              const rows = Array.isArray(obligations) ? obligations : [];
+              const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
+              return {
+                ...member,
+                unpaidCaseContributionCount: rows.length,
+                unpaidCaseObligations: rows,
+                reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
+                totalDue: Number(dueRow?.total_due || 0),
+              };
+            })
+          );
+
+          allFetched.push(...batchMembers);
         }
 
-        const tmpQuery = supabase.from('members').select(MEMBER_DETAIL_COLUMNS)
-          .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
-          .order('member_number', { ascending: true });
-        const { data: rawRows } = await tmpQuery.in('id', batchIds);
-        const idOrder = new Map(batchIds.map((id, i) => [id, i]));
-        const fetchedRows = ((rawRows as any[]) || []).sort((a, b) => (idOrder.get(a.id) || 0) - (idOrder.get(b.id) || 0));
-
-        const membersWithBalances = fetchedRows.map((m: any) => ({
-          ...mapDbMemberToMember(m),
-          walletBalance: Number(m.wallet_balance) || 0,
-          dependants: [],
-        }));
-
-        const membersWithObligations = await Promise.all(
-          membersWithBalances.map(async (member) => {
-            const [{ data: obligations }, { data: due }] = await Promise.all([
-              supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
-              supabase.rpc('get_member_total_due', { p_member_id: member.id }),
-            ]);
-            const rows = Array.isArray(obligations) ? obligations : [];
-            const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
-            return {
-              ...member,
-              unpaidCaseContributionCount: rows.length,
-              unpaidCaseObligations: rows,
-              reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
-              totalDue: Number(dueRow?.total_due || 0),
-            };
-          })
+        const filtered = allFetched.filter(m =>
+          balanceFilter === 'negative' ? m.totalDue > 0 : m.totalDue <= 0
         );
 
-        setMembers(membersWithObligations.filter(m =>
-          balanceFilter === 'negative' ? m.totalDue > 0 : m.totalDue <= 0
-        ));
+        setMembers(filtered);
+        setTotalCount(filtered.length);
+        setTotalPages(Math.max(1, Math.ceil(filtered.length / itemsPerPage)));
       } else {
         // Server-side pagination (no balance filter)
         let query = buildMembersQuery(true);
@@ -865,7 +868,9 @@ const Members = () => {
     setSelectedMemberIds(new Set());
   }, [debouncedSearch, statusFilter, locationFilter, balanceFilter, sortConfig]);
 
-  const paginatedMembers = members;
+  const paginatedMembers = balanceFilter !== 'all'
+    ? members.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+    : members;
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -1609,7 +1614,15 @@ const Members = () => {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
+          {loading && members.length > 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <span className="text-sm text-slate-500 font-medium">Refreshing...</span>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             {loading && members.length === 0 ? (
               <div className="p-8 md:p-12 text-center">
@@ -1720,9 +1733,16 @@ const Members = () => {
               >
                 Previous
               </Button>
-              {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                const page = i + 1;
-                return (
+              {(() => {
+                const maxVisible = 5;
+                let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                let endPage = startPage + maxVisible - 1;
+                if (endPage > totalPages) {
+                  endPage = totalPages;
+                  startPage = Math.max(1, endPage - maxVisible + 1);
+                }
+                return Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+              })().map((page) => (
                   <Button
                     key={page}
                     variant={currentPage === page ? "default" : "outline"}
@@ -1732,8 +1752,7 @@ const Members = () => {
                   >
                     {page}
                   </Button>
-                );
-              })}
+                ))}
               <Button
                 variant="outline"
                 size="sm"
