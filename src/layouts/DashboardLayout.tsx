@@ -39,7 +39,7 @@ const DashboardLayout = ({
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex overflow-hidden">
+    <div className="min-h-screen bg-slate-50 flex">
       {/* Desktop Sidebar - Hidden on mobile */}
       <div className={`hidden md:flex md:flex-shrink-0 transition-all duration-200 ${sidebarCollapsed ? 'md:w-16 lg:w-16' : 'md:w-56 lg:w-64'}`}>
         <Sidebar
@@ -62,10 +62,10 @@ const DashboardLayout = ({
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex min-w-0 flex-col">
         <Navbar onMenuClick={() => setSidebarOpen((prev) => !prev)} />
-        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-10 overflow-auto bg-slate-50/50">
-          <div className="max-w-[1600px] mx-auto page-transition h-full">
+        <main className="flex-1 overflow-x-hidden bg-slate-50/50 p-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-6 md:p-6 lg:p-10">
+          <div className="mx-auto max-w-[1600px] page-transition">
             {children}
           </div>
         </main>

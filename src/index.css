@@ -57,7 +57,7 @@
 
   html,
   body {
-    @apply w-full h-full m-0 p-0 overflow-hidden;
+    @apply m-0 min-h-full w-full overflow-x-hidden;
   }
 
   body {
@@ -67,7 +67,7 @@
   }
 
   #root {
-    @apply w-full h-full flex flex-col;
+    @apply min-h-screen w-full;
   }
 
   /* Mobile touch improvements */
