@@ -223,10 +223,34 @@ const Cases = () => {
         setCases(mappedCases);
 
         const totals: { [caseNumber: string]: number } = {};
-        for (const c of mappedCases) {
-          if (!c.caseNumber) continue;
-          const txRows = await fetchCaseContributionTransactions(c.id);
-          totals[c.caseNumber] = calculateCollectedNet(txRows);
+
+        // Bulk fetch all contribution transactions across all cases (one query, not N+1)
+        const caseIds = mappedCases.map(c => c.id).filter(Boolean);
+        if (caseIds.length > 0) {
+          const { data: allTxRows } = await (supabase as any)
+            .from('transactions')
+            .select('case_id, amount, transaction_type, status')
+            .in('transaction_type', [
+              'contribution',
+              'contribution_refund',
+              'case_wallet_deduction',
+              'case_wallet_refund',
+            ])
+            .in('case_id', caseIds);
+
+          // Group by case_id and compute net collected
+          const grouped = new Map<string, any[]>();
+          for (const tx of (allTxRows || []) as any[]) {
+            const list = grouped.get(tx.case_id) || [];
+            list.push(tx);
+            grouped.set(tx.case_id, list);
+          }
+
+          for (const c of mappedCases) {
+            if (!c.caseNumber) continue;
+            const txs = grouped.get(c.id) || [];
+            totals[c.caseNumber] = calculateCollectedNet(txs);
+          }
         }
 
         setMpesaCollectedByCase(totals);

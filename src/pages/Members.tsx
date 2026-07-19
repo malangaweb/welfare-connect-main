@@ -669,46 +669,47 @@ const Members = () => {
         // Client-side pagination: fetch ALL members, filter by balance, then paginate
         const allIds = await fetchAllFilteredMemberIds();
 
-        const MEMBER_BATCH = 60;
-        const allFetched: Member[] = [];
-
-        for (let from = 0; from < allIds.length; from += MEMBER_BATCH) {
-          const batchIds = allIds.slice(from, from + MEMBER_BATCH);
-
-          const tmpQuery = supabase.from('members').select(MEMBER_DETAIL_COLUMNS)
-            .order(sortColumnMap[sortConfig.key], { ascending: sortConfig.direction === 'asc' })
-            .order('member_number', { ascending: true });
-          const { data: rawRows } = await tmpQuery.in('id', batchIds);
-          const idOrder = new Map(batchIds.map((id, i) => [id, i]));
-          const fetchedRows = ((rawRows as any[]) || []).sort((a, b) => (idOrder.get(a.id) || 0) - (idOrder.get(b.id) || 0));
-
-          const batchMembers = await Promise.all(
-            fetchedRows.map(async (m: any) => {
-              const member = {
-                ...mapDbMemberToMember(m),
-                walletBalance: Number(m.wallet_balance) || 0,
-                dependants: [],
-              };
-              const [{ data: obligations }, { data: due }] = await Promise.all([
-                supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
-                supabase.rpc('get_member_total_due', { p_member_id: member.id }),
-              ]);
-              const rows = Array.isArray(obligations) ? obligations : [];
-              const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
-              return {
-                ...member,
-                unpaidCaseContributionCount: rows.length,
-                unpaidCaseObligations: rows,
-                reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
-                totalDue: Number(dueRow?.total_due || 0),
-              };
-            })
-          );
-
-          allFetched.push(...batchMembers);
+        if (allIds.length === 0) {
+          setMembers([]);
+          setTotalCount(0);
+          setTotalPages(1);
+          return;
         }
 
-        const filtered = allFetched.filter(m =>
+        // Fetch all member data in one query (no batching needed)
+        const { data: rawRows } = await supabase
+          .from('members')
+          .select(MEMBER_DETAIL_COLUMNS)
+          .in('id', allIds);
+
+        // Sort by the configured sort key to match server-side ordering
+        const memberMap = new Map((rawRows as any[] || []).map((r: any) => [r.id, r]));
+        const sortedRows = allIds.map((id: string) => memberMap.get(id)).filter(Boolean) as any[];
+
+        // Fetch all totals in ONE bulk RPC call
+        const { data: bulkTotals } = await supabase.rpc('get_members_bulk_unpaid_totals', {
+          p_member_ids: allIds,
+        });
+
+        const totalsMap = new Map(
+          (bulkTotals as any[] || []).map((r: any) => [r.member_id, r])
+        );
+
+        const enrichedMembers = (sortedRows).map((m: any) => {
+          const totals = totalsMap.get(m.id);
+          const obligations = (totals?.case_details || []) as any[];
+          return {
+            ...mapDbMemberToMember(m),
+            walletBalance: Number(m.wallet_balance) || 0,
+            dependants: [],
+            unpaidCaseContributionCount: Number(totals?.unpaid_case_count || 0),
+            unpaidCaseObligations: obligations,
+            reinstatementPenaltyDue: Number(totals?.reinstatement_penalty_due || 0),
+            totalDue: Number(totals?.total_due || 0),
+          };
+        });
+
+        const filtered = enrichedMembers.filter(m =>
           balanceFilter === 'negative' ? m.totalDue > 0 : m.totalDue <= 0
         );
 
@@ -733,25 +734,25 @@ const Members = () => {
           dependants: [],
         }));
 
-        const membersWithObligations = await Promise.all(
-          membersWithBalances.map(async (member) => {
-            const [{ data: obligations, error: oblError }, { data: due, error: dueError }] = await Promise.all([
-              supabase.rpc('get_member_unpaid_case_obligations', { p_member_id: member.id }),
-              supabase.rpc('get_member_total_due', { p_member_id: member.id }),
-            ]);
-            if (oblError) console.error(`Failed to load unpaid case obligations for member ${member.id}:`, oblError);
-            if (dueError) console.error(`Failed to load total due for member ${member.id}:`, dueError);
-            const rows = Array.isArray(obligations) ? obligations : [];
-            const dueRow = Array.isArray(due) && due.length > 0 ? due[0] : null;
-            return {
-              ...member,
-              unpaidCaseContributionCount: rows.length,
-              unpaidCaseObligations: rows,
-              reinstatementPenaltyDue: Number(dueRow?.reinstatement_penalty_due || 0),
-              totalDue: Number(dueRow?.total_due || 0),
-            };
-          })
+        const pageMemberIds = membersWithBalances.map(m => m.id);
+        const { data: bulkTotals } = await supabase.rpc('get_members_bulk_unpaid_totals', {
+          p_member_ids: pageMemberIds,
+        });
+        const totalsMap = new Map(
+          (bulkTotals as any[] || []).map((r: any) => [r.member_id, r])
         );
+
+        const membersWithObligations = membersWithBalances.map((member) => {
+          const totals = totalsMap.get(member.id);
+          const obligations = (totals?.case_details || []) as any[];
+          return {
+            ...member,
+            unpaidCaseContributionCount: Number(totals?.unpaid_case_count || 0),
+            unpaidCaseObligations: obligations,
+            reinstatementPenaltyDue: Number(totals?.reinstatement_penalty_due || 0),
+            totalDue: Number(totals?.total_due || 0),
+          };
+        });
         setMembers(membersWithObligations);
       }
 
