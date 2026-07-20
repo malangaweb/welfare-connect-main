@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchSafeSettings } from '@/lib/settingsClient';
 import { generateMemberId } from '@/utils/idGenerators';
 import PersonalInfoSection from './member/PersonalInfoSection';
 import ResidenceSection from './member/ResidenceSection';
@@ -55,6 +55,7 @@ interface MemberFormProps {
 const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = false }: MemberFormProps) => {
   const [dependants, setDependants] = useState(initialData?.dependants || []);
   const [defaultFee, setDefaultFee] = useState(500);
+  const [isLoadingRegistrationFee, setIsLoadingRegistrationFee] = useState(!isEditMode);
   const [isLoadingMemberId, setIsLoadingMemberId] = useState(!initialData && !isEditMode);
 
   const form = useForm({
@@ -74,6 +75,27 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
       credentials: { username: '', password: '', pin: '' },
     },
   });
+
+  useEffect(() => {
+    if (!isEditMode) {
+      const loadRegistrationFee = async () => {
+        try {
+          const settings = await fetchSafeSettings();
+          const fee = Number(settings?.registration_fee);
+          if (Number.isFinite(fee) && fee >= 0) {
+            setDefaultFee(fee);
+            form.setValue('registrationFee', fee, { shouldValidate: false });
+          }
+        } catch (error) {
+          console.error('Failed to load registration fee:', error);
+        } finally {
+          setIsLoadingRegistrationFee(false);
+        }
+      };
+
+      void loadRegistrationFee();
+    }
+  }, [form, isEditMode]);
 
   // FIXED: Generate pure numeric member number (NO PREFIX)
   useEffect(() => {
@@ -140,7 +162,13 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
         <NextOfKinSection control={form.control} />
         <DependantsSection dependants={dependants} onDependantsChange={setDependants} />
         {/* Hide registration fee section in Edit Member; it's optional there */}
-        {!isEditMode && <RegistrationFeeSection control={form.control} />}
+        {!isEditMode && (
+          <RegistrationFeeSection
+            control={form.control}
+            fee={defaultFee}
+            isLoading={isLoadingRegistrationFee}
+          />
+        )}
 
         <div className="border-t pt-6">
           <h3 className="text-lg font-medium mb-4">Login Credentials</h3>
@@ -150,7 +178,7 @@ const MemberForm = ({ onSubmit, initialData, isSubmitting = false, isEditMode = 
         <div className="sticky bottom-0 z-10 -mx-2 border-t bg-card/95 px-2 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/85 sm:static sm:z-auto sm:mx-0 sm:border-t-0 sm:bg-transparent sm:px-0 sm:py-0">
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-4">
             <Button type="button" variant="outline" className="w-full sm:w-auto">Cancel</Button>
-            <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingMemberId}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingMemberId || isLoadingRegistrationFee}>
             {isSubmitting ? 'Registering...' : 'Register Member'}
             </Button>
           </div>

@@ -3,36 +3,14 @@ import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/comp
 import { Input } from '@/components/ui/input';
 import { Control } from 'react-hook-form';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useState, useEffect } from 'react';
-import { fetchSafeSettings } from '@/lib/settingsClient';
 
 interface RegistrationFeeSectionProps {
   control: Control<any>;
+  fee: number;
+  isLoading: boolean;
 }
 
-const RegistrationFeeSection = ({ control }: RegistrationFeeSectionProps) => {
-  const [defaultFee, setDefaultFee] = useState(500);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchDefaultFee = async () => {
-      try {
-        setIsLoading(true);
-        const data = await fetchSafeSettings();
-        
-        if (data && data.registration_fee) {
-          setDefaultFee(Number(data.registration_fee));
-        }
-      } catch (error) {
-        console.error('Error fetching default registration fee:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDefaultFee();
-  }, []);
-
+const RegistrationFeeSection = ({ control, fee, isLoading }: RegistrationFeeSectionProps) => {
   return (
     <div className="bg-primary/5 p-5 rounded-lg space-y-4">
       <h3 className="text-lg font-medium mb-4">Registration Payment</h3>
@@ -47,10 +25,10 @@ const RegistrationFeeSection = ({ control }: RegistrationFeeSectionProps) => {
               <Input 
                 type="number" 
                 {...field} 
-                value={defaultFee}
+                value={isLoading ? '' : fee}
                 readOnly
                 className="bg-muted cursor-not-allowed"
-                placeholder={isLoading ? "Loading..." : `KES ${defaultFee}`}
+                placeholder={isLoading ? "Loading..." : `KES ${fee}`}
               />
             </FormControl>
             <FormMessage />

@@ -110,7 +110,9 @@ const NewMember = () => {
           p_wallet_balance: 0,
           p_is_active: true,
           p_registration_date: new Date().toISOString().split('T')[0],
-          p_pin: data.credentials?.pin || null
+          p_pin: data.credentials?.pin || null,
+          p_registration_fee: Number(data.registrationFee) || 0,
+          p_fee_paid: data.feeStatus === true,
         }));
       const memberData = memberResult.data;
       const memberError = memberResult.error;
