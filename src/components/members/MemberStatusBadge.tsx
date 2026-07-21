@@ -45,15 +45,11 @@ export function MemberStatusBadge({ member }: MemberStatusBadgeProps) {
     const now = new Date()
     const daysRemaining = Math.ceil((probationEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
 
-    if (daysRemaining > 0) {
-      return (
-        <Badge variant="secondary" className="text-xs bg-amber-500 text-white">
-          Probation ({daysRemaining}d)
-        </Badge>
-      )
-    }
-
-    return <Badge variant="secondary" className="text-xs bg-amber-500 text-white">Probation</Badge>
+    return (
+      <Badge variant="secondary" className="text-xs bg-amber-500 text-white">
+        Probation ({Math.max(0, daysRemaining)}d)
+      </Badge>
+    )
   }
 
   // Fallback

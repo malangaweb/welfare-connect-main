@@ -36,7 +36,7 @@ serve(async (req) => {
 
     let query = supabase
       .from("members")
-      .select("id, member_number, name, phone_number, wallet_balance, is_active, status, probation_end_date, created_at")
+      .select("id, member_number, name, phone_number, wallet_balance, is_active, status, probation_end_date, created_at, residence")
       .order("created_at", { ascending: false })
       .range(offset, offset + fetchLimit - 1);
 
@@ -47,7 +47,13 @@ serve(async (req) => {
     }
 
     if (status !== "all") {
-      query = query.eq("status", status);
+      if (status === "probation") {
+        query = (query as any).in("status", ["probation", "probabation"]);
+      } else if (status === "deceased") {
+        query = (query as any).in("status", ["deceased", "deaceased"]);
+      } else {
+        query = query.eq("status", status);
+      }
     }
 
     const { data, error } = await query;

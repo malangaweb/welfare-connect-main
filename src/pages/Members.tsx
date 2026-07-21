@@ -830,7 +830,7 @@ const Members = () => {
     for (;;) {
       const result = await invokeWithAppToken<MembersListApiResponse>('api-members-list', {
         search: debouncedSearch || '',
-        status: 'all',
+        status: statusOverride ?? statusFilter,
         limit,
         offset,
       });
