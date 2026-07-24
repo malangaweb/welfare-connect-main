@@ -197,13 +197,17 @@ const NewCase = () => {
         description: "Case saved. Members can now fund their wallets — contributions will be processed automatically.",
       });
 
-      // Send SMS notification for new case
+      // Fire-and-forget: run wallet waterfall in the background
+      invokeWithAppToken('api-trigger-waterfall', { case_id: caseResult.id })
+        .catch(err => console.error('Error triggering wallet waterfall:', err));
+
+      // Send SMS notification for new case (best-effort)
       try {
         const affectedMember = members.find(m => m.id === caseResult.affected_member_id);
         if (affectedMember?.phoneNumber) {
           const deadline = caseResult.end_date ? new Date(caseResult.end_date).toLocaleDateString() : 'N/A';
 
-          await invokeWithAppToken('send-sms', {
+          invokeWithAppToken('send-sms', {
             recipients: [{
               phoneNumber: affectedMember.phoneNumber,
               name: affectedMember.name,

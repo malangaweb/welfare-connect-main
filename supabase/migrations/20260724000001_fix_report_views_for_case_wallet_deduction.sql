@@ -136,3 +136,11 @@ WHERE (
 ORDER BY m.id, wallet_balance ASC;
 
 GRANT SELECT ON active_defaulters TO anon, authenticated, service_role;
+
+-- 6. Drop the AFTER INSERT waterfall trigger on cases.
+--    It runs apply_wallet_payment_waterfall synchronously for every obligated
+--    member with wallet_balance > 0. With ~146 members at ~1-2s each, the total
+--    exceeds the 2-minute statement_timeout.
+--    Replaced by the async api-trigger-waterfall edge function called from the
+--    frontend after a successful case INSERT.
+DROP TRIGGER IF EXISTS zz_trg_waterfall_on_case_insert ON public.cases;
