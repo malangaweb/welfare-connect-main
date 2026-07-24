@@ -199,7 +199,7 @@ const normalizeStatus = (value: unknown) => String(value || '').trim().toLowerCa
 const isCountableTransaction = (tx: Transaction) => !INVALID_TRANSACTION_STATUSES.has(normalizeStatus(tx.status));
 const isContributionTransaction = (tx: Transaction) => {
   const type = normalizeType(tx.transaction_type);
-  return type === 'contribution' || type === 'contribution_refund';
+  return type === 'contribution' || type === 'contribution_refund' || type === 'case_wallet_deduction';
 };
 const isPositiveContribution = (tx: Transaction) => normalizeType(tx.transaction_type) === 'contribution';
 const getContributionSignedAmount = (tx: Transaction) => {
@@ -357,6 +357,7 @@ const Reports = () => {
   const [cases, setCases] = useState<Case[]>(() => persistentCache.get<Case[]>('reports-cases') || []);
   const [transactions, setTransactions] = useState<Transaction[]>(() => persistentCache.get<Transaction[]>('reports-tx') || []);
   const [summary, setSummary] = useState<ReportSummary | null>(() => persistentCache.get<ReportSummary>('reports-summary') || null);
+  const [defaultersList, setDefaultersList] = useState<Member[]>(() => persistentCache.get<Member[]>('reports-defaulters') || []);
   const [disciplineReport, setDisciplineReport] = useState<DisciplineReportResponse | null>(
     () => persistentCache.get<DisciplineReportResponse>('reports-discipline') || null
   );
@@ -421,11 +422,12 @@ const Reports = () => {
 
       const reportStartIso = startOfDay(subMonths(new Date(), REPORT_TX_LOOKBACK_MONTHS)).toISOString();
 
-      const [summaryRes, memberRows, casesRes, reportTransactions] = await Promise.all([
+      const [summaryRes, memberRows, casesRes, reportTransactions, defaulterRows] = await Promise.all([
         (supabase.rpc as any)('get_dashboard_summary'),
         fetchMembersViaApi(),
         supabase.from('cases').select(CASE_ROW_COLUMNS),
         fetchReportTransactionsBatched(reportStartIso),
+        supabase.from('active_defaulters').select('id, member_number, name, phone_number, wallet_balance, status, is_active').limit(5000),
       ]);
 
       if (summaryRes.data) {
@@ -485,6 +487,26 @@ const Reports = () => {
       setCases(mappedCases);
       persistentCache.set('reports-cases', mappedCases, 10 * 60 * 1000);
 
+      const mappedDefaulters: Member[] = (defaulterRows?.data || []).map((d: any) => ({
+        id: d.id,
+        memberNumber: d.member_number || '',
+        name: d.name || '',
+        phoneNumber: d.phone_number || '',
+        walletBalance: Number(d.wallet_balance) || 0,
+        residence: '',
+        isActive: d.is_active,
+        status: normalizeMemberStatus(d.status, d.is_active),
+        gender: '' as Gender,
+        dateOfBirth: new Date(),
+        nationalIdNumber: '',
+        emailAddress: '',
+        registrationDate: new Date(),
+        nextOfKin: { name: '', relationship: '', phoneNumber: '' },
+        dependants: []
+      }));
+      setDefaultersList(mappedDefaulters);
+      persistentCache.set('reports-defaulters', mappedDefaulters, 10 * 60 * 1000);
+
       const txs: Transaction[] = reportTransactions;
       setTransactions(txs);
       persistentCache.set('reports-tx', txs, 10 * 60 * 1000);
@@ -526,8 +548,22 @@ const Reports = () => {
   }, [members, locationFilter]);
 
   const defaulters = useMemo(() => {
-    return members.filter(m => m.walletBalance < 0 && (locationFilter === 'all' || (m.residence || '').toLowerCase() === locationFilter.toLowerCase()));
-  }, [members, locationFilter]);
+    let result: Member[];
+    if (defaultersList.length > 0) {
+      const lookup = new Map(members.map(m => [m.id, m]));
+      result = defaultersList.map(d => {
+        const existing = lookup.get(d.id);
+        if (existing) return existing;
+        return d;
+      });
+    } else {
+      result = members.filter(m => m.walletBalance < 0);
+    }
+    if (locationFilter !== 'all') {
+      result = result.filter(m => (m.residence || '').toLowerCase() === locationFilter.toLowerCase());
+    }
+    return result;
+  }, [members, defaultersList, locationFilter]);
 
   const uniqueLocations = useMemo(() => {
     return [...new Set(members.map(m => m.residence).filter(Boolean))].sort();

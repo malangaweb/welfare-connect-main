@@ -78,7 +78,7 @@ export const MEMBER_TRANSACTION_SUMMARY_COLUMNS =
   "member_id, member_number, name, phone_number, status, wallet_balance, contributions_count, total_contributions, disbursements_count, total_disbursements, last_transaction_date";
 
 export const AUDIT_LOG_LIST_COLUMNS =
-  "id, user_id, action, table_name, record_id, status, metadata, timestamp, created_at";
+  "id, user_id, action, table_name, record_id, status, metadata, timestamp";
 
 export const REVERSALS_AUDIT_COLUMNS =
   "reversal_id, member_id, member_name, member_number, reversal_amount, description, original_transaction_id, reason, admin_id, reversal_date, original_transaction_date, original_amount";

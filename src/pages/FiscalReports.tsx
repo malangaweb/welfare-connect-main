@@ -196,7 +196,7 @@ const FiscalReports = () => {
 
   const [contributionsSearch, setContributionsSearch] = useState('')
   const [contributionTransactionsSearch, setContributionTransactionsSearch] = useState('')
-  const [contributionTypeFilter, setContributionTypeFilter] = useState<'all' | 'contribution' | 'contribution_refund'>('all')
+  const [contributionTypeFilter, setContributionTypeFilter] = useState<'all' | 'contribution' | 'contribution_refund' | 'case_wallet_deduction'>('all')
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
   const [caseFilterSearch, setCaseFilterSearch] = useState('')
   const [casesSearch, setCasesSearch] = useState('')
@@ -315,7 +315,7 @@ const FiscalReports = () => {
           .order('created_at', { ascending: false })
 
         if (contributionTypeFilter === 'all') {
-          query = query.in('transaction_type', ['contribution', 'contribution_refund'])
+          query = query.in('transaction_type', ['contribution', 'contribution_refund', 'case_wallet_deduction'])
         } else {
           query = query.eq('transaction_type', contributionTypeFilter)
         }
@@ -727,7 +727,7 @@ const FiscalReports = () => {
                     <CardDescription>Raw contribution transaction records for the selected period</CardDescription>
                   </div>
                   <div className="flex gap-2">
-                    <Select value={contributionTypeFilter} onValueChange={(value: 'all' | 'contribution' | 'contribution_refund') => setContributionTypeFilter(value)}>
+                    <Select value={contributionTypeFilter} onValueChange={(value: 'all' | 'contribution' | 'contribution_refund' | 'case_wallet_deduction') => setContributionTypeFilter(value)}>
                       <SelectTrigger className="w-full sm:w-[190px]">
                         <SelectValue placeholder="Filter by type" />
                       </SelectTrigger>
@@ -735,6 +735,7 @@ const FiscalReports = () => {
                         <SelectItem value="all">All Contribution Types</SelectItem>
                         <SelectItem value="contribution">Contribution</SelectItem>
                         <SelectItem value="contribution_refund">Contribution Refund</SelectItem>
+                        <SelectItem value="case_wallet_deduction">Case Wallet Deduction</SelectItem>
                       </SelectContent>
                     </Select>
                     <Popover>
