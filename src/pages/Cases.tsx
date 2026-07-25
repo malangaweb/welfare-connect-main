@@ -60,74 +60,6 @@ const formatDate = (date: Date | string | null | undefined): string => {
 
 const invalidateCaseCaches = () => {
   persistentCache.invalidate('cases-list');
-  persistentCache.invalidate('cases-mpesa-v2');
-};
-
-const CASE_TX_PAGE_SIZE = 1000;
-
-const fetchCaseContributionTransactions = async (caseId: string) => {
-  const rows: Array<{
-    amount: number | null;
-    transaction_type: string | null;
-    status: string | null;
-  }> = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await (supabase as any)
-      .from('transactions')
-      .select('amount, transaction_type, status')
-      .in('transaction_type', [
-        'contribution',
-        'contribution_refund',
-        'case_wallet_deduction',
-        'case_wallet_refund',
-      ])
-      .eq('case_id', caseId)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + CASE_TX_PAGE_SIZE - 1);
-
-    if (error) throw error;
-    const batch = (data || []) as Array<{
-      amount: number | null;
-      transaction_type: string | null;
-      status: string | null;
-    }>;
-
-    rows.push(...batch);
-    if (batch.length < CASE_TX_PAGE_SIZE) break;
-    from += CASE_TX_PAGE_SIZE;
-  }
-
-  return rows;
-};
-
-const calculateCollectedNet = (
-  transactions: Array<{ amount: number | null; transaction_type: string | null; status: string | null }>
-) => {
-  let totalContributions = 0;
-  let totalRefunds = 0;
-
-  for (const tx of transactions) {
-    if (tx.status && tx.status !== 'completed') continue;
-    const amount = Number(tx.amount) || 0;
-    const type = String(tx.transaction_type || '').toLowerCase();
-
-    if (type === 'contribution' || type === 'case_wallet_deduction') {
-      totalContributions += Math.abs(amount);
-      continue;
-    }
-
-    if (type === 'contribution_refund' || type === 'case_wallet_refund') {
-      if (amount > 0) {
-        totalRefunds += amount;
-      } else {
-        totalContributions += amount;
-      }
-    }
-  }
-
-  return Math.max(0, totalContributions - totalRefunds);
 };
 
 const Cases = () => {
@@ -140,7 +72,6 @@ const Cases = () => {
     return cached || [];
   });
   const [loading, setLoading] = useState(true);
-  const [mpesaCollectedByCase, setMpesaCollectedByCase] = useState<{ [caseNumber: string]: number }>({});
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [caseToDelete, setCaseToDelete] = useState<{ id: string; caseNumber: string } | null>(null);
@@ -150,11 +81,9 @@ const Cases = () => {
       try {
         // Check cache first
         const cachedCases = persistentCache.get<Case[]>('cases-list');
-        const cachedMpesa = persistentCache.get<{ [caseNumber: string]: number }>('cases-mpesa-v2');
         
-        if (cachedCases && cachedMpesa) {
+        if (cachedCases) {
           setCases(cachedCases);
-          setMpesaCollectedByCase(cachedMpesa);
           setLoading(false);
           return;
         }
@@ -195,7 +124,7 @@ const Cases = () => {
           }
 
           if (!membersBatch || membersBatch.length < pageSize) {
-            break; // No more pages
+            break;
           }
           
           from += pageSize;
@@ -207,57 +136,15 @@ const Cases = () => {
           return acc;
         }, {});
 
-        // Get applicable member count (active/probation only)
-        const memberCount = allMembers.filter(m => m.status === 'active' || m.status === 'probation').length;
-
         // Map database cases to the application Case model
         const mappedCases = casesData.map(dbCase => {
-          const caseObj = mapDbCaseToCase(dbCase, membersById[dbCase.affected_member_id]);
-          // Overwrite expectedAmount to be contributionPerMember * memberCount
-          return {
-            ...caseObj,
-            expectedAmount: caseObj.contributionPerMember * memberCount
-          };
+          return mapDbCaseToCase(dbCase, membersById[dbCase.affected_member_id]);
         });
 
         setCases(mappedCases);
-
-        const totals: { [caseNumber: string]: number } = {};
-
-        // Bulk fetch all contribution transactions across all cases (one query, not N+1)
-        const caseIds = mappedCases.map(c => c.id).filter(Boolean);
-        if (caseIds.length > 0) {
-          const { data: allTxRows } = await (supabase as any)
-            .from('transactions')
-            .select('case_id, amount, transaction_type, status')
-            .in('transaction_type', [
-              'contribution',
-              'contribution_refund',
-              'case_wallet_deduction',
-              'case_wallet_refund',
-            ])
-            .in('case_id', caseIds);
-
-          // Group by case_id and compute net collected
-          const grouped = new Map<string, any[]>();
-          for (const tx of (allTxRows || []) as any[]) {
-            const list = grouped.get(tx.case_id) || [];
-            list.push(tx);
-            grouped.set(tx.case_id, list);
-          }
-
-          for (const c of mappedCases) {
-            if (!c.caseNumber) continue;
-            const txs = grouped.get(c.id) || [];
-            totals[c.caseNumber] = calculateCollectedNet(txs);
-          }
-        }
-
-        setMpesaCollectedByCase(totals);
         
-        // Cache this massive payload for 5 minutes
+        // Cache for 5 minutes
         persistentCache.set('cases-list', mappedCases, 5 * 60 * 1000);
-        persistentCache.set('cases-mpesa-v2', totals, 5 * 60 * 1000);
         
       } catch (error) {
         console.error('Error in fetchCases:', error);
@@ -349,15 +236,7 @@ const Cases = () => {
         throw error;
       }
 
-      // Remove the case from local state
       setCases(prevCases => prevCases.filter(c => c.id !== caseToDelete.id));
-      
-      // Remove from collected amounts
-      setMpesaCollectedByCase(prev => {
-        const updated = { ...prev };
-        delete updated[caseToDelete.caseNumber];
-        return updated;
-      });
 
       invalidateCaseCaches();
       setCaseToDelete(null);
@@ -519,10 +398,10 @@ const Cases = () => {
                     </Button>
                   </div>
                   <div className="text-right w-full sm:w-auto">
-                    <div className="text-[10px] md:text-xs text-muted-foreground">Progress</div>
+                    <div className="text-[10px] md:text-xs text-muted-foreground">Collected</div>
                     <div className="font-medium text-xs md:text-sm">
-                      {formatCurrency(mpesaCollectedByCase[caseItem.caseNumber] || 0)} / {formatCurrency(caseItem.expectedAmount)}
-                      <div className="text-[10px] md:text-xs text-muted-foreground">(Collected)</div>
+                      {formatCurrency(caseItem.actualAmount)} / {formatCurrency(caseItem.expectedAmount)}
+                      <div className="text-[10px] md:text-xs text-muted-foreground">(Target)</div>
                     </div>
                   </div>
                 </CardFooter>

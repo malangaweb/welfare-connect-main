@@ -192,29 +192,29 @@ const fetchCaseContributionTransactions = async (caseId: string, caseNumber: str
 };
 
 const calculateContributionTotals = (transactions: CaseContributionTransactionRow[]) => {
-  return transactions.reduce(
-    (totals, tx) => {
-      if (tx.status && tx.status !== 'completed') {
-        return totals;
-      }
-      const amount = Number(tx.amount) || 0;
+  let totalContributions = 0;
+  let totalRefunds = 0;
 
-      if (tx.transaction_type === 'contribution' || tx.transaction_type === 'case_wallet_deduction' || tx.transaction_type === 'arrears') {
-        totals.totalContributions += Math.abs(amount);
-      }
+  for (const tx of transactions) {
+    if (tx.status && tx.status !== 'completed') continue;
+    const amount = Number(tx.amount) || 0;
+    const type = String(tx.transaction_type || '').toLowerCase();
 
-      if (tx.transaction_type === 'contribution_refund' || tx.transaction_type === 'case_wallet_refund') {
-        // Refunds: only count positive amounts (negative would be a deduction, but we treat as contribution)
-        // This matches Cases.tsx logic: sum + (amt > 0 ? amt : 0)
-        if (amount > 0) {
-          totals.totalRefunds += amount;
-        }
-      }
+    if (type === 'contribution' || type === 'case_wallet_deduction' || type === 'arrears') {
+      totalContributions += Math.abs(amount);
+      continue;
+    }
 
-      return totals;
-    },
-    { totalContributions: 0, totalRefunds: 0 }
-  );
+    if (type === 'contribution_refund' || type === 'case_wallet_refund') {
+      if (amount > 0) {
+        totalRefunds += amount;
+      } else {
+        totalContributions += amount;
+      }
+    }
+  }
+
+  return { totalContributions, totalRefunds };
 };
 
 const buildContributionActivity = (transactions: CaseContributionTransactionRow[]) => {
@@ -609,7 +609,7 @@ const CaseDetails = () => {
     );
   }
 
-  const expectedAmount = caseData ? caseData.contributionPerMember * memberCount : 0;
+  const expectedAmount = caseData ? caseData.expectedAmount : 0;
   const progress = caseData && expectedAmount > 0 ? (collectedAmount / expectedAmount) * 100 : 0;
   const hasCollectedContributions = collectedAmount > WALLET_BALANCE_EPSILON;
   
@@ -968,9 +968,9 @@ const CaseDetails = () => {
         <div className="grid gap-6 md:grid-cols-3">
           <Card>
             <CardHeader>
-              <CardTitle>Collection Progress</CardTitle>
+              <CardTitle>Total Collected</CardTitle>
               <CardDescription>
-                {Math.round(progress)}% of target amount collected
+                {Math.round(progress)}% of target
               </CardDescription>
             </CardHeader>
             <CardContent>

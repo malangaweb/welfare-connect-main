@@ -22,7 +22,6 @@ const MemberCases = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [filteredCases, setFilteredCases] = useState<any[]>([]);
-  const [memberCount, setMemberCount] = useState(0);
   const navigate = useNavigate();
 
   const myContributionTransactions = useMemo(() => {
@@ -50,13 +49,6 @@ const MemberCases = () => {
     
     const fetchData = async () => {
       try {
-        const { count: memberTotal, error: memberCountErr } = await supabase
-          .from("members")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["active", "probation"]);
-        if (memberCountErr) throw memberCountErr;
-        const memberCountNum = memberTotal ?? 0;
-
         const { data: casesData, error: casesErr } = await supabase
           .from("cases")
           .select(CASE_ROW_COLUMNS)
@@ -99,7 +91,6 @@ const MemberCases = () => {
           ]);
         if (txErr) throw txErr;
 
-        setMemberCount(memberCountNum);
         setTransactions(transactionsData || []);
         const mappedCases = (casesData || []).map((c: any) => {
           const actualAmount = Math.max(0, Number(c.actual_amount) || 0);
@@ -236,10 +227,10 @@ const MemberCases = () => {
     };
   };
 
-  // Calculate progress for a case — denominator is active+probation members only
+  // Calculate progress for a case — denominator is the expected_amount from DB
   const calculateProgress = (caseItem: any) => {
-    const expectedAmount = Number(caseItem.contribution_per_member) * memberCount;
-    if (!expectedAmount || expectedAmount === 0) return 0;
+    const expectedAmount = Number(caseItem.expected_amount) || 0;
+    if (!expectedAmount) return 0;
     return Math.max(
       0,
       Math.min(100, (caseItem.actual_amount / expectedAmount) * 100),
@@ -357,7 +348,7 @@ const MemberCases = () => {
                               
                               <div>
                                 <div className="flex justify-between items-center mb-2">
-                                  <span className="text-sm">Collection Progress</span>
+                                  <span className="text-sm">Total Collected</span>
                                   <span className="text-sm font-medium">{Math.round(calculateProgress(c))}%</span>
                                 </div>
                                 <Progress value={calculateProgress(c)} className="h-2" />
@@ -366,7 +357,7 @@ const MemberCases = () => {
                                     KES {(c.actual_amount || 0).toLocaleString()}
                                   </span>
                                   <span className="text-muted-foreground">
-                                    KES {(Number(c.contribution_per_member) * memberCount || 0).toLocaleString()}
+                                    KES {(c.expected_amount || 0).toLocaleString()}
                                   </span>
                                 </div>
                               </div>

@@ -559,7 +559,7 @@ const MemberDetails = () => {
               </TabsContent>
               
               <TabsContent value="cases">
-                <CasesTab />
+                <CasesTab memberId={id || ''} />
               </TabsContent>
             </Tabs>
           </div>

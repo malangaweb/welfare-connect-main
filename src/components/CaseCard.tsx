@@ -122,7 +122,7 @@ const CaseCard = ({ case: caseItem, onClick, isLoading }: CaseCardProps) => {
         
         <div className="mt-5">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm">Collection Progress</span>
+            <span className="text-sm">Total Collected</span>
             <span className="text-sm font-medium">{Math.round(progress)}%</span>
           </div>
           <Progress value={progress} className="h-2" />

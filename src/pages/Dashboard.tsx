@@ -86,7 +86,7 @@ const Dashboard = () => {
         // 3. Active cases (2 rows)
         supabase
           .from('cases')
-          .select('id, case_number, case_type, affected_member_id, dependant_id, contribution_per_member, start_date, end_date, is_active, is_finalized, created_at')
+          .select('id, case_number, case_type, affected_member_id, dependant_id, contribution_per_member, start_date, end_date, is_active, is_finalized, created_at, expected_amount, actual_amount')
           .eq('is_active', true)
           .order('start_date', { ascending: false })
           .limit(2),
@@ -100,7 +100,6 @@ const Dashboard = () => {
 
       // --- Summary Stats ---
       let totalMembers = 0, activeCasesCount = 0, totalContributions = 0, defaultersCount = 0;
-      let activeMemberCount = 0;
       if (!summaryResult.error && summaryResult.data?.length > 0) {
         const s = summaryResult.data[0];
         totalMembers = s.total_members || 0;
@@ -108,12 +107,6 @@ const Dashboard = () => {
         totalContributions = Number(s.total_contributions) || 0;
         defaultersCount = s.defaulters_count || 0;
       }
-      // Fetch active+probation member count for expected amount calculation
-      const { count: ac } = await supabase
-        .from('members')
-        .select('id', { count: 'exact', head: true })
-        .in('status', ['active', 'probation']);
-      activeMemberCount = ac || 0;
       // Fallback total member count if summary unavailable
       if (!totalMembers) {
         const { count: mc } = await supabase
@@ -166,8 +159,8 @@ const Dashboard = () => {
         contributionPerMember: c.contribution_per_member,
         startDate: c.start_date ? new Date(c.start_date) : new Date(),
         endDate: c.end_date ? new Date(c.end_date) : new Date(),
-        expectedAmount: c.contribution_per_member * (activeMemberCount || 1),
-        actualAmount: 0, // populated from transactions if needed
+        expectedAmount: Number(c.expected_amount) || 0,
+        actualAmount: Math.max(0, Number(c.actual_amount) || 0),
         isActive: c.is_active,
         isFinalized: c.is_finalized,
         createdAt: c.created_at ? new Date(c.created_at) : new Date(),

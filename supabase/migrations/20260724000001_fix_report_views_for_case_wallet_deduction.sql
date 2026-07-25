@@ -40,7 +40,7 @@ ORDER BY m.member_number;
 
 COMMENT ON VIEW member_transaction_summary IS 'Summary of member transaction activity (includes case_wallet_deduction)';
 
--- 3. case_funding_summary: filter transaction types to only include case payments
+-- 3. case_funding_summary: include arrears (+ refunds) to match sync_case_actual_amount trigger
 CREATE OR REPLACE VIEW case_funding_summary AS
 SELECT
   c.id as case_id,
@@ -51,20 +51,31 @@ SELECT
   c.start_date,
   c.end_date,
   c.expected_amount,
-  COALESCE(SUM(CASE WHEN t.transaction_type IN ('contribution', 'case_wallet_deduction') THEN ABS(t.amount) ELSE 0 END), 0) as actual_amount,
-  COALESCE(SUM(CASE WHEN t.transaction_type IN ('contribution', 'case_wallet_deduction') THEN ABS(t.amount) ELSE 0 END), 0) - c.expected_amount as variance,
+  COALESCE(SUM(
+    CASE
+      WHEN t.transaction_type IN ('contribution', 'case_wallet_deduction', 'arrears') THEN ABS(t.amount)
+      WHEN t.transaction_type IN ('contribution_refund', 'case_wallet_refund') THEN -ABS(t.amount)
+      ELSE 0
+    END
+  ), 0) as actual_amount,
+  COALESCE(SUM(
+    CASE
+      WHEN t.transaction_type IN ('contribution', 'case_wallet_deduction', 'arrears') THEN ABS(t.amount)
+      WHEN t.transaction_type IN ('contribution_refund', 'case_wallet_refund') THEN -ABS(t.amount)
+      ELSE 0
+    END
+  ), 0) - c.expected_amount as variance,
   c.is_active,
   c.is_finalized
 FROM cases c
 LEFT JOIN transactions t ON t.case_id = c.id
   AND (t.status IS NULL OR t.status = '' OR lower(t.status) IN ('completed', 'success'))
-  AND t.transaction_type IN ('contribution', 'case_wallet_deduction')
 GROUP BY c.id, c.case_number, c.case_type, c.affected_member_id,
          c.contribution_per_member, c.start_date, c.end_date,
          c.expected_amount, c.is_active, c.is_finalized
 ORDER BY c.created_at DESC;
 
-COMMENT ON VIEW case_funding_summary IS 'Summary of case funding progress (filtered to case payment types)';
+COMMENT ON VIEW case_funding_summary IS 'Summary of case funding progress (includes arrears and refunds, matches sync_case_actual_amount trigger)';
 
 -- 4. get_enhanced_dashboard_summary: missing case_wallet_deduction in total_contributions
 CREATE OR REPLACE FUNCTION get_enhanced_dashboard_summary()
