@@ -21,6 +21,8 @@ serve(async (req) => {
       });
     }
 
+    const startedAt = new Date().toISOString();
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -46,7 +48,13 @@ serve(async (req) => {
 
     if (memberErr) throw memberErr;
 
-    const results: Array<{ member_id: string; success: boolean; error?: string }> = [];
+    let totalMembersEligible = 0;
+    let membersProcessed = 0;
+    let finalizedCasesPaid = 0;
+    let activeCasesPaid = 0;
+    let penaltyPayments = 0;
+    let reactivations = 0;
+    const errors: Array<{ member_id: string; error: string }> = [];
 
     for (const member of members || []) {
       const { data: applies } = await supabase.rpc("member_case_obligation_applies", {
@@ -56,6 +64,8 @@ serve(async (req) => {
 
       if (!applies) continue;
 
+      totalMembersEligible++;
+
       try {
         const { data: wfResult, error: wfErr } = await supabase.rpc(
           "apply_wallet_payment_waterfall",
@@ -63,17 +73,66 @@ serve(async (req) => {
         );
 
         if (wfErr) {
-          results.push({ member_id: member.id, success: false, error: wfErr.message });
-        } else {
-          results.push({ member_id: member.id, success: true });
+          errors.push({ member_id: member.id, error: wfErr.message });
+          continue;
+        }
+
+        membersProcessed++;
+
+        const result = (wfResult || {}) as Record<string, unknown>;
+        if (result.skipped) continue;
+
+        finalizedCasesPaid += Number(result.finalized_cases_paid || 0);
+        activeCasesPaid += Number(result.active_cases_paid || 0);
+        penaltyPayments += Number(result.penalty_payments || 0);
+
+        if (result.flipped_to === "probation") {
+          reactivations++;
         }
       } catch (wfErr) {
-        results.push({
+        errors.push({
           member_id: member.id,
-          success: false,
           error: wfErr instanceof Error ? wfErr.message : String(wfErr),
         });
       }
+    }
+
+    let membersMarkedInactive = 0;
+
+    try {
+      const { data: disciplineResults } = await supabase
+        .rpc("check_and_apply_member_discipline");
+
+      if (Array.isArray(disciplineResults)) {
+        membersMarkedInactive = disciplineResults
+          .filter((r: Record<string, unknown>) => r.action === "marked_inactive")
+          .length;
+      }
+    } catch (discErr) {
+      console.error("Discipline sweep error:", discErr);
+    }
+
+    const completedAt = new Date().toISOString();
+
+    const auditPayload = {
+      case_id: caseId,
+      case_number: caseRow.case_number,
+      total_members_eligible: totalMembersEligible,
+      members_processed: membersProcessed,
+      finalized_cases_paid: finalizedCasesPaid,
+      active_cases_paid: activeCasesPaid,
+      penalty_payments: penaltyPayments,
+      reactivations: reactivations,
+      members_marked_inactive: membersMarkedInactive,
+      errors: errors,
+      started_at: startedAt,
+      completed_at: completedAt,
+    };
+
+    try {
+      await supabase.from("case_creation_audit").insert(auditPayload);
+    } catch (auditErr) {
+      console.error("Audit insert error:", auditErr);
     }
 
     return new Response(
@@ -81,8 +140,17 @@ serve(async (req) => {
         success: true,
         case_id: caseId,
         case_number: caseRow.case_number,
-        processed: results.length,
-        results,
+        summary: {
+          total_members_eligible: totalMembersEligible,
+          members_processed: membersProcessed,
+          finalized_cases_paid: finalizedCasesPaid,
+          active_cases_paid: activeCasesPaid,
+          penalty_payments: penaltyPayments,
+          reactivations: reactivations,
+          members_marked_inactive: membersMarkedInactive,
+          errors: errors.length,
+        },
+        errors: errors.length > 0 ? errors : undefined,
       }),
       {
         status: 200,
@@ -91,6 +159,7 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error in api-trigger-waterfall:", error);
+
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "An error occurred",
