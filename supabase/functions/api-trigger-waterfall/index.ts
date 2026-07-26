@@ -41,60 +41,34 @@ serve(async (req) => {
       });
     }
 
-    const { data: members, error: memberErr } = await supabase
-      .from("members")
-      .select("id")
-      .gt("wallet_balance", 0);
+    // Process this case's waterfall via the idempotent DB function. The DB also
+    // enqueues every payable case (queue + scheduled drain) so this call is a
+    // fast-path, not the sole delivery guarantee.
+    const { data: wfSummary, error: wfErr } = await supabase.rpc(
+      "process_case_waterfall",
+      { p_case_id: caseId },
+    );
 
-    if (memberErr) throw memberErr;
+    if (wfErr) throw wfErr;
 
-    let totalMembersEligible = 0;
-    let membersProcessed = 0;
-    let finalizedCasesPaid = 0;
-    let activeCasesPaid = 0;
-    let penaltyPayments = 0;
-    let reactivations = 0;
-    const errors: Array<{ member_id: string; error: string }> = [];
+    const summary = (wfSummary || {}) as Record<string, unknown>;
+    const totalMembersEligible = Number(summary.total_members_eligible || 0);
+    const membersProcessed = Number(summary.members_processed || 0);
+    const finalizedCasesPaid = Number(summary.finalized_cases_paid || 0);
+    const activeCasesPaid = Number(summary.active_cases_paid || 0);
+    const penaltyPayments = Number(summary.penalty_payments || 0);
+    const reactivations = Number(summary.reactivations || 0);
+    const rawErrors = Array.isArray(summary.errors) ? summary.errors : [];
+    const errors = rawErrors as Array<{ member_id: string; error: string }>;
 
-    for (const member of members || []) {
-      const { data: applies } = await supabase.rpc("member_case_obligation_applies", {
-        p_member_id: member.id,
-        p_case_id: caseId,
-      });
-
-      if (!applies) continue;
-
-      totalMembersEligible++;
-
-      try {
-        const { data: wfResult, error: wfErr } = await supabase.rpc(
-          "apply_wallet_payment_waterfall",
-          { p_member_id: member.id },
-        );
-
-        if (wfErr) {
-          errors.push({ member_id: member.id, error: wfErr.message });
-          continue;
-        }
-
-        membersProcessed++;
-
-        const result = (wfResult || {}) as Record<string, unknown>;
-        if (result.skipped) continue;
-
-        finalizedCasesPaid += Number(result.finalized_cases_paid || 0);
-        activeCasesPaid += Number(result.active_cases_paid || 0);
-        penaltyPayments += Number(result.penalty_payments || 0);
-
-        if (result.flipped_to === "probation") {
-          reactivations++;
-        }
-      } catch (wfErr) {
-        errors.push({
-          member_id: member.id,
-          error: wfErr instanceof Error ? wfErr.message : String(wfErr),
-        });
-      }
+    // Mark the queued row done (best-effort; the scheduled drain is the backstop).
+    try {
+      await supabase
+        .from("case_waterfall_queue")
+        .update({ status: "done", processed_at: new Date().toISOString(), last_error: null })
+        .eq("case_id", caseId);
+    } catch (qErr) {
+      console.error("Queue update error:", qErr);
     }
 
     let membersMarkedInactive = 0;

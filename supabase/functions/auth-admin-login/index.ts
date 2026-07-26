@@ -2,11 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import bcryptjs from "https://esm.sh/bcryptjs@2.4.3";
 import { SignJWT } from "https://esm.sh/jose@5.9.6";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 const ADMIN_ROLES = new Set(["super_admin", "chairperson", "treasurer", "secretary"]);
 
@@ -66,12 +62,21 @@ serve(async (req) => {
     }
 
     const storedPassword = String(user.password || "");
-    let passwordValid = false;
-    if (storedPassword.startsWith("$2")) {
-      passwordValid = await bcryptjs.compare(String(password), storedPassword);
-    } else {
-      passwordValid = String(password) === storedPassword;
+    // Only bcrypt hashes are accepted. Legacy plaintext comparison has been
+    // removed. Any account still storing a non-bcrypt password must be
+    // re-hashed (see README migration snippet) before it can log in.
+    if (!storedPassword.startsWith("$2")) {
+      await supabase.from("audit_logs").insert({
+        action: "LOGIN_BLOCKED_UNHASHED_PASSWORD",
+        table_name: "users",
+        record_id: user.id,
+        status: "failed",
+      }).throwOnError();
+      return jsonResponse(403, {
+        error: "Password reset required. Contact an administrator.",
+      });
     }
+    const passwordValid = await bcryptjs.compare(String(password), storedPassword);
 
     if (!passwordValid) {
       await supabase.from("audit_logs").insert({
