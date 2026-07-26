@@ -33,7 +33,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - run: bun run build
+      - name: Build
+        run: bun run build
+        env:
+          # VITE_* vars are inlined at build time. These are public
+          # client-side values (project URL + anon key); the anon key is
+          # designed to be exposed in the browser bundle.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Ensure CNAME is present in build output
         run: |
