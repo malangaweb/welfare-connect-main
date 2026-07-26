@@ -8,3 +8,25 @@ node_modules/
 
 # Local PHP helper folder
 mlg/
+
+# Build output & artifacts
+dist/
+build/
+*.zip
+
+# Vite/tooling temp
+vite.config.*.timestamp-*.mjs
+*.tsbuildinfo
+
+# Graphify / codebase-map cache
+graphify-out/
+**/graphify-out/
+
+# Test output
+test-results/
+playwright-report/
+
+# Flutter
+flt_app/.dart_tool/
+flt_app/build/
+flt_app/devtools_options.yaml
