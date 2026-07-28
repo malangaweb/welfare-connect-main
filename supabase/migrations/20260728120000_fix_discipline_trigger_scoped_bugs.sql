@@ -392,6 +392,11 @@ BEGIN
     ORDER BY member_number
   LOOP
     -- Latest auto-inactivation anchor.
+    -- Use >= not >: the scoped discipline trigger fires in the same
+    -- transaction as the waterfall's reactivation, so both transitions share
+    -- the same created_at timestamp.  With > the reactivation is never seen
+    -- as "later" and the member is falsely classified as having an open
+    -- cycle, blocking the repair from reactivating them.
     SELECT t.created_at INTO v_inactivated_at
     FROM public.member_status_transitions t
     WHERE t.member_id = m.id
@@ -400,7 +405,7 @@ BEGIN
         SELECT 1 FROM public.member_status_transitions later
         WHERE later.member_id = m.id
           AND later.reason = 'auto_wallet_reactivation'
-          AND later.created_at > t.created_at
+          AND later.created_at >= t.created_at
       )
     ORDER BY t.created_at DESC LIMIT 1;
 
