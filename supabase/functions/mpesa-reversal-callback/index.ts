@@ -13,7 +13,7 @@ serve(async (req) => {
 
   try {
     const callback = await req.json()
-    console.log('M-Pesa B2C Callback received:', JSON.stringify(callback))
+    console.log('M-Pesa Reversal Callback received:', JSON.stringify(callback))
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -26,7 +26,6 @@ serve(async (req) => {
     }
 
     const {
-      ResultType,
       ResultCode,
       ResultDesc,
       OriginatorConversationID,
@@ -35,7 +34,7 @@ serve(async (req) => {
     } = result
 
     await supabase.from('audit_logs').insert({
-      action: 'MPESA_B2C_CALLBACK_RECEIVED',
+      action: 'MPESA_REVERSAL_CALLBACK_RECEIVED',
       table_name: 'transactions',
       status: ResultCode === 0 ? 'success' : 'failed',
       metadata: {
@@ -44,35 +43,34 @@ serve(async (req) => {
         transaction_id: TransactionID,
         result_code: ResultCode,
         result_desc: ResultDesc,
-        result_type: ResultType,
       },
     })
 
     const lookupRef = OriginatorConversationID || ConversationID
     if (!lookupRef) {
-      console.error('B2C callback missing both OriginatorConversationID and ConversationID')
+      console.error('Reversal callback missing both OriginatorConversationID and ConversationID')
       return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: 'Accepted' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const { data: transactions, error: txError } = await supabase
+    const { data: reversalTxs, error: txError } = await supabase
       .from('transactions')
       .select('id, member_id, amount, metadata')
       .or(`reference.eq.${lookupRef},metadata->>originator_conversation_id.eq.${OriginatorConversationID},metadata->>conversation_id.eq.${ConversationID}`)
-      .in('transaction_type', ['disbursement', 'transfer'])
+      .eq('transaction_type', 'transfer')
       .order('created_at', { ascending: false })
       .limit(5)
 
-    if (txError || !transactions || transactions.length === 0) {
-      console.error('B2C transaction not found for:', lookupRef)
+    if (txError || !reversalTxs || reversalTxs.length === 0) {
+      console.error('No reversal transaction found for:', lookupRef)
       return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: 'Accepted' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    for (const transaction of transactions) {
-      const meta = transaction.metadata as Record<string, unknown> || {}
+    for (const tx of reversalTxs) {
+      const meta = tx.metadata as Record<string, unknown> || {}
 
       if (ResultCode === 0) {
         const { error: updateError } = await supabase
@@ -83,22 +81,23 @@ serve(async (req) => {
             metadata: {
               ...meta,
               mpesa_transaction_id: TransactionID,
-              mpesa_code: ResultCode,
+              reversal_api_result_code: ResultCode,
               callback_time: new Date().toISOString(),
               completed_at: new Date().toISOString(),
             },
           })
-          .eq('id', transaction.id)
+          .eq('id', tx.id)
 
         if (updateError) {
-          console.error('Error updating B2C transaction:', updateError)
+          console.error('Error updating reversal transaction:', updateError)
         }
 
-        if (meta.is_reversal && meta.reversed_transaction_id) {
+        const reversedTxId = meta.reversed_transaction_id
+        if (reversedTxId) {
           const { data: originalTx } = await supabase
             .from('transactions')
             .select('metadata')
-            .eq('id', meta.reversed_transaction_id)
+            .eq('id', reversedTxId)
             .single()
 
           if (originalTx) {
@@ -110,25 +109,25 @@ serve(async (req) => {
                   ...originalMeta,
                   reversal_completed: true,
                   reversal_mpesa_ref: TransactionID,
+                  reversal_api_result_code: ResultCode,
                 },
               })
-              .eq('id', meta.reversed_transaction_id)
+              .eq('id', reversedTxId)
           }
         }
 
         await supabase.from('audit_logs').insert({
-          action: 'MPESA_B2C_COMPLETED',
+          action: 'MPESA_REVERSAL_COMPLETED',
           table_name: 'transactions',
-          record_id: transaction.id,
+          record_id: tx.id,
           status: 'success',
           metadata: {
-            amount: transaction.amount,
+            amount: tx.amount,
             mpesa_transaction_id: TransactionID,
-            member_id: transaction.member_id,
-            is_reversal: meta.is_reversal || false,
+            member_id: tx.member_id,
+            reversed_transaction_id: reversedTxId,
           },
         })
-
       } else {
         const { error: updateError } = await supabase
           .from('transactions')
@@ -142,17 +141,17 @@ serve(async (req) => {
               failure_reason: ResultDesc,
             },
           })
-          .eq('id', transaction.id)
+          .eq('id', tx.id)
 
         if (updateError) {
-          console.error('Error updating failed B2C transaction:', updateError)
+          console.error('Error updating failed reversal:', updateError)
         }
       }
     }
 
     if (ResultCode !== 0) {
       await supabase.from('audit_logs').insert({
-        action: 'MPESA_B2C_FAILED',
+        action: 'MPESA_REVERSAL_FAILED',
         table_name: 'transactions',
         status: 'failed',
         metadata: {
@@ -168,7 +167,7 @@ serve(async (req) => {
     })
 
   } catch (error: any) {
-    console.error('B2C callback processing error:', error)
+    console.error('Reversal callback processing error:', error)
     return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: 'Accepted' }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

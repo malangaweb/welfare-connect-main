@@ -20,3 +20,9 @@ verify_jwt = true
 
 [functions.api-notifications-mark-read]
 verify_jwt = false
+
+[functions.mpesa-reversal]
+verify_jwt = false
+
+[functions.mpesa-reversal-callback]
+verify_jwt = false

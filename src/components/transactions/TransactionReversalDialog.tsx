@@ -62,54 +62,52 @@ export function TransactionReversalDialog({
       }
 
       if (useMpesaReversal && transaction.paymentMethod === 'mpesa') {
-        try {
-          const appToken = getAppToken()
-          if (!appToken) {
-            throw new Error('Session expired. Please login again.')
-          }
+        const mpesaReceipt = transaction.mpesaReference
+        if (!mpesaReceipt) {
+          throw new Error('M-Pesa receipt number is required for reversal. The transaction has no M-Pesa reference.')
+        }
 
-          const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '')
-          if (!supabaseUrl) {
-            throw new Error('Supabase URL is not configured')
-          }
+        const appToken = getAppToken()
+        if (!appToken) {
+          throw new Error('Session expired. Please login again.')
+        }
 
-          const endpoint = `${supabaseUrl}/functions/v1/mpesa-b2c`
+        const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '')
+        if (!supabaseUrl) {
+          throw new Error('Supabase URL is not configured')
+        }
 
-          const reversalResp = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-app-token': appToken,
-            },
-            body: JSON.stringify({
-              amount: Math.abs(transaction.amount),
-              memberId: transaction.memberId,
-              reason: `Reversal: ${reason}`,
-              isReversal: true,
-              transactionId: transaction.id,
-            }),
-          })
+        const endpoint = `${supabaseUrl}/functions/v1/mpesa-reversal`
 
-          const reversalJson = await reversalResp.json().catch(() => ({}))
-          if (!reversalResp.ok) {
-            const message =
-              String((reversalJson as { error?: unknown }).error || '').trim() ||
-              `Request failed with status ${reversalResp.status}`
-            throw new Error(message)
-          }
+        const reversalResp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-app-token': appToken,
+          },
+          body: JSON.stringify({
+            transactionId: transaction.id,
+            mpesaReceiptNumber: mpesaReceipt,
+            amount: Math.abs(transaction.amount),
+            memberId: transaction.memberId,
+            reason: `Reversal: ${reason}`,
+          }),
+        })
 
-          const respCode = String((reversalJson as { ResponseCode?: unknown }).ResponseCode ?? '').trim()
-          if (respCode !== '' && respCode !== '0') {
-            const message =
-              String((reversalJson as { ResponseDescription?: unknown }).ResponseDescription || '').trim() ||
-              'Daraja reversal was not accepted'
-            throw new Error(message)
-          }
-        } catch (mpesaError: any) {
-          console.error('Daraja reversal error:', mpesaError)
-          toast.warning('M-Pesa reversal failed', {
-            description: 'Proceeding with local reversal only.',
-          })
+        const reversalJson = await reversalResp.json().catch(() => ({}))
+        if (!reversalResp.ok) {
+          const message =
+            String((reversalJson as { error?: unknown }).error || '').trim() ||
+            `Reversal request failed with status ${reversalResp.status}`
+          throw new Error(message)
+        }
+
+        const respCode = String((reversalJson as { ResponseCode?: unknown }).ResponseCode ?? '').trim()
+        if (respCode !== '' && respCode !== '0') {
+          const message =
+            String((reversalJson as { ResponseDescription?: unknown }).ResponseDescription || '').trim() ||
+            'Daraja reversal was not accepted'
+          throw new Error(message)
         }
       }
 
@@ -217,7 +215,7 @@ export function TransactionReversalDialog({
                   Process M-Pesa reversal
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  This will send the money back to the member&apos;s M-Pesa account via B2C payment.
+                  This will reverse the original M-Pesa transaction via the Safaricom Reversal API.
                 </p>
               </div>
             </div>

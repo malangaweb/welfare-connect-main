@@ -154,7 +154,7 @@ serve(async (req) => {
         amount: -Math.abs(amount), // Negative for disbursement
         transaction_type: isReversal ? 'transfer' : 'disbursement',
         payment_method: 'mpesa',
-        reference: b2cResponse.ConversationID || b2cResponse.OriginatorConversationID,
+        reference: b2cResponse.OriginatorConversationID || b2cResponse.ConversationID,
         status: 'pending',
         description: isReversal 
           ? `M-Pesa Reversal: ${reason}` 

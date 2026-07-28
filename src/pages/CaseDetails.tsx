@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select';
 import type { Database } from '@/integrations/supabase/types';
 import { persistentCache } from '@/lib/cache';
+import { getAppToken } from '@/lib/appAuth';
 import { createReportFilename, exportRowsToCSV, exportRowsToXLSX } from '@/lib/reportExport';
 import { CASE_ROW_COLUMNS, MEMBER_DETAIL_COLUMNS } from '@/lib/supabaseSelectColumns';
 
@@ -888,10 +889,55 @@ const CaseDetails = () => {
 
       // Note: Database trigger automatically updates member wallet_balance
 
-      toast({
-        title: 'Disbursement recorded',
-        description: 'The disbursement has been saved successfully.',
-      });
+      // Initiate M-Pesa B2C payout if method is mpesa
+      if (disbursementMethod === 'mpesa' && caseData.affectedMemberId) {
+        try {
+          const appToken = getAppToken()
+          if (!appToken) throw new Error('Session expired. Please login again.')
+
+          const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '')
+          if (!supabaseUrl) throw new Error('Supabase URL is not configured')
+
+          const b2cResp = await fetch(`${supabaseUrl}/functions/v1/mpesa-b2c`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-app-token': appToken },
+            body: JSON.stringify({
+              amount: Math.abs(Number(disbursementAmount)),
+              memberId: caseData.affectedMemberId,
+              reason: `Disbursement for Case #${caseData.caseNumber}`,
+              isReversal: false,
+            }),
+          })
+
+          const b2cJson = await b2cResp.json().catch(() => ({}))
+          if (!b2cResp.ok) {
+            const errMsg = String((b2cJson as { error?: unknown }).error || '').trim() || `B2C request failed with status ${b2cResp.status}`
+            console.error('M-Pesa B2C payout failed:', errMsg)
+            toast({
+              variant: 'destructive',
+              title: 'M-Pesa payout failed',
+              description: 'The disbursement is recorded but the M-Pesa payout could not be sent. You may need to retry.',
+            })
+          } else {
+            toast({
+              title: 'M-Pesa payout initiated',
+              description: 'The disbursement has been recorded and M-Pesa payment is being processed.',
+            })
+          }
+        } catch (b2cError: any) {
+          console.error('M-Pesa B2C payout error:', b2cError)
+          toast({
+            variant: 'destructive',
+            title: 'M-Pesa payout error',
+            description: 'The disbursement is recorded but the M-Pesa payout failed. Please retry manually.',
+          })
+        }
+      } else {
+        toast({
+          title: 'Disbursement recorded',
+          description: 'The disbursement has been saved successfully.',
+        });
+      }
 
       invalidateCaseCaches();
       await refreshCaseData();
