@@ -4,6 +4,9 @@ import { StrictMode } from 'react';
 import App from './App.tsx'
 import './index.css'
 import { ReactQueryProvider } from './providers/ReactQueryProvider'
+import { suppressBrowserExtensionNoise } from './utils/suppressBrowserExtensionNoise'
+
+suppressBrowserExtensionNoise();
 
 const root = createRoot(document.getElementById("root")!);
 
