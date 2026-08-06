@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -330,6 +331,15 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
 
       if (!mounted) return;
       if (deducted > 0) {
+        Posthog().capture(
+          eventName: 'admin_bulk_deduction_completed',
+          properties: {
+            'deducted_count': deducted,
+            'skipped_already_paid_count': skippedPaid,
+            'skipped_ineligible_count': skippedIneligible,
+            'skipped_insufficient_count': skippedInsufficient,
+          },
+        );
         setState(() {});
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -967,9 +977,13 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
           await _service.importMembers(appToken: token, members: rows);
 
       if (!mounted) return;
+      final createdCount = (importResult['created'] as num?)?.toInt() ?? 0;
+      Posthog().capture(
+        eventName: 'members_import_completed',
+        properties: {'created_count': createdCount},
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Imported ${importResult['created'] ?? 0} members')),
+        SnackBar(content: Text('Imported $createdCount members')),
       );
 
       setState(() {
