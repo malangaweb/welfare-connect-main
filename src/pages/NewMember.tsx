@@ -11,6 +11,8 @@ import { normalizeMemberNumber } from '@/lib/memberNumber';
 import { createManagedUser } from '@/lib/adminUsersApi';
 import { logSystemEvent } from '@/lib/systemLog';
 import { invokeWithAppToken, normalizePhone } from '@/lib/appAuth';
+import { captureEvent } from '@/lib/posthog';
+import { getCurrentUser } from '@/lib/authorization';
 
 // Function to send welcome SMS
 const sendWelcomeSMS = async (memberId: string, name: string, phoneNumber: string, memberNumber: string) => {
@@ -167,6 +169,12 @@ const NewMember = () => {
         }
       }
       
+      captureEvent('Member Registered', {
+        member_number: normalizedMemberNumber,
+        residence: residenceData.name,
+        createdByRole: getCurrentUser()?.role,
+      });
+
       toast.success("Member registered successfully", {
         description: `${data.name} has been registered with member number ${normalizedMemberNumber}`,
       });

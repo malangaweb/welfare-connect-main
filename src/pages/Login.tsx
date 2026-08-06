@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { supabase } from '@/integrations/supabase/client';
 import { clearAppToken, clearMemberSession, isAppTokenExpired, normalizePhone, setAppToken } from '@/lib/appAuth';
+import { captureEvent, identifyUser } from '@/lib/posthog';
 
 // Define explicit types for the user row
 interface UserProfile {
@@ -138,7 +139,19 @@ const Login = () => {
           isActive: userRow.is_active,
         })
       );
-      
+
+      identifyUser(userRow.id, {
+        username: userRow.username,
+        name: userRow.name,
+        email: userRow.email || undefined,
+        role: userRow.role,
+        memberId: userRow.member_id || undefined,
+      });
+      captureEvent('Admin Login Succeeded', {
+        username: userRow.username,
+        role: userRow.role,
+      });
+
       // Toast notification for successful login
       toast({
         title: "Login successful",
@@ -163,6 +176,7 @@ const Login = () => {
   const onMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMemberLoading(true);
+    const normalizedMemberNumber = memberNumber.trim();
 
     try {
       const { data, error } = await supabase.functions.invoke('auth-member-login', {
@@ -187,6 +201,15 @@ const Login = () => {
       localStorage.setItem('member_name', member.name);
       localStorage.setItem('member_phone_number', member.phone_number || '');
       localStorage.setItem('member_login_time', new Date().toISOString());
+
+      identifyUser(member.id, {
+        name: member.name,
+        memberNumber: normalizedMemberNumber,
+        phoneNumber: member.phone_number || undefined,
+      });
+      captureEvent('Member Login Succeeded', {
+        memberNumber: normalizedMemberNumber,
+      });
 
       toast({
         title: 'Login successful',

@@ -12,6 +12,7 @@ import { mapDbMemberToMember } from '@/lib/db-types';
 import { persistentCache } from '@/lib/cache';
 import { DEPENDANT_COLUMNS, MEMBER_LIST_COLUMNS } from '@/lib/supabaseSelectColumns';
 import { invokeWithAppToken } from '@/lib/appAuth';
+import { captureEvent } from '@/lib/posthog';
 
 type CaseInsert = Database["public"]["Tables"]["cases"]["Insert"];
 
@@ -192,6 +193,14 @@ const NewCase = () => {
       const caseResult = result as any;
       persistentCache.invalidate('cases-list');
       persistentCache.invalidate('cases-mpesa-v2');
+
+      captureEvent('Case Created', {
+        case_number: trimmedCaseNumber,
+        case_type: data.caseType,
+        contribution_per_member: Number(data.contributionPerMember),
+        expected_amount: totalContribution,
+        affected_member_id: data.affectedMemberId,
+      });
 
       toast.success("Case created successfully", {
         description: "Case saved. Members can now fund their wallets — contributions will be processed automatically.",

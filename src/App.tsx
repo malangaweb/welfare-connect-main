@@ -1,10 +1,11 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import * as Sentry from "@sentry/react";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { identifyCurrentUser, trackPageview } from "@/lib/posthog";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import MemberProtectedRoute from "@/components/MemberProtectedRoute";
@@ -59,12 +60,27 @@ const PageLoader = () => (
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
+const PosthogRouteTracker = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    identifyCurrentUser();
+  }, []);
+
+  useEffect(() => {
+    trackPageview(location.pathname, document.title, location.search);
+  }, [location.pathname, location.search]);
+
+  return null;
+};
+
 const App = () => (
   <ErrorBoundary>
     <AuthProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <PosthogRouteTracker />
         <Suspense fallback={<PageLoader />}>
           <SentryRoutes>
           <Route path="/" element={<Index />} />
