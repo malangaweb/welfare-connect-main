@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/supabase_service.dart';
@@ -57,6 +58,13 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
 
       if (!mounted) return;
       if (response.status == 200 || response.status == 201) {
+        Posthog().capture(
+          eventName: 'wallet_top_up_initiated',
+          properties: {
+            'amount': double.tryParse(_amountController.text.trim()) ?? 0,
+            'payment_method': 'mpesa_stk_push',
+          },
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('STK Push sent. Check your phone.'),

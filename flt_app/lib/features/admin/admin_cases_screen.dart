@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
@@ -57,6 +58,12 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
 
     try {
       await _service.deleteCase(caseId: caseId);
+      Posthog().capture(
+        eventName: 'case_deleted',
+        properties: {
+          'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
+        },
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Case deleted successfully.')),
@@ -77,6 +84,12 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
     try {
       if (row['is_finalized'] == true) {
         await _service.reopenCase(caseId: caseId);
+        Posthog().capture(
+          eventName: 'case_reopened',
+          properties: {
+            'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
+          },
+        );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Case reopened successfully.')),
@@ -84,6 +97,13 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
       } else {
         final amount = _toDouble(row['actual_amount']);
         await _service.finalizeCase(caseId: caseId, actualAmount: amount);
+        Posthog().capture(
+          eventName: 'case_finalized',
+          properties: {
+            'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
+            'actual_amount': amount,
+          },
+        );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Case finalized successfully.')),

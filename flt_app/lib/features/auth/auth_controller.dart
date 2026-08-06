@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/services/storage_service.dart';
 
@@ -133,16 +134,33 @@ class AuthController extends Notifier<AuthState> {
       String? memberId;
       String? memberName;
       String? role;
+      String? authenticatedUserId;
       if (payload is Map<String, dynamic>) {
         appToken = payload['app_token']?.toString();
-        role = payload['user'] is Map<String, dynamic>
-            ? (payload['user']['role']?.toString())
+        final user = payload['user'];
+        role = user is Map<String, dynamic>
+            ? (user['role']?.toString())
             : (payload['role']?.toString());
+        authenticatedUserId = user is Map<String, dynamic>
+            ? user['id']?.toString()
+            : null;
         final member = payload['member'];
         if (member is Map<String, dynamic>) {
           memberId = member['id']?.toString();
           memberName = member['name']?.toString();
         }
+      }
+
+      final supabaseUserId = Supabase.instance.client.auth.currentUser?.id;
+      final distinctId = isAdmin
+          ? authenticatedUserId ?? supabaseUserId
+          : memberId ?? supabaseUserId;
+      if (distinctId != null && distinctId.isNotEmpty) {
+        await _identifyAuthenticatedUser(
+          distinctId: distinctId,
+          isAdmin: isAdmin,
+          role: role,
+        );
       }
 
       state = state.copyWith(
@@ -176,10 +194,36 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  Future<void> _identifyAuthenticatedUser({
+    required String distinctId,
+    required bool isAdmin,
+    String? role,
+  }) async {
+    try {
+      await Posthog().identify(
+        userId: distinctId,
+        userProperties: {
+          'portal': isAdmin ? 'admin' : 'member',
+          if (role != null && role.isNotEmpty) 'role': role,
+        },
+      );
+    } catch (_) {
+      // Analytics failures must not prevent a successful authentication.
+    }
+  }
+
   Future<void> logout() async {
-    await Supabase.instance.client.auth.signOut();
-    await _storage.clearAll();
-    state = const AuthState(isLoading: false, appToken: null);
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } finally {
+      await _storage.clearAll();
+      try {
+        await Posthog().reset();
+      } catch (_) {
+        // Analytics failures must not prevent a successful logout.
+      }
+      state = const AuthState(isLoading: false, appToken: null);
+    }
   }
 
   Future<void> initAuth() async {

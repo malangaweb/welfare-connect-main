@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/services/live_data_service.dart';
 import '../auth/auth_controller.dart';
@@ -40,6 +41,7 @@ class _DependantsScreenState extends ConsumerState<DependantsScreen> {
     if (result == null) return;
     try {
       await _service.addDependant(memberId: auth.memberId!, dependant: result);
+      Posthog().capture(eventName: 'dependant_added');
       _refresh();
     } catch (e) {
       if (mounted) {
@@ -55,6 +57,7 @@ class _DependantsScreenState extends ConsumerState<DependantsScreen> {
     if (result == null) return;
     try {
       await _service.updateDependant(dependantId: dependant.id, dependant: result);
+      Posthog().capture(eventName: 'dependant_updated');
       _refresh();
     } catch (e) {
       if (mounted) {
@@ -83,6 +86,7 @@ class _DependantsScreenState extends ConsumerState<DependantsScreen> {
     if (confirmed != true) return;
     try {
       await _service.deleteDependant(dependant.id);
+      Posthog().capture(eventName: 'dependant_deleted');
       _refresh();
     } catch (e) {
       if (mounted) {

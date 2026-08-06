@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
@@ -391,6 +392,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           Navigator.of(context).pop();
                           final count = (result['count'] as num?)?.toInt() ?? 0;
                           final total = (result['total'] as num?)?.toDouble() ?? 0;
+                          Posthog().capture(
+                            eventName: 'case_payment_completed',
+                            properties: {
+                              'case_count': count,
+                              'total_amount': total,
+                            },
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
@@ -513,6 +521,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     toMemberNumber: '${selected!['member_number'] ?? ''}',
                   );
                   if (!mounted) return;
+                  Posthog().capture(
+                    eventName: 'wallet_transfer_completed',
+                    properties: {'amount': amount},
+                  );
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -604,6 +616,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                   newPin: newPin,
                 );
                 if (!mounted) return;
+                Posthog().capture(eventName: 'wallet_pin_updated');
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
