@@ -156,10 +156,12 @@ class AuthController extends Notifier<AuthState> {
           ? authenticatedUserId ?? supabaseUserId
           : memberId ?? supabaseUserId;
       if (distinctId != null && distinctId.isNotEmpty) {
-        await _identifyAuthenticatedUser(
-          distinctId: distinctId,
-          isAdmin: isAdmin,
-          role: role,
+        await Posthog().identify(
+          userId: distinctId,
+          userProperties: {
+            'portal': isAdmin ? 'admin' : 'member',
+            if (role != null && role.isNotEmpty) 'role': role,
+          },
         );
       }
 
@@ -172,6 +174,16 @@ class AuthController extends Notifier<AuthState> {
         role: role,
         isLoading: false,
       );
+
+      if (distinctId != null && distinctId.isNotEmpty) {
+        Posthog().capture(
+          eventName: 'user_logged_in',
+          properties: {
+            'portal': isAdmin ? 'admin' : 'member',
+            if (role != null && role.isNotEmpty) 'role': role,
+          },
+        );
+      }
 
       if (appToken != null && appToken.isNotEmpty) {
         await _storage.saveAuthToken(appToken);
@@ -194,34 +206,12 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<void> _identifyAuthenticatedUser({
-    required String distinctId,
-    required bool isAdmin,
-    String? role,
-  }) async {
-    try {
-      await Posthog().identify(
-        userId: distinctId,
-        userProperties: {
-          'portal': isAdmin ? 'admin' : 'member',
-          if (role != null && role.isNotEmpty) 'role': role,
-        },
-      );
-    } catch (_) {
-      // Analytics failures must not prevent a successful authentication.
-    }
-  }
-
   Future<void> logout() async {
     try {
       await Supabase.instance.client.auth.signOut();
     } finally {
       await _storage.clearAll();
-      try {
-        await Posthog().reset();
-      } catch (_) {
-        // Analytics failures must not prevent a successful logout.
-      }
+      await Posthog().reset();
       state = const AuthState(isLoading: false, appToken: null);
     }
   }

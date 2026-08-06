@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, Navigate } from "react-router-dom";
+import * as Sentry from "@sentry/react";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -56,6 +57,8 @@ const PageLoader = () => (
   </div>
 );
 
+const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
+
 const App = () => (
   <ErrorBoundary>
     <AuthProvider>
@@ -63,7 +66,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <Suspense fallback={<PageLoader />}>
-          <Routes>
+          <SentryRoutes>
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/login" element={<Navigate to="/login" replace />} />
@@ -238,7 +241,7 @@ const App = () => (
           />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+        </SentryRoutes>
       </Suspense>
       </TooltipProvider>
     </AuthProvider>
