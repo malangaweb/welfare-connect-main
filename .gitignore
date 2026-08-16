@@ -18,6 +18,9 @@ build/
 vite.config.*.timestamp-*.mjs
 *.tsbuildinfo
 
+# Supabase CLI temp/cache
+supabase/.temp/
+
 # Graphify / codebase-map cache
 graphify-out/
 **/graphify-out/
