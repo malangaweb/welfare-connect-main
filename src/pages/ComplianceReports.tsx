@@ -18,8 +18,8 @@ import { useToast } from '@/components/ui/use-toast'
 import ReportsSubnav from '@/components/reports/ReportsSubnav'
 import { createReportFilename, exportRowsToCSV } from '@/lib/reportExport'
 import { loadJsPdfWithAutotable, loadXlsx } from '@/lib/reportExportLibs'
+import { invokeWithAppToken } from '@/lib/appAuth'
 import {
-  AUDIT_LOG_LIST_COLUMNS,
   MEMBERS_ON_PROBATION_COMPLIANCE_COLUMNS,
   REVERSALS_AUDIT_COLUMNS,
   WRONG_MPESA_PENDING_COUNT_COLUMNS,
@@ -144,18 +144,12 @@ const ComplianceReports = () => {
 
   const fetchAuditLogs = async () => {
     try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select(AUDIT_LOG_LIST_COLUMNS)
-        .order('timestamp', { ascending: false })
-        .limit(100)
-
-      if (error) throw error
-      const rows = (data || []).map((row: Record<string, unknown>) => ({
+      const data = (await invokeWithAppToken<{ logs?: Record<string, unknown>[] }>('api-audit-logs', { limit: 100 })) as any
+      const logs = ((data?.logs || []) as Record<string, unknown>[]).map((row) => ({
         ...row,
         created_at: (row.created_at as string) || (row.timestamp as string),
       })) as AuditEntry[]
-      setAuditLogs(rows)
+      setAuditLogs(logs)
     } catch (error: any) {
       console.error('Error fetching audit logs:', error)
       toast({

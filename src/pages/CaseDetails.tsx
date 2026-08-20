@@ -324,6 +324,7 @@ const fetchCasePageData = async (caseId: string) => {
     mappedCase,
     memberCount: memberCount || 0,
     collectedAmount,
+    contributionPerMember: Number(dbCase.contribution_per_member) || 0,
   };
 };
 
@@ -532,6 +533,7 @@ const CaseDetails = () => {
   const [error, setError] = useState<string | null>(null);
   const [collectedAmount, setCollectedAmount] = useState<number>(0);
   const [memberCount, setMemberCount] = useState<number>(0);
+  const [contributionPerMember, setContributionPerMember] = useState<number>(0);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -561,6 +563,7 @@ const CaseDetails = () => {
         setCaseData(pageData.mappedCase);
         setCollectedAmount(pageData.collectedAmount);
         setMemberCount(pageData.memberCount);
+        setContributionPerMember(pageData.contributionPerMember);
       } catch (error) {
         console.error('Error fetching case:', error);
         setError(error instanceof Error ? error.message : 'Failed to load case details');
@@ -584,6 +587,7 @@ const CaseDetails = () => {
     setCaseData(pageData.mappedCase);
     setCollectedAmount(pageData.collectedAmount);
     setMemberCount(pageData.memberCount);
+    setContributionPerMember(pageData.contributionPerMember);
   };
 
   if (loading) {
@@ -611,6 +615,9 @@ const CaseDetails = () => {
   }
 
   const expectedAmount = caseData ? caseData.expectedAmount : 0;
+  const snapshotMemberCount = contributionPerMember > 0 ? Math.round(expectedAmount / contributionPerMember) : 0;
+  const currentTarget = memberCount * contributionPerMember;
+  const memberGrew = memberCount > snapshotMemberCount;
   const progress = caseData && expectedAmount > 0 ? (collectedAmount / expectedAmount) * 100 : 0;
   const hasCollectedContributions = collectedAmount > WALLET_BALANCE_EPSILON;
   
@@ -1017,6 +1024,11 @@ const CaseDetails = () => {
               <CardTitle>Total Collected</CardTitle>
               <CardDescription>
                 {Math.round(progress)}% of target
+                {memberGrew && (
+                  <span className="ml-2 text-primary font-medium">
+                    (+{memberCount - snapshotMemberCount} member{memberCount - snapshotMemberCount !== 1 ? 's' : ''} joined)
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1031,6 +1043,18 @@ const CaseDetails = () => {
                   <p className="font-medium">KES {expectedAmount.toLocaleString()}</p>
                 </div>
               </div>
+              {memberGrew && (
+                <div className="mt-3 pt-3 border-t space-y-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>At creation ({snapshotMemberCount} members)</span>
+                    <span className="font-medium text-foreground">KES {expectedAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Current ({memberCount} members)</span>
+                    <span className="font-medium text-foreground">KES {currentTarget.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

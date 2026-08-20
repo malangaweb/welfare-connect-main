@@ -75,6 +75,7 @@ const Cases = () => {
   const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [caseToDelete, setCaseToDelete] = useState<{ id: string; caseNumber: string } | null>(null);
+  const [currentMemberCount, setCurrentMemberCount] = useState<number>(0);
 
   useEffect(() => {
     const fetchCases = async () => {
@@ -141,6 +142,13 @@ const Cases = () => {
           return mapDbCaseToCase(dbCase, membersById[dbCase.affected_member_id]);
         });
 
+        // Fetch current active/probation member count for live target computation
+        const { count: activeMemberCount } = await supabase
+          .from('members')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['active', 'probation']);
+
+        setCurrentMemberCount(activeMemberCount || 0);
         setCases(mappedCases);
         
         // Cache for 5 minutes
@@ -403,6 +411,18 @@ const Cases = () => {
                       {formatCurrency(caseItem.actualAmount)} / {formatCurrency(caseItem.expectedAmount)}
                       <div className="text-[10px] md:text-xs text-muted-foreground">(Target)</div>
                     </div>
+                    {currentMemberCount > 0 && caseItem.contributionPerMember > 0 && (() => {
+                      const snapshotMembers = caseItem.expectedAmount / caseItem.contributionPerMember;
+                      const currentTarget = currentMemberCount * caseItem.contributionPerMember;
+                      if (currentMemberCount > snapshotMembers) {
+                        return (
+                          <div className="text-[10px] md:text-xs text-primary mt-0.5">
+                            Current: {formatCurrency(currentTarget)}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </CardFooter>
               </Card>

@@ -22,6 +22,7 @@ const MemberCases = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [filteredCases, setFilteredCases] = useState<any[]>([]);
+  const [currentMemberCount, setCurrentMemberCount] = useState<number>(0);
   const navigate = useNavigate();
 
   const myContributionTransactions = useMemo(() => {
@@ -92,6 +93,14 @@ const MemberCases = () => {
         if (txErr) throw txErr;
 
         setTransactions(transactionsData || []);
+
+        // Fetch current active/probation member count for live target computation
+        const { count: activeMemberCount } = await supabase
+          .from('members')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['active', 'probation']);
+        setCurrentMemberCount(activeMemberCount || 0);
+
         const mappedCases = (casesData || []).map((c: any) => {
           const actualAmount = Math.max(0, Number(c.actual_amount) || 0);
           const expectedAmount = Math.max(0, Number(c.expected_amount) || 0);
@@ -360,6 +369,18 @@ const MemberCases = () => {
                                     KES {(c.expected_amount || 0).toLocaleString()}
                                   </span>
                                 </div>
+                                {currentMemberCount > 0 && c.contribution_per_member > 0 && (() => {
+                                  const snapshotMembers = (c.expected_amount || 0) / c.contribution_per_member;
+                                  const currentTarget = currentMemberCount * c.contribution_per_member;
+                                  if (currentMemberCount > snapshotMembers) {
+                                    return (
+                                      <div className="mt-1 text-xs text-primary">
+                                        Current target: KES {currentTarget.toLocaleString()}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                               
                               <div className="flex items-center justify-between pt-2">
