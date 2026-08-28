@@ -353,26 +353,52 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
   const eligibleRows = rows.filter((row) => row.member_status === 'active' || row.member_status === 'probation');
   const visibleRows = statusFilter === 'all' ? eligibleRows : eligibleRows.filter((row) => row.payment_compliance === statusFilter);
   const countFor = (status: 'paid' | 'partial' | 'unpaid') => eligibleRows.filter((row) => row.payment_compliance === status).length;
-  const exportHeaders = [
-    { key: 'memberNumber', label: 'Member Number' },
-    { key: 'memberName', label: 'Member Name' },
-    { key: 'memberStatus', label: 'Member Status' },
-    { key: 'expectedKes', label: 'Expected (KES)' },
-    { key: 'grossPaidKes', label: 'Gross Paid (KES)' },
-    { key: 'refundedKes', label: 'Refunded (KES)' },
-    { key: 'netPaidKes', label: 'Net Paid (KES)' },
-    { key: 'outstandingKes', label: 'Outstanding Case Balance (KES)' },
-    { key: 'penaltyDueKes', label: 'Reinstatement Penalty Due (KES)' },
-    { key: 'totalDueKes', label: 'Total Due (KES)' },
-    { key: 'paymentStatus', label: 'Payment Status' },
-  ];
-  const exportRows = () => visibleRows.map((row) => ({
-    memberNumber: row.member_number || '', memberName: row.member_name, memberStatus: row.member_status,
-    expectedKes: Number(row.expectedAmount.toFixed(2)), grossPaidKes: Number(row.grossPaid.toFixed(2)),
-    refundedKes: Number(row.refunded.toFixed(2)), netPaidKes: Number(row.netPaid.toFixed(2)),
-    outstandingKes: Number(row.outstanding.toFixed(2)), penaltyDueKes: Number(row.penaltyDue.toFixed(2)),
-    totalDueKes: Number(row.totalDue.toFixed(2)), paymentStatus: row.payment_compliance,
-  }));
+  const isUnpaidExport = statusFilter === 'unpaid';
+  const exportHeaders = isUnpaidExport
+    ? [
+        { key: 'memberNumber', label: 'Member Number' },
+        { key: 'memberName', label: 'Member Name' },
+        { key: 'expectedKes', label: 'Expected (KES)' },
+        { key: 'phoneNumber', label: 'Phone' },
+        { key: 'paymentStatus', label: 'Payment Status' },
+      ]
+    : [
+        { key: 'memberNumber', label: 'Member Number' },
+        { key: 'memberName', label: 'Member Name' },
+        { key: 'memberStatus', label: 'Member Status' },
+        { key: 'expectedKes', label: 'Expected (KES)' },
+        { key: 'grossPaidKes', label: 'Gross Paid (KES)' },
+        { key: 'refundedKes', label: 'Refunded (KES)' },
+        { key: 'netPaidKes', label: 'Net Paid (KES)' },
+        { key: 'outstandingKes', label: 'Outstanding Case Balance (KES)' },
+        { key: 'penaltyDueKes', label: 'Reinstatement Penalty Due (KES)' },
+        { key: 'totalDueKes', label: 'Total Due (KES)' },
+        { key: 'paymentStatus', label: 'Payment Status' },
+      ];
+  const exportRows = () =>
+    visibleRows.map((row) =>
+      isUnpaidExport
+        ? {
+            memberNumber: row.member_number || '',
+            memberName: row.member_name,
+            expectedKes: Number(row.expectedAmount.toFixed(2)),
+            phoneNumber: row.phone_number ? String(row.phone_number) : '',
+            paymentStatus: row.payment_compliance,
+          }
+        : {
+            memberNumber: row.member_number || '',
+            memberName: row.member_name,
+            memberStatus: row.member_status,
+            expectedKes: Number(row.expectedAmount.toFixed(2)),
+            grossPaidKes: Number(row.grossPaid.toFixed(2)),
+            refundedKes: Number(row.refunded.toFixed(2)),
+            netPaidKes: Number(row.netPaid.toFixed(2)),
+            outstandingKes: Number(row.outstanding.toFixed(2)),
+            penaltyDueKes: Number(row.penaltyDue.toFixed(2)),
+            totalDueKes: Number(row.totalDue.toFixed(2)),
+            paymentStatus: row.payment_compliance,
+          },
+    );
   const ensureExportRows = () => {
     if (visibleRows.length > 0) return true;
     toast({ title: 'No data to export', description: `${statusFilter === 'all' ? 'No eligible members' : `No members with status "${statusFilter}"`} for this case.`, variant: 'destructive' });
@@ -380,12 +406,14 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
   };
   const handleExportXlsx = async () => {
     if (!ensureExportRows()) return;
-    await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_payment_status`, 'xlsx'), exportRows(), exportHeaders);
+    const suffix = statusFilter === 'all' ? 'payment_status' : `payment_status_${statusFilter}`;
+    await exportRowsToXLSX(createReportFilename(`case_${caseNumber}_${suffix}`, 'xlsx'), exportRows(), exportHeaders);
     toast({ title: 'Export complete', description: `Exported ${visibleRows.length} member payment statuses.` });
   };
   const handleExportCsv = () => {
     if (!ensureExportRows()) return;
-    exportRowsToCSV(createReportFilename(`case_${caseNumber}_payment_status`, 'csv'), exportRows(), exportHeaders);
+    const suffix = statusFilter === 'all' ? 'payment_status' : `payment_status_${statusFilter}`;
+    exportRowsToCSV(createReportFilename(`case_${caseNumber}_${suffix}`, 'csv'), exportRows(), exportHeaders);
     toast({ title: 'Export complete', description: `Exported ${visibleRows.length} member payment statuses.` });
   };
 
