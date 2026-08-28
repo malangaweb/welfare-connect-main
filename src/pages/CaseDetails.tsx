@@ -77,6 +77,7 @@ type CasePaymentComplianceRow = {
   member_number: string;
   member_name: string;
   member_status: string;
+  phone_number?: string | null;
   expected_amount: number | string | null;
   gross_paid: number | string | null;
   total_refunded: number | string | null;
@@ -394,7 +395,23 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
         setLoading(true);
         const { data, error } = await (supabase as any).rpc('get_case_payment_compliance_rows_for_case', { p_case_id: caseId });
         if (error) throw error;
-        setContributions((data || []) as CasePaymentComplianceRow[]);
+        let rows = (data || []) as CasePaymentComplianceRow[];
+        // Fallback: if RPC hasn't been migrated yet and phone_number is missing, fetch it via members table
+        const needsPhone = rows.length > 0 && rows.every((r) => r.phone_number === undefined);
+        if (needsPhone) {
+          const ids = Array.from(new Set(rows.map((r) => r.member_id).filter(Boolean)));
+          const chunk = 120;
+          const phoneById: Record<string, string> = {};
+          for (let i = 0; i < ids.length; i += chunk) {
+            const slice = ids.slice(i, i + chunk);
+            const { data: memberRows } = await supabase.from('members').select('id, phone_number').in('id', slice);
+            for (const mr of (memberRows || []) as { id: string; phone_number: string | null }[]) {
+              if (mr.id) phoneById[mr.id] = mr.phone_number || '';
+            }
+          }
+          rows = rows.map((r) => ({ ...r, phone_number: phoneById[r.member_id] || null }));
+        }
+        setContributions(rows);
       } catch (error) {
         console.error('Error loading case payment status:', error);
         toast({ title: 'Could not load payment status', description: 'Please refresh and try again.', variant: 'destructive' });
@@ -427,24 +444,87 @@ function ContributionsTab({ caseId, caseNumber, contributionPerMember, refreshKe
           <Button size="sm" variant={statusFilter === 'partial' ? 'default' : 'outline'} onClick={() => setStatusFilter('partial')}>Partial ({countFor('partial')})</Button>
           <Button size="sm" variant={statusFilter === 'unpaid' ? 'default' : 'outline'} onClick={() => setStatusFilter('unpaid')}>Unpaid ({countFor('unpaid')})</Button>
         </div>
-        <Table>
-          <TableHeader><TableRow><TableHead>Member</TableHead><TableHead className="text-right">Expected</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Refunded</TableHead><TableHead className="text-right">Net</TableHead><TableHead className="text-right">Case Due</TableHead><TableHead className="text-right">Penalty Due</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {visibleRows.length === 0 ? <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No members match this payment status</TableCell></TableRow> : visibleRows.map((row) => (
-              <TableRow key={row.member_id}>
-                <TableCell><div><div className="font-medium">{row.member_name}</div><div className="text-xs text-muted-foreground">#{row.member_number || ''} · {row.member_status}</div></div></TableCell>
-                <TableCell className="text-right">KES {row.expectedAmount.toLocaleString()}</TableCell>
-                <TableCell className="text-right">KES {row.grossPaid.toLocaleString()}</TableCell>
-                <TableCell className="text-right">KES {row.refunded.toLocaleString()}</TableCell>
-                <TableCell className="text-right">KES {row.netPaid.toLocaleString()}</TableCell>
-                <TableCell className="text-right">KES {row.outstanding.toLocaleString()}</TableCell>
-                <TableCell className="text-right">{row.penaltyDue > 0 ? `KES ${row.penaltyDue.toLocaleString()}` : '-'}</TableCell>
-                <TableCell className="text-right font-medium">KES {row.totalDue.toLocaleString()}</TableCell>
-                <TableCell>{row.payment_compliance === 'paid' ? <Badge className="bg-green-600">Paid</Badge> : row.payment_compliance === 'partial' ? <Badge variant="outline">Partial</Badge> : <Badge variant="destructive">Unpaid</Badge>}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {(() => {
+          const isUnpaidView = statusFilter === 'unpaid';
+          return (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member</TableHead>
+                  <TableHead className="text-right">Expected</TableHead>
+                  {isUnpaidView ? (
+                    <>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Status</TableHead>
+                    </>
+                  ) : (
+                    <>
+                      <TableHead className="text-right">Paid</TableHead>
+                      <TableHead className="text-right">Refunded</TableHead>
+                      <TableHead className="text-right">Net</TableHead>
+                      <TableHead className="text-right">Case Due</TableHead>
+                      <TableHead className="text-right">Penalty Due</TableHead>
+                      <TableHead className="text-right">Total Due</TableHead>
+                      <TableHead>Status</TableHead>
+                    </>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={isUnpaidView ? 4 : 9} className="text-center text-muted-foreground py-8">
+                      No members match this payment status
+                    </TableCell>
+                  </TableRow>
+                ) : isUnpaidView ? (
+                  visibleRows.map((row) => (
+                    <TableRow key={row.member_id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{row.member_name}</div>
+                          <div className="text-xs text-muted-foreground">#{row.member_number || ''} · {row.member_status}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">KES {row.expectedAmount.toLocaleString()}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.phone_number ? String(row.phone_number) : '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant="destructive">Unpaid</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  visibleRows.map((row) => (
+                    <TableRow key={row.member_id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{row.member_name}</div>
+                          <div className="text-xs text-muted-foreground">#{row.member_number || ''} · {row.member_status}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">KES {row.expectedAmount.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">KES {row.grossPaid.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">KES {row.refunded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">KES {row.netPaid.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">KES {row.outstanding.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{row.penaltyDue > 0 ? `KES ${row.penaltyDue.toLocaleString()}` : '-'}</TableCell>
+                      <TableCell className="text-right font-medium">KES {row.totalDue.toLocaleString()}</TableCell>
+                      <TableCell>
+                        {row.payment_compliance === 'paid' ? (
+                          <Badge className="bg-green-600">Paid</Badge>
+                        ) : row.payment_compliance === 'partial' ? (
+                          <Badge variant="outline">Partial</Badge>
+                        ) : (
+                          <Badge variant="destructive">Unpaid</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          );
+        })()}
       </div>
     </div>
   );
