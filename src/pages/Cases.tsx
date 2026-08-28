@@ -85,6 +85,12 @@ const Cases = () => {
         
         if (cachedCases) {
           setCases(cachedCases);
+          // Still fetch live member count so Target reflects current membership even on cache hit
+          supabase
+            .from('members')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['active', 'probation'])
+            .then(({ count }) => setCurrentMemberCount(count || 0));
           setLoading(false);
           return;
         }
@@ -407,21 +413,24 @@ const Cases = () => {
                   </div>
                   <div className="text-right w-full sm:w-auto">
                     <div className="text-[10px] md:text-xs text-muted-foreground">Collected</div>
-                    <div className="font-medium text-xs md:text-sm">
-                      {formatCurrency(caseItem.actualAmount)} / {formatCurrency(caseItem.expectedAmount)}
-                      <div className="text-[10px] md:text-xs text-muted-foreground">(Target)</div>
-                    </div>
-                    {currentMemberCount > 0 && caseItem.contributionPerMember > 0 && (() => {
-                      const snapshotMembers = caseItem.expectedAmount / caseItem.contributionPerMember;
+                    {(() => {
+                      const snapshotMembers = caseItem.contributionPerMember > 0 ? caseItem.expectedAmount / caseItem.contributionPerMember : 0;
                       const currentTarget = currentMemberCount * caseItem.contributionPerMember;
-                      if (currentMemberCount > snapshotMembers) {
-                        return (
-                          <div className="text-[10px] md:text-xs text-primary mt-0.5">
-                            Current: {formatCurrency(currentTarget)}
+                      const memberGrew = currentMemberCount > 0 && caseItem.contributionPerMember > 0 && currentMemberCount > snapshotMembers;
+                      const effectiveTarget = memberGrew ? currentTarget : caseItem.expectedAmount;
+                      return (
+                        <>
+                          <div className="font-medium text-xs md:text-sm">
+                            {formatCurrency(caseItem.actualAmount)} / {formatCurrency(effectiveTarget)}
+                            <div className="text-[10px] md:text-xs text-muted-foreground">(Target)</div>
                           </div>
-                        );
-                      }
-                      return null;
+                          {memberGrew && (
+                            <div className="text-[10px] md:text-xs text-muted-foreground mt-0.5">
+                              At creation: {formatCurrency(caseItem.expectedAmount)}
+                            </div>
+                          )}
+                        </>
+                      );
                     })()}
                   </div>
                 </CardFooter>

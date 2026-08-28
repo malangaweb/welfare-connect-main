@@ -236,13 +236,17 @@ const MemberCases = () => {
     };
   };
 
-  // Calculate progress for a case — denominator is the expected_amount from DB
+  // Calculate progress for a case — denominator is the current target when membership has grown
   const calculateProgress = (caseItem: any) => {
     const expectedAmount = Number(caseItem.expected_amount) || 0;
-    if (!expectedAmount) return 0;
+    const contributionPerMember = Number(caseItem.contribution_per_member) || 0;
+    const snapshotMembers = contributionPerMember > 0 ? expectedAmount / contributionPerMember : 0;
+    const memberGrew = currentMemberCount > 0 && contributionPerMember > 0 && currentMemberCount > snapshotMembers;
+    const effectiveTarget = memberGrew ? currentMemberCount * contributionPerMember : expectedAmount;
+    if (!effectiveTarget) return 0;
     return Math.max(
       0,
-      Math.min(100, (caseItem.actual_amount / expectedAmount) * 100),
+      Math.min(100, (Number(caseItem.actual_amount || 0) / effectiveTarget) * 100),
     );
   };
 
@@ -361,25 +365,28 @@ const MemberCases = () => {
                                   <span className="text-sm font-medium">{Math.round(calculateProgress(c))}%</span>
                                 </div>
                                 <Progress value={calculateProgress(c)} className="h-2" />
-                                <div className="mt-2 flex justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    KES {(c.actual_amount || 0).toLocaleString()}
-                                  </span>
-                                  <span className="text-muted-foreground">
-                                    KES {(c.expected_amount || 0).toLocaleString()}
-                                  </span>
-                                </div>
-                                {currentMemberCount > 0 && c.contribution_per_member > 0 && (() => {
-                                  const snapshotMembers = (c.expected_amount || 0) / c.contribution_per_member;
+                                {(() => {
+                                  const snapshotMembers = c.contribution_per_member > 0 ? (c.expected_amount || 0) / c.contribution_per_member : 0;
                                   const currentTarget = currentMemberCount * c.contribution_per_member;
-                                  if (currentMemberCount > snapshotMembers) {
-                                    return (
-                                      <div className="mt-1 text-xs text-primary">
-                                        Current target: KES {currentTarget.toLocaleString()}
+                                  const memberGrew = currentMemberCount > 0 && c.contribution_per_member > 0 && currentMemberCount > snapshotMembers;
+                                  const effectiveTarget = memberGrew ? currentTarget : (c.expected_amount || 0);
+                                  return (
+                                    <>
+                                      <div className="mt-2 flex justify-between text-sm">
+                                        <span className="text-muted-foreground">
+                                          KES {(c.actual_amount || 0).toLocaleString()}
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                          KES {effectiveTarget.toLocaleString()}
+                                        </span>
                                       </div>
-                                    );
-                                  }
-                                  return null;
+                                      {memberGrew && (
+                                        <div className="mt-1 text-xs text-muted-foreground">
+                                          At creation: KES {(c.expected_amount || 0).toLocaleString()}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
                                 })()}
                               </div>
                               

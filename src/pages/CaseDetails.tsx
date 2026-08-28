@@ -618,7 +618,8 @@ const CaseDetails = () => {
   const snapshotMemberCount = contributionPerMember > 0 ? Math.round(expectedAmount / contributionPerMember) : 0;
   const currentTarget = memberCount * contributionPerMember;
   const memberGrew = memberCount > snapshotMemberCount;
-  const progress = caseData && expectedAmount > 0 ? (collectedAmount / expectedAmount) * 100 : 0;
+  const effectiveTarget = memberGrew ? currentTarget : expectedAmount;
+  const progress = caseData && effectiveTarget > 0 ? Math.min(100, (collectedAmount / effectiveTarget) * 100) : 0;
   const hasCollectedContributions = collectedAmount > WALLET_BALANCE_EPSILON;
   
   const getCaseTypeColor = (type: CaseType) => {
@@ -1040,7 +1041,7 @@ const CaseDetails = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-muted-foreground">Target</p>
-                  <p className="font-medium">KES {expectedAmount.toLocaleString()}</p>
+                  <p className="font-medium">KES {effectiveTarget.toLocaleString()}</p>
                 </div>
               </div>
               {memberGrew && (
