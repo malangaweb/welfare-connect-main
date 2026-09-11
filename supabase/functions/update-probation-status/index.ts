@@ -29,17 +29,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Update members whose probation period has ended
-    const { data, error } = await supabase.rpc(`
-      UPDATE members
-      SET 
-        status = 'active',
-        updated_at = NOW()
-      WHERE 
-        status = 'probation'
-        AND probation_end_date <= CURRENT_DATE
-      RETURNING id, member_number, name
-    `)
+    // Update members whose probation period has ended via the canonical
+    // DB function (single source of truth, also writes PROBATION_AUTO_UPDATE
+    // to audit_logs). NOTE: supabase-js rpc() takes a function name, not SQL.
+    const { data, error } = await supabase.rpc('auto_update_probation_status')
 
     if (error) {
       console.error('Error updating probation status:', error)
@@ -56,33 +49,16 @@ serve(async (req) => {
       )
     }
 
-    const updatedMembers = data || []
+    // DB function returns INT count (and already writes PROBATION_AUTO_UPDATE
+    // to audit_logs itself), so no second audit insert here — avoids doubles.
+    const updatedCount = typeof data === 'number' ? data : 0
 
-    // Log the updates
-    if (updatedMembers.length > 0) {
-      await supabase.from('audit_logs').insert({
-        action: 'PROBATION_STATUS_AUTO_UPDATE',
-        table_name: 'members',
-        status: 'success',
-        metadata: {
-          updated_count: updatedMembers.length,
-          updated_members: updatedMembers.map((m: any) => ({
-            id: m.id,
-            member_number: m.member_number,
-            name: m.name,
-          })),
-          executed_at: new Date().toISOString(),
-        },
-      })
-    }
-
-    console.log(`Updated ${updatedMembers.length} members from probation to active`)
+    console.log(`Updated ${updatedCount} members from probation to active`)
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        updated_count: updatedMembers.length,
-        updated_members: updatedMembers,
+      JSON.stringify({
+        success: true,
+        updated_count: updatedCount,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
