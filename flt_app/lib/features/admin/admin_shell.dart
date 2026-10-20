@@ -56,6 +56,7 @@ class AdminShell extends ConsumerWidget {
     final expanded = MediaQuery.sizeOf(context).width >= 840;
     final resolvedIndex = currentIndex >= 0 ? currentIndex : null;
 
+    final router = GoRouter.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       appBar: AppBar(
@@ -103,61 +104,69 @@ class AdminShell extends ConsumerWidget {
           ),
         ],
       ),
-      body: Row(children: [
-        if (expanded)
-          NavigationRail(
-            selectedIndex: resolvedIndex,
-            labelType: NavigationRailLabelType.all,
-            onDestinationSelected: (i) => context.go(visibleRoutes[i]),
-            destinations: List.generate(
-                visibleRoutes.length,
-                (i) => NavigationRailDestination(
-                      icon: Icon(visibleIcons[i]),
-                      label: Text(visibleLabels[i]),
-                    )),
-          ),
-        Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1120),
-              child: DataTableTheme(
-                data: DataTableThemeData(
-                  headingRowHeight: 40,
-                  dataRowMinHeight: 36,
-                  dataRowMaxHeight: 48,
-                  horizontalMargin: 12,
-                  columnSpacing: 16,
-                  headingTextStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+      body: PopScope<Object?>(
+        canPop: router.canPop(),
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && !router.canPop()) {
+            router.go('/admin/dashboard');
+          }
+        },
+        child: Row(children: [
+          if (expanded)
+            NavigationRail(
+              selectedIndex: resolvedIndex,
+              labelType: NavigationRailLabelType.all,
+              onDestinationSelected: (i) => context.go(visibleRoutes[i]),
+              destinations: List.generate(
+                  visibleRoutes.length,
+                  (i) => NavigationRailDestination(
+                        icon: Icon(visibleIcons[i]),
+                        label: Text(visibleLabels[i]),
+                      )),
+            ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1120),
+                child: DataTableTheme(
+                  data: DataTableThemeData(
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 36,
+                    dataRowMaxHeight: 48,
+                    horizontalMargin: 12,
+                    columnSpacing: 16,
+                    headingTextStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    dataTextStyle: const TextStyle(fontSize: 13),
                   ),
-                  dataTextStyle: const TextStyle(fontSize: 13),
-                ),
-                child: ListTileTheme(
-                  dense: true,
-                  minVerticalPadding: 4,
-                  horizontalTitleGap: 10,
-                  minLeadingWidth: 32,
-                  child: body,
+                  child: ListTileTheme(
+                    dense: true,
+                    minVerticalPadding: 4,
+                    horizontalTitleGap: 10,
+                    minLeadingWidth: 32,
+                    child: body,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ]),
+        ]),
+      ),
       bottomNavigationBar: expanded
-          ? null
-          : NavigationBar(
-              selectedIndex: resolvedIndex ?? 0,
-              onDestinationSelected: (i) => context.go(visibleRoutes[i]),
-              destinations: List.generate(
-                  visibleRoutes.length,
-                  (i) => NavigationDestination(
-                        icon: Icon(visibleIcons[i]),
-                        label: visibleLabels[i],
-                      )),
-            ),
+            ? null
+            : NavigationBar(
+                selectedIndex: resolvedIndex ?? 0,
+                onDestinationSelected: (i) => context.go(visibleRoutes[i]),
+                destinations: List.generate(
+                    visibleRoutes.length,
+                    (i) => NavigationDestination(
+                          icon: Icon(visibleIcons[i]),
+                          label: visibleLabels[i],
+                        )),
+              ),
     );
   }
 }

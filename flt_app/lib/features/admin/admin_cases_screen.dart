@@ -85,104 +85,6 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
     }
   }
 
-  Future<void> _showFilters() async {
-    var status = _statusFilter;
-    var caseType = _caseTypeFilter;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            8,
-            20,
-            20 + MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Filter cases',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: status,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Status',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'all', child: Text('All')),
-                  DropdownMenuItem(value: 'active', child: Text('Active')),
-                  DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
-                  DropdownMenuItem(
-                      value: 'finalized', child: Text('Finalized')),
-                ],
-                onChanged: (value) =>
-                    setSheetState(() => status = value ?? 'all'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: caseType,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Case Type',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'all', child: Text('All')),
-                  DropdownMenuItem(
-                      value: 'education', child: Text('Education')),
-                  DropdownMenuItem(
-                      value: 'sickness', child: Text('Medical Emergencies')),
-                  DropdownMenuItem(
-                      value: 'death', child: Text('Funeral Contributions')),
-                ],
-                onChanged: (value) =>
-                    setSheetState(() => caseType = value ?? 'all'),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _statusFilter = 'all';
-                        _caseTypeFilter = 'all';
-                      });
-                      Navigator.of(sheetContext).pop();
-                    },
-                    child: const Text('Reset'),
-                  ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: () {
-                      setState(() {
-                        _statusFilter = status;
-                        _caseTypeFilter = caseType;
-                      });
-                      Navigator.of(sheetContext).pop();
-                    },
-                    child: const Text('Apply filters'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final money = NumberFormat.currency(
@@ -249,18 +151,6 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
-              Text(
-                'Case Management',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Total ${rows.length} • Active $activeCount • Inactive $inactiveCount • Finalized $finalizedCount',
-                style: const TextStyle(color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
@@ -289,13 +179,67 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                   Badge(
                     isLabelVisible:
                         _statusFilter != 'all' || _caseTypeFilter != 'all',
-                    child: IconButton.filledTonal(
-                      onPressed: _showFilters,
+                    child: PopupMenuButton<String>(
                       tooltip: 'Filters',
                       icon: const Icon(Icons.tune),
+                      onSelected: (value) {
+                        final parts = value.split(':');
+                        if (parts.length != 2) return;
+                        setState(() {
+                          if (parts.first == 'status') {
+                            _statusFilter = parts.last;
+                          } else if (parts.first == 'type') {
+                            _caseTypeFilter = parts.last;
+                          } else {
+                            _statusFilter = 'all';
+                            _caseTypeFilter = 'all';
+                          }
+                        });
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem<String>(
+                          enabled: false,
+                          child: Text('Status'),
+                        ),
+                        ...[
+                          ('all', 'All'),
+                          ('active', 'Active'),
+                          ('inactive', 'Inactive'),
+                          ('finalized', 'Finalized'),
+                        ].map((option) => CheckedPopupMenuItem<String>(
+                              value: 'status:${option.$1}',
+                              checked: _statusFilter == option.$1,
+                              child: Text(option.$2),
+                            )),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem<String>(
+                          enabled: false,
+                          child: Text('Case type'),
+                        ),
+                        ...[
+                          ('all', 'All types'),
+                          ('education', 'Education'),
+                          ('sickness', 'Medical Emergencies'),
+                          ('death', 'Funeral Contributions'),
+                        ].map((option) => CheckedPopupMenuItem<String>(
+                              value: 'type:${option.$1}',
+                              checked: _caseTypeFilter == option.$1,
+                              child: Text(option.$2),
+                            )),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem<String>(
+                          value: 'reset:all',
+                          child: Text('Reset filters'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total ${rows.length} • Active $activeCount • Inactive $inactiveCount • Finalized $finalizedCount',
+                style: const TextStyle(color: Color(0xFF64748B)),
               ),
               const SizedBox(height: 14),
               if (filtered.isEmpty)
@@ -320,8 +264,11 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                         (r['case_type'] ?? 'unknown').toString().toLowerCase();
 
                     return ListTile(
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -3),
+                      minVerticalPadding: 0,
                       contentPadding: EdgeInsets.zero,
-                      onTap: () => context.go('/admin/cases/${r['id']}'),
+                      onTap: () => context.push('/admin/cases/${r['id']}'),
                       title: Row(
                         children: [
                           Text(
@@ -333,6 +280,10 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                           ),
                           const SizedBox(width: 8),
                           Flexible(child: _caseTypeBadge(caseType)),
+                          if (isFinalized) ...[
+                            const SizedBox(width: 6),
+                            _statusBadge(isFinalized, isActive),
+                          ],
                         ],
                       ),
                       subtitle: Padding(
@@ -342,7 +293,8 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
                           runSpacing: 4,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            _statusBadge(isFinalized, isActive),
+                            if (!isFinalized)
+                              _statusBadge(isFinalized, isActive),
                             if (contribution > 0)
                               Text(
                                 '${money.format(contribution)} per member',
@@ -404,7 +356,7 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
         switch (caseType) {
           'education' => 'EDUCATION',
           'sickness' => 'MEDICAL EMERGENCIES',
-          'death' => 'FUNERAL CONTRIBUTIONS',
+          'death' => 'DEATH',
           _ => caseType.replaceAll('_', ' ').toUpperCase(),
         },
         style: TextStyle(

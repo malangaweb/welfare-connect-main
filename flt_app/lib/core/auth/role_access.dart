@@ -40,7 +40,9 @@ bool canAccessAdminPath(String path, String? role) {
 
   if (path == '/admin/dashboard') return true;
   if (path == '/admin/members' ||
+      path.startsWith('/admin/members/') ||
       path == '/admin/cases' ||
+      path.startsWith('/admin/cases/') ||
       path == '/admin/applications') {
     return memberRoles.contains(normalized);
   }

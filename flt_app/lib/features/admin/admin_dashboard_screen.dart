@@ -80,6 +80,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
           }
 
           final data = snapshot.data!;
+          final recentActivity = data.recentActivity.take(5).toList();
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -94,77 +95,76 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Operations Overview',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: _overviewMetric(
+                            label: 'Members',
+                            value: '${data.totalMembers}',
+                            valueSize: 30,
+                          ),
+                        ),
+                        Expanded(
+                          child: _overviewMetric(
+                            label: 'Active cases',
+                            value: '${data.activeCases}',
+                            valueSize: 24,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${data.totalMembers} members • ${data.activeCases} active cases',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Divider(height: 1, color: Colors.white24),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Contributions total: ${money.format(data.totalContributions)}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Suspense total: ${money.format(data.pendingSuspenseTotal)}',
-                      style: const TextStyle(
-                        color: Color(0xFFBFDBFE),
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _overviewMetric(
+                            label: 'Contributions',
+                            value: money.format(data.totalContributions),
+                            valueSize: 15,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _overviewMetric(
+                            label: 'Suspense total',
+                            value: money.format(data.pendingSuspenseTotal),
+                            valueSize: 15,
+                            valueColor: const Color(0xFFBFDBFE),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 14),
               GridView.count(
-                crossAxisCount: 2,
+                crossAxisCount: 3,
                 shrinkWrap: true,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 4,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.45,
+                childAspectRatio: 2.3,
                 children: [
                   _StatTile(
-                    title: 'Total Members',
-                    value: '${data.totalMembers}',
-                    icon: Icons.group,
-                    tint: const Color(0xFFDBEAFE),
+                    title: 'Active',
+                    value: '${data.activeMembers}',
                   ),
                   _StatTile(
-                    title: 'Active Cases',
-                    value: '${data.activeCases}',
-                    icon: Icons.assignment_turned_in,
-                    tint: const Color(0xFFDCFCE7),
+                    title: 'Inactive',
+                    value: '${data.inactiveMembers}',
                   ),
                   _StatTile(
-                    title: 'Suspense Amount',
-                    value: money.format(data.pendingSuspenseTotal),
-                    icon: Icons.account_balance_wallet,
-                    tint: const Color(0xFFFFEDD5),
-                  ),
-                  _StatTile(
-                    title: 'Suspense Items',
-                    value: '${data.pendingSuspenseCount}',
-                    icon: Icons.pending_actions,
-                    tint: const Color(0xFFF1F5F9),
+                    title: 'Probation',
+                    value: '${data.probationMembers}',
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -180,38 +180,82 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              ...data.recentActivity.map((a) {
-                final createdAt = DateTime.tryParse('${a['created_at']}');
-                final amount = (a['amount'] as num?)?.toDouble() ?? 0;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    side: const BorderSide(color: Color(0xFFE2E8F0)),
-                  ),
-                  child: ListTile(
-                    title: Text(
-                      '${a['description'] ?? a['transaction_type'] ?? 'Activity'}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(createdAt == null
-                        ? '-'
-                        : DateFormat('MMM d, yyyy • h:mm a')
-                            .format(createdAt.toLocal())),
-                    trailing: Text(
-                      money.format(amount.abs()),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                );
-              }),
+              const SizedBox(height: 4),
+              if (recentActivity.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('No recent activity.'),
+                )
+              else
+                ...recentActivity.asMap().entries.map(
+                  (entry) {
+                    final a = entry.value;
+                    final createdAt = DateTime.tryParse('${a['created_at']}');
+                    final amount = (a['amount'] as num?)?.toDouble() ?? 0;
+                    return Column(
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(
+                            '${a['description'] ?? a['transaction_type'] ?? 'Activity'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text([
+                            '${a['status'] ?? '-'}'.toUpperCase(),
+                            createdAt == null
+                                ? '-'
+                                : DateFormat('MMM d, yyyy • h:mm a')
+                                    .format(createdAt.toLocal()),
+                          ].join(' • ')),
+                          trailing: Text(
+                            money.format(amount.abs()),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (entry.key < recentActivity.length - 1)
+                          const Divider(height: 1),
+                      ],
+                    );
+                  },
+                ),
             ],
           );
         },
       ),
+    );
+  }
+
+  Widget _overviewMetric({
+    required String label,
+    required String value,
+    required double valueSize,
+    Color valueColor = Colors.white,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: valueSize,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -219,43 +263,28 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 class _StatTile extends StatelessWidget {
   final String title;
   final String value;
-  final IconData icon;
-  final Color tint;
 
   const _StatTile({
     required this.title,
     required this.value,
-    required this.icon,
-    required this.tint,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: tint,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 18, color: const Color(0xFF1F3556)),
-          ),
           Text(
             value,
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 2),
           Text(
             title,
             style: const TextStyle(
@@ -263,6 +292,7 @@ class _StatTile extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

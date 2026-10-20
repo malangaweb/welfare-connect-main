@@ -44,6 +44,7 @@ class MemberShell extends ConsumerWidget {
       NavigationRailDestination(
           icon: Icon(Icons.payments_outlined), label: Text('Payments')),
     ];
+    final router = GoRouter.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       appBar: AppBar(
@@ -95,33 +96,42 @@ class MemberShell extends ConsumerWidget {
           ),
         ],
       ),
-      body: Row(children: [
-        if (expanded)
-          NavigationRail(
-            selectedIndex: currentIndex < 0 ? null : currentIndex,
-            labelType: NavigationRailLabelType.all,
-            onDestinationSelected: (index) => _goToDestination(context, index),
-            destinations: railDestinations,
-          ),
-        Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1120),
-              child: body,
-            ),
-          ),
-        ),
-      ]),
-      bottomNavigationBar: expanded
-          ? null
-          : NavigationBar(
-              selectedIndex: currentIndex < 0 ? 0 : currentIndex,
-              indicatorColor: currentIndex < 0 ? Colors.transparent : null,
+      body: PopScope<Object?>(
+        canPop: router.canPop(),
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && !router.canPop()) {
+            router.go('/member/dashboard');
+          }
+        },
+        child: Row(children: [
+          if (expanded)
+            NavigationRail(
+              selectedIndex: currentIndex < 0 ? null : currentIndex,
+              labelType: NavigationRailLabelType.all,
               onDestinationSelected: (index) =>
                   _goToDestination(context, index),
-              destinations: destinations,
+              destinations: railDestinations,
             ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1120),
+                child: body,
+              ),
+            ),
+          ),
+        ]),
+      ),
+      bottomNavigationBar: expanded
+            ? null
+            : NavigationBar(
+                selectedIndex: currentIndex < 0 ? 0 : currentIndex,
+                indicatorColor: currentIndex < 0 ? Colors.transparent : null,
+                onDestinationSelected: (index) =>
+                    _goToDestination(context, index),
+                destinations: destinations,
+              ),
     );
   }
 

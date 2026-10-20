@@ -105,6 +105,9 @@ class MemberDependant {
 
 class AdminDashboardSnapshot {
   final int totalMembers;
+  final int activeMembers;
+  final int inactiveMembers;
+  final int probationMembers;
   final int activeCases;
   final double totalContributions;
   final double pendingSuspenseTotal;
@@ -113,12 +116,25 @@ class AdminDashboardSnapshot {
 
   const AdminDashboardSnapshot({
     required this.totalMembers,
+    required this.activeMembers,
+    required this.inactiveMembers,
+    required this.probationMembers,
     required this.activeCases,
     required this.totalContributions,
     required this.pendingSuspenseTotal,
     required this.pendingSuspenseCount,
     required this.recentActivity,
   });
+}
+
+class _AdminMemberCounts {
+  final int total;
+  final int active;
+  final int inactive;
+  final int probation;
+
+  const _AdminMemberCounts(
+      this.total, this.active, this.inactive, this.probation);
 }
 
 class LiveDataService {
@@ -571,7 +587,7 @@ class LiveDataService {
   Future<AdminDashboardSnapshot> fetchAdminDashboard({String? appToken}) async {
     final summaryRows = await _client.rpc('get_dashboard_summary');
     final summary = (summaryRows as List?)?.whereType<Map>().firstOrNull;
-    final members = await _client.from('members').select('id');
+    final memberCounts = await _fetchAdminMemberCounts();
     final activeCases =
         await _client.from('cases').select('id').eq('is_active', true);
     final suspenseRows = await fetchSuspenseQueue(
@@ -591,9 +607,13 @@ class LiveDataService {
         .toList();
     final suspenseTotal = suspenseList.fold<double>(
         0, (sum, row) => sum + _toDouble(row['amount']));
-
     return AdminDashboardSnapshot(
-      totalMembers: (members as List).length,
+      // The summary RPC returns a database aggregate, so it stays accurate
+      // even when the REST API caps a page of member rows at 1,000.
+      totalMembers: _toInt(summary?['total_members']) ?? memberCounts.total,
+      activeMembers: memberCounts.active,
+      inactiveMembers: memberCounts.inactive,
+      probationMembers: memberCounts.probation,
       activeCases: (activeCases as List).length,
       totalContributions: _toDouble(summary?['total_contributions']),
       pendingSuspenseTotal: suspenseTotal,
@@ -603,6 +623,41 @@ class LiveDataService {
           .map((e) => e.cast<String, dynamic>())
           .toList(),
     );
+  }
+
+  Future<_AdminMemberCounts> _fetchAdminMemberCounts() async {
+    const pageSize = 1000;
+    var total = 0;
+    var active = 0;
+    var inactive = 0;
+    var probation = 0;
+
+    for (var offset = 0;; offset += pageSize) {
+      final rows = await _client
+          .from('members')
+          .select('status, is_active')
+          .order('id')
+          .range(offset, offset + pageSize - 1);
+      final page = (rows as List).whereType<Map>();
+      total += page.length;
+      for (final row in page) {
+        final status = '${row['status'] ?? ''}'.toLowerCase();
+        if (status == 'probation' ||
+            status == 'probabation' ||
+            status == 'probabtion') {
+          probation++;
+        } else if (status == 'active' ||
+            (status.isEmpty && row['is_active'] == true)) {
+          active++;
+        } else if (status == 'inactive' ||
+            (status.isEmpty && row['is_active'] == false)) {
+          inactive++;
+        }
+      }
+      if (page.length < pageSize) break;
+    }
+
+    return _AdminMemberCounts(total, active, inactive, probation);
   }
 
   Future<List<MemberDependant>> fetchDependants(String memberId) async {
@@ -693,6 +748,182 @@ class LiveDataService {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchAllAdminMembers({
+    String search = '',
+    String status = 'all',
+    String active = 'all',
+  }) async {
+    const pageSize = 1000;
+    final members = <Map<String, dynamic>>[];
+    for (var page = 1;; page++) {
+      final rows = await fetchAdminMembers(
+        page: page,
+        pageSize: pageSize,
+        search: search,
+        status: status,
+        active: active,
+      );
+      members.addAll(rows);
+      if (rows.length < pageSize) return members;
+    }
+  }
+
+  Future<String> fetchNextMemberNumber() async {
+    const pageSize = 1000;
+    var offset = 0;
+    var largestNumber = 0;
+    while (true) {
+      final rows = await _client
+          .from('members')
+          .select('member_number')
+          .range(offset, offset + pageSize - 1);
+      final page = (rows as List).whereType<Map>();
+      for (final row in page) {
+        final value = '${row['member_number'] ?? ''}'.trim();
+        if (value.startsWith('M')) continue;
+        final number = int.tryParse(value);
+        if (number != null && number > largestNumber) largestNumber = number;
+      }
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+    return '${largestNumber + 1}';
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRegistrationTransactions() async {
+    const pageSize = 1000;
+    final transactions = <Map<String, dynamic>>[];
+    for (var offset = 0;; offset += pageSize) {
+      final rows = await _client
+          .from('transactions')
+          .select(
+              'id, member_id, amount, transaction_type, payment_method, mpesa_reference, reference, description, status, created_at, members(name, member_number)')
+          .ilike('description', 'Registration%')
+          .order('created_at', ascending: false)
+          .range(offset, offset + pageSize - 1);
+      final page = (rows as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+      transactions.addAll(page);
+      if (page.length < pageSize) return transactions;
+    }
+  }
+
+  Future<Map<String, dynamic>> createAdminMember({
+    required String memberNumber,
+    required String name,
+    required String gender,
+    required String dateOfBirth,
+    required String nationalIdNumber,
+    required String residence,
+    required Map<String, dynamic> nextOfKin,
+    required List<Map<String, dynamic>> dependants,
+    required double registrationFee,
+    required bool feePaid,
+    String? phoneNumber,
+    String? emailAddress,
+    String? pin,
+  }) async {
+    final duplicate = await _client.rpc(
+      'member_number_exists',
+      params: {
+        'p_member_number': memberNumber,
+        'p_exclude_member_id': null,
+      },
+    );
+    if (duplicate == true) {
+      throw Exception('Member number $memberNumber already exists.');
+    }
+
+    final result = await _client.rpc(
+      'insert_member',
+      params: {
+        'p_member_number': memberNumber,
+        'p_name': name,
+        'p_gender': gender,
+        'p_date_of_birth': dateOfBirth,
+        'p_national_id_number': nationalIdNumber,
+        'p_phone_number': phoneNumber,
+        'p_email_address': emailAddress,
+        'p_residence': residence,
+        'p_next_of_kin': nextOfKin,
+        'p_wallet_balance': 0,
+        'p_is_active': true,
+        'p_registration_date':
+            DateTime.now().toIso8601String().substring(0, 10),
+        'p_dependants': dependants,
+        'p_pin': pin,
+        'p_registration_fee': registrationFee,
+        'p_fee_paid': feePaid,
+      },
+    );
+    final payload = (result as Map?)?.cast<String, dynamic>() ?? const {};
+    if (payload['success'] != true || payload['id'] == null) {
+      throw Exception(
+          payload['message']?.toString() ?? 'Member registration failed.');
+    }
+    return payload;
+  }
+
+  Future<void> createManagedMemberUser({
+    required String appToken,
+    required String username,
+    required String password,
+    required String name,
+    required String memberId,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {
+        'action': 'create',
+        'username': username,
+        'password': password,
+        'name': name,
+        'role': 'member',
+        'is_active': true,
+        'member_id': memberId,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ??
+          'Could not create login credentials.');
+    }
+  }
+
+  Future<void> sendMemberWelcomeSms({
+    required String appToken,
+    required String memberId,
+    required String memberNumber,
+    required String name,
+    required String phoneNumber,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'send-sms',
+      body: {
+        'recipients': [
+          {
+            'phoneNumber': phoneNumber,
+            'name': name,
+            'memberNumber': memberNumber,
+            'memberId': memberId,
+          }
+        ],
+        'message':
+            'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.',
+        'triggerKey': 'welcome_member',
+        'source': 'member_registration',
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Welcome SMS failed.');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchAdminCases({int limit = 200}) async {
     final rows = await _client
         .from('cases')
@@ -720,6 +951,10 @@ class LiveDataService {
       'is_finalized': false,
       'is_active': true,
     }).eq('id', caseId);
+  }
+
+  Future<void> deleteAdminCase({required String caseId}) async {
+    await _client.from('cases').delete().eq('id', caseId);
   }
 
   Future<List<Map<String, dynamic>>> fetchAdminTransactions({
@@ -1051,17 +1286,63 @@ class LiveDataService {
       throw Exception(
           payload?['error']?.toString() ?? 'Failed to load member details');
     }
-    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+    try {
+      final directMember = await _client
+          .from('members')
+          .select(
+              'id, member_number, name, gender, date_of_birth, national_id_number, phone_number, email_address, residence, next_of_kin, registration_date, probation_end_date, wallet_balance, is_active, status')
+          .eq('id', memberId)
+          .maybeSingle();
+      final dependantRows = await _client
+          .from('dependants')
+          .select(
+              'id, member_id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+          .eq('member_id', memberId)
+          .order('name');
+      final directCases = await _client
+          .from('cases')
+          .select(
+              'id, case_number, case_type, contribution_per_member, expected_amount, actual_amount, start_date, end_date, is_active, is_finalized, created_at')
+          .eq('affected_member_id', memberId)
+          .order('created_at', ascending: false)
+          .limit(30);
+      if (directMember != null) {
+        final apiMember =
+            (payload['member'] as Map?)?.cast<String, dynamic>() ??
+                <String, dynamic>{};
+        payload['member'] = {
+          ...apiMember,
+          ...(directMember as Map).cast<String, dynamic>(),
+        };
+      }
+      payload['dependants'] = (dependantRows as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+      payload['cases'] = (directCases as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      // The app-token endpoint still provides the core summary if direct
+      // detail-table reads are restricted by row-level security.
+    }
+    return payload;
+  }
+
+  Future<void> updateAdminMemberProfile({
+    required String memberId,
+    required Map<String, dynamic> updates,
+  }) async {
+    await _client.from('members').update(updates).eq('id', memberId);
   }
 
   Future<Map<String, dynamic>> fetchAdminCaseDetails({
     required String appToken,
     required String caseId,
   }) async {
-    // Kept for compatibility with existing callers.
-    // ignore: unused_local_variable
-    final unusedAppToken = appToken;
-
     final caseRef = caseId.trim();
     final normalizedCaseNumber =
         caseRef.startsWith('#') ? caseRef.substring(1).trim() : caseRef;
@@ -1089,6 +1370,53 @@ class LiveDataService {
     }
 
     final caseMap = (direct as Map).cast<String, dynamic>();
+    final memberId = caseMap['affected_member_id']?.toString();
+    if (memberId != null && memberId.isNotEmpty) {
+      Map<String, dynamic> affectedMember = {};
+      try {
+        final memberResponse = await _supabaseService.invokeFunction(
+          'api-member-details',
+          body: {'member_id': memberId},
+          headers: {'x-app-token': appToken},
+        );
+        if (memberResponse.status >= 200 && memberResponse.status < 300) {
+          final data = (memberResponse.data as Map?)?.cast<String, dynamic>();
+          affectedMember =
+              (data?['member'] as Map?)?.cast<String, dynamic>() ?? {};
+        }
+      } catch (_) {
+        // Try the authenticated database client below as a fallback.
+      }
+      try {
+        final member = await _client
+            .from('members')
+            .select('id, name, member_number, gender')
+            .eq('id', memberId)
+            .maybeSingle();
+        if (member != null) {
+          affectedMember = {
+            ...affectedMember,
+            ...(member as Map).cast<String, dynamic>(),
+          };
+        }
+      } catch (_) {
+        // The service role response still supplies the member name and number.
+      }
+      caseMap['affected_member'] = affectedMember;
+    }
+    final dependantId = caseMap['dependant_id']?.toString();
+    if (dependantId != null && dependantId.isNotEmpty) {
+      try {
+        final dependant = await _client
+            .from('dependants')
+            .select('id, name, gender, relationship')
+            .eq('id', dependantId)
+            .maybeSingle();
+        caseMap['affected_dependant'] = dependant;
+      } catch (_) {
+        // Dependant details are optional; the member profile remains available.
+      }
+    }
     final txRows = await _client
         .from('transactions')
         .select('id, member_id, amount, transaction_type, status, created_at')
@@ -1107,7 +1435,6 @@ class LiveDataService {
       final s = (t['status'] ?? '').toString();
       return s.isEmpty || s == 'completed';
     }).toList();
-
     final contributions = txList
         .where((t) => (t['transaction_type'] == 'contribution' ||
             t['transaction_type'] == 'case_wallet_deduction' ||
@@ -1124,6 +1451,35 @@ class LiveDataService {
       'get_case_payment_compliance_rows_for_case',
       params: {'p_case_id': caseMap['id']},
     );
+    final complianceRows = (paymentStatusRows as List)
+        .whereType<Map>()
+        .map((row) => row.cast<String, dynamic>())
+        .toList();
+    final memberIds = complianceRows
+        .map((row) => row['member_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    final phoneByMemberId = <String, String>{};
+    for (var start = 0; start < memberIds.length; start += 100) {
+      final rows = await _client
+          .from('members')
+          .select('id, phone_number')
+          .inFilter('id', memberIds.skip(start).take(100).toList());
+      for (final row in (rows as List).whereType<Map>()) {
+        final member = row.cast<String, dynamic>();
+        phoneByMemberId['${member['id']}'] = '${member['phone_number'] ?? ''}';
+      }
+    }
+    final paymentRowsWithPhones = complianceRows.map((row) {
+      final phone = row['phone_number']?.toString().trim();
+      return {
+        ...row,
+        'phone_number': phone?.isNotEmpty == true
+            ? phone
+            : phoneByMemberId['${row['member_id']}'],
+      };
+    }).toList();
 
     return {
       'case': {
@@ -1132,10 +1488,7 @@ class LiveDataService {
         'paid': null,
       },
       'transactions': txList,
-      'payment_status': (paymentStatusRows as List)
-          .whereType<Map>()
-          .map((row) => row.cast<String, dynamic>())
-          .toList(),
+      'payment_status': paymentRowsWithPhones,
     };
   }
 
@@ -1279,6 +1632,12 @@ class LiveDataService {
     if (value == null) return 0;
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString()) ?? 0;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value');
   }
 
   Future<List<Map<String, dynamic>>> fetchReportContributions(

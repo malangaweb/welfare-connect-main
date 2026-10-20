@@ -59,6 +59,28 @@ class _AdminTransactionsScreenState
     await _future;
   }
 
+  void _toggleSelectAll(List<Map<String, dynamic>> rows) {
+    final ids = rows
+        .where((tx) => '${tx['status'] ?? ''}'.toLowerCase() != 'reversed')
+        .map((tx) => '${tx['id'] ?? ''}')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    setState(() {
+      if (ids.isNotEmpty && ids.every(_selected.contains)) {
+        _selected.removeAll(ids);
+      } else {
+        _selected.addAll(ids);
+      }
+    });
+  }
+
+  void _toggleTransactionSelection(String id) {
+    if (id.isEmpty) return;
+    setState(() {
+      if (!_selected.add(id)) _selected.remove(id);
+    });
+  }
+
   Future<void> _reverseTransaction(Map<String, dynamic> tx) async {
     final reasonCtrl = TextEditingController();
     final txId = (tx['id'] ?? '').toString();
@@ -240,11 +262,6 @@ class _AdminTransactionsScreenState
       route: '/admin/transactions',
       actions: [
         IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
-        IconButton(
-          onPressed: _selected.isEmpty || _bulkBusy ? null : _bulkReverse,
-          icon: const Icon(Icons.rule_folder),
-          tooltip: 'Bulk Reverse',
-        ),
       ],
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,
@@ -266,124 +283,157 @@ class _AdminTransactionsScreenState
             if (_statusFilter != 'all' && status != _statusFilter) return false;
             return true;
           }).toList();
+          final selectableRows = filteredRows
+              .where(
+                  (tx) => '${tx['status'] ?? ''}'.toLowerCase() != 'reversed')
+              .toList();
+          final allSelected = selectableRows.isNotEmpty &&
+              selectableRows
+                  .every((tx) => _selected.contains('${tx['id'] ?? ''}'));
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
             children: [
-              Text(
-                'Transaction Ledger',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Admin / Transactions',
-                style: TextStyle(
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Page $_page',
-                style: const TextStyle(color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Search description, type, status, method',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _search.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchCtrl.clear();
-                            setState(() {
-                              _search = '';
-                              _page = 1;
-                              _future = _loadPage();
-                            });
-                          },
-                        ),
-                ),
-                onSubmitted: (value) {
-                  setState(() {
-                    _search = value.trim();
-                    _page = 1;
-                    _future = _loadPage();
-                  });
-                },
-              ),
-              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _typeFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Type Filter',
-                        isDense: true,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Search description, type, status, method',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _search.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {
+                                    _search = '';
+                                    _page = 1;
+                                    _selected.clear();
+                                    _future = _loadPage();
+                                  });
+                                },
+                              ),
                       ),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'all', child: Text('All Types')),
-                        DropdownMenuItem(
-                            value: 'contribution', child: Text('Contribution')),
-                        DropdownMenuItem(
-                            value: 'contribution_refund',
-                            child: Text('Contribution Refund')),
-                        DropdownMenuItem(
-                            value: 'disbursement', child: Text('Disbursement')),
-                        DropdownMenuItem(
-                            value: 'registration',
-                            child: Text('Registration Fee')),
-                        DropdownMenuItem(
-                            value: 'renewal', child: Text('Renewal Fee')),
-                        DropdownMenuItem(
-                            value: 'penalty', child: Text('Penalty')),
-                        DropdownMenuItem(
-                            value: 'arrears', child: Text('Arrears')),
-                        DropdownMenuItem(
-                            value: 'wallet_funding',
-                            child: Text('Wallet Funding')),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => _typeFilter = value);
+                      onSubmitted: (value) {
+                        setState(() {
+                          _search = value.trim();
+                          _page = 1;
+                          _selected.clear();
+                          _future = _loadPage();
+                        });
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _statusFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Status Filter',
-                        isDense: true,
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'all', child: Text('All Status')),
-                        DropdownMenuItem(
-                            value: 'completed', child: Text('Completed')),
-                        DropdownMenuItem(
-                            value: 'pending', child: Text('Pending')),
-                        DropdownMenuItem(
-                            value: 'reversed', child: Text('Reversed')),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => _statusFilter = value);
+                  const SizedBox(width: 6),
+                  Badge(
+                    isLabelVisible:
+                        _typeFilter != 'all' || _statusFilter != 'all',
+                    child: PopupMenuButton<String>(
+                      tooltip: 'Transaction filters',
+                      icon: const Icon(Icons.tune),
+                      onSelected: (value) {
+                        final parts = value.split(':');
+                        setState(() {
+                          if (parts.first == 'type' && parts.length == 2) {
+                            _typeFilter = parts[1];
+                          } else if (parts.first == 'status' &&
+                              parts.length == 2) {
+                            _statusFilter = parts[1];
+                          } else if (value == 'reset') {
+                            _typeFilter = 'all';
+                            _statusFilter = 'all';
+                          }
+                          _selected.clear();
+                        });
                       },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem<String>(
+                            enabled: false, child: Text('Type')),
+                        ...[
+                          ('all', 'All Types'),
+                          ('contribution', 'Contribution'),
+                          ('contribution_refund', 'Contribution Refund'),
+                          ('disbursement', 'Disbursement'),
+                          ('registration', 'Registration Fee'),
+                          ('renewal', 'Renewal Fee'),
+                          ('penalty', 'Penalty'),
+                          ('arrears', 'Arrears'),
+                          ('wallet_funding', 'Wallet Funding'),
+                        ].map((option) => CheckedPopupMenuItem<String>(
+                              value: 'type:${option.$1}',
+                              checked: _typeFilter == option.$1,
+                              child: Text(option.$2),
+                            )),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem<String>(
+                            enabled: false, child: Text('Status')),
+                        ...[
+                          ('all', 'All Status'),
+                          ('completed', 'Completed'),
+                          ('pending', 'Pending'),
+                          ('reversed', 'Reversed'),
+                        ].map((option) => CheckedPopupMenuItem<String>(
+                              value: 'status:${option.$1}',
+                              checked: _statusFilter == option.$1,
+                              child: Text(option.$2),
+                            )),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem<String>(
+                            value: 'reset', child: Text('Reset filters')),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
+              InkWell(
+                onTap: selectableRows.isEmpty
+                    ? null
+                    : () => _toggleSelectAll(selectableRows),
+                child: Text(
+                  allSelected ? 'Deselect all' : 'Select all',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (_selected.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('${_selected.length} selected')),
+                      InkWell(
+                        onTap: () => setState(_selected.clear),
+                        child: Text(
+                          'Clear',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      InkWell(
+                        onTap: _bulkBusy ? null : _bulkReverse,
+                        child: Text(
+                          'Reverse',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 6),
               if (filteredRows.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 10),
@@ -392,145 +442,103 @@ class _AdminTransactionsScreenState
                     style: TextStyle(color: Color(0xFF64748B)),
                   ),
                 ),
-              ...filteredRows.map((r) {
-                final date = DateTime.tryParse('${r['created_at']}');
-                final amount = (r['amount'] as num?)?.toDouble() ??
-                    double.tryParse('${r['amount']}') ??
-                    0;
-                final reversed = '${r['status']}'.toLowerCase() == 'reversed';
-                final txId = '${r['id'] ?? ''}';
-                return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Checkbox(
-                        value: _selected.contains(txId),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        onChanged: reversed
+              if (filteredRows.isNotEmpty)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    showCheckboxColumn: false,
+                    headingRowHeight: 44,
+                    dataRowMinHeight: 40,
+                    dataRowMaxHeight: 44,
+                    columns: const [
+                      DataColumn(label: Text('Transaction')),
+                      DataColumn(label: Text('Amount'), numeric: true),
+                      DataColumn(label: Text('Method')),
+                      DataColumn(label: Text('Status')),
+                      DataColumn(label: Text('Actions')),
+                    ],
+                    rows: filteredRows.map((tx) {
+                      final date = DateTime.tryParse('${tx['created_at']}');
+                      final amount = (tx['amount'] as num?)?.toDouble() ??
+                          double.tryParse('${tx['amount']}') ??
+                          0;
+                      final status = '${tx['status'] ?? '-'}';
+                      final reversed = status.toLowerCase() == 'reversed';
+                      final id = '${tx['id'] ?? ''}';
+                      return DataRow(
+                        selected: _selected.contains(id),
+                        onSelectChanged: reversed
                             ? null
-                            : (v) {
-                                setState(() {
-                                  if (v == true) {
-                                    _selected.add(txId);
-                                  } else {
-                                    _selected.remove(txId);
-                                  }
-                                });
-                              },
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${r['description'] ?? r['transaction_type'] ?? '-'}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    money.format(amount.abs()),
-                                    textAlign: TextAlign.end,
+                            : (_) => _toggleTransactionSelection(id),
+                        cells: [
+                          DataCell(
+                            SizedBox(
+                              width: 250,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${tx['description'] ?? tx['transaction_type'] ?? '-'}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.w700),
+                                        fontWeight: FontWeight.w600),
                                   ),
+                                  Text(
+                                    '${tx['transaction_type'] ?? '-'} • ${date == null ? '-' : DateFormat('MMM d, yyyy • h:mm a').format(date.toLocal())}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          DataCell(Text(money.format(amount.abs()))),
+                          DataCell(Text('${tx['payment_method'] ?? '-'}')),
+                          DataCell(Text(status.toUpperCase())),
+                          DataCell(
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Edit transaction',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () => _editTransaction(tx),
+                                  icon: const Icon(Icons.edit_outlined),
                                 ),
+                                if (!reversed)
+                                  IconButton(
+                                    tooltip: 'Reverse transaction',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () => _reverseTransaction(tx),
+                                    icon: const Icon(Icons.undo),
+                                  ),
                               ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${r['transaction_type'] ?? '-'} • ${date == null ? '-' : DateFormat('MMM d, yyyy • h:mm a').format(date.toLocal())}',
-                              style: const TextStyle(color: Color(0xFF64748B)),
-                            ),
-                            const SizedBox(height: 3),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(999),
-                                color: reversed
-                                    ? const Color(0xFFFEE2E2)
-                                    : const Color(0xFFDCFCE7),
-                              ),
-                              child: Text(
-                                '${r['status'] ?? '-'}'.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: reversed
-                                      ? const Color(0xFFB91C1C)
-                                      : const Color(0xFF166534),
-                                ),
-                              ),
-                            ),
-                            if (!reversed) ...[
-                              const SizedBox(height: 0),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: Wrap(
-                                  spacing: 4,
-                                  children: [
-                                    TextButton(
-                                      onPressed: () => _editTransaction(r),
-                                      style: TextButton.styleFrom(
-                                        minimumSize: const Size(0, 30),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        visualDensity: VisualDensity.compact,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      child: const Text('Edit'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => _reverseTransaction(r),
-                                      style: TextButton.styleFrom(
-                                        minimumSize: const Size(0, 30),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        visualDensity: VisualDensity.compact,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      child: const Text('Revert'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
+                          ),
+                        ],
+                      );
+                    }).toList(),
                   ),
-                );
-              }),
+                ),
               const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  Expanded(
+                    child: Text(
+                      '${filteredRows.length} shown • Page $_page',
+                      style: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  ),
                   OutlinedButton(
                     onPressed: _page > 1
                         ? () {
                             setState(() {
                               _page -= 1;
+                              _selected.clear();
                               _future = _loadPage();
                             });
                           }
@@ -543,6 +551,7 @@ class _AdminTransactionsScreenState
                         ? () {
                             setState(() {
                               _page += 1;
+                              _selected.clear();
                               _future = _loadPage();
                             });
                           }

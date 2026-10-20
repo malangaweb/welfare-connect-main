@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/admin/admin_dashboard_screen.dart';
 import '../../features/admin/admin_members_screen.dart';
+import '../../features/admin/admin_add_member_screen.dart';
 import '../../features/admin/admin_cases_screen.dart';
 import '../../features/admin/admin_transactions_screen.dart';
 import '../../features/admin/admin_settings_screen.dart';
@@ -76,6 +77,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/admin/members',
           builder: (context, state) => const AdminMembersScreen()),
+      GoRoute(
+          path: '/admin/members/new',
+          builder: (context, state) => const AdminAddMemberScreen()),
       GoRoute(
           path: '/admin/cases',
           builder: (context, state) => const AdminCasesScreen()),
