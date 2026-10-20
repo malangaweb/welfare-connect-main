@@ -1104,7 +1104,7 @@ class LiveDataService {
           }
         ],
         'message':
-            'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.',
+            'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}. Member portal: {portalLink}',
         'triggerKey': 'welcome_member',
         'source': 'member_registration',
       },

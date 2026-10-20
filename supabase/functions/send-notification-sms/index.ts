@@ -11,6 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsFor } from "../_shared/cors.ts";
 import { isSmsFailure, sendSmsMessage, type SmsSendResult } from "../_shared/sms.ts";
+import { ensureMemberPortalLink, MEMBER_PORTAL_LINK } from "../_shared/member_portal.ts";
 
 const SWEPT_CATEGORIES = [
   "registration_payment_received",
@@ -113,12 +114,13 @@ serve(async (req) => {
           ? await supabase.from("members").select("name, member_number, phone_number").eq("id", n.member_id).maybeSingle()
           : { data: null };
         const { data: template } = await supabase.from("sms_templates").select("raw_template").eq("trigger_key", "registration_activated").maybeSingle();
-        const activationTemplate = String(template?.raw_template || "Malanga Welfare: Congratulations {name}. Your membership is active. Member number: {memberNumber}. Log in at https://malangawelfare.org/login?role=member using member number and your registered phone number.");
+        const activationTemplate = String(template?.raw_template || `Malanga Welfare: Congratulations {name}. Your membership is active. Member number: {memberNumber}. Log in at ${MEMBER_PORTAL_LINK} using member number and your registered phone number.`);
         message = activationTemplate
           .replaceAll("{name}", String(member?.name || "member"))
           .replaceAll("{memberNumber}", String(member?.member_number || ""))
           .replaceAll("{phoneNumber}", String(member?.phone_number || phone))
-          .replaceAll("{portalLink}", "https://malangawelfare.org/login?role=member");
+          .replaceAll("{portalLink}", MEMBER_PORTAL_LINK);
+        message = ensureMemberPortalLink(message);
       }
       if (n.category === "whatsapp_group_invite" && n.data?.use_current_whatsapp_group_link === true) {
         const { data: settings } = await supabase.from("settings").select("whatsapp_group_link").limit(1).maybeSingle();

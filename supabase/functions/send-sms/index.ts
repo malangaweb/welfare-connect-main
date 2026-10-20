@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsFor } from "../_shared/cors.ts";
 import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts"
 import { isSmsFailure, isSmsQuotaFailure, isValidSmsPhoneNumber, sendSmsMessage, summarizeSmsFailure } from "../_shared/sms.ts"
+import { ensureMemberPortalLink, MEMBER_PORTAL_LINK } from "../_shared/member_portal.ts";
 
 type RecipientData = {
   phoneNumber: string;
@@ -52,6 +53,7 @@ async function buildRecipientContext(
     deadline: recipient.deadline || '',
     ref: recipient.ref || '',
     senderName: recipient.senderName || '',
+    portalLink: MEMBER_PORTAL_LINK,
     unpaid: recipient.unpaid || '',
     due: recipient.due || '',
     balance: '',
@@ -271,7 +273,10 @@ serve(async (req) => {
         skipped.push({ phoneNumber: recipient.phoneNumber, reason: built.skipReason || 'Skipped', name: recipient.name });
         return;
       }
-      const personalMessage = resolveTags(effectiveMessage, built.context);
+      let personalMessage = resolveTags(effectiveMessage, built.context);
+      if (triggerKey === 'welcome_member' || triggerKey === 'registration_activated') {
+        personalMessage = ensureMemberPortalLink(personalMessage);
+      }
       const results = await sendSmsMessage([recipient.phoneNumber], personalMessage);
       if (!results[0]) {
         skipped.push({ phoneNumber: recipient.phoneNumber, reason: 'Provider returned no result', name: recipient.name });

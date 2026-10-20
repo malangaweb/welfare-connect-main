@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { parseBillReference } from './reference-parser.ts'
 import { isSmsFailure, sendSmsMessage } from "../_shared/sms.ts"
+import { ensureMemberPortalLink, MEMBER_PORTAL_LINK } from "../_shared/member_portal.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -335,13 +336,14 @@ serve(async (req: Request): Promise<Response> => {
           .replaceAll('{name}', String(activatedMember?.name || membershipApplication.full_name))
           .replaceAll('{memberNumber}', String(activatedMember?.member_number || activationResult.member_number))
           .replaceAll('{phoneNumber}', String(activatedMember?.phone_number || membershipApplication.phone_number))
-          .replaceAll('{portalLink}', 'https://malangawelfare.org/login?role=member')
+          .replaceAll('{portalLink}', MEMBER_PORTAL_LINK)
+        const linkedActivationMessage = ensureMemberPortalLink(activationMessage)
 
         const { data: activationNotification, error: activationNotificationError } = await supabase.from('notifications').insert({
           member_id: activationResult.id,
           role: 'member',
           title: 'Membership Activated',
-          message: activationMessage,
+          message: linkedActivationMessage,
           category: 'registration_activated',
           event_key: `application:${membershipApplication.id}:registration_activated`,
           data: {
@@ -372,11 +374,11 @@ serve(async (req: Request): Promise<Response> => {
             .eq('trigger_key', 'registration_activated')
             .maybeSingle()
           const rawTemplate = String((template as { raw_template?: unknown } | null)?.raw_template || '').trim()
-          const message = (rawTemplate || activationMessage)
+          const message = ensureMemberPortalLink((rawTemplate || activationMessage)
             .replaceAll('{name}', String(activatedMember?.name || membershipApplication.full_name))
             .replaceAll('{memberNumber}', String(activatedMember?.member_number || activationResult.member_number))
             .replaceAll('{phoneNumber}', String(activatedMember?.phone_number || membershipApplication.phone_number))
-            .replaceAll('{portalLink}', 'https://malangawelfare.org/login?role=member')
+            .replaceAll('{portalLink}', MEMBER_PORTAL_LINK))
           const results = await sendSmsMessage([activatedMember?.phone_number || membershipApplication.phone_number], message)
           const activationSmsSent = results.length > 0 && results.every((result) => !isSmsFailure(result))
           const activationNotificationId = (activationNotification as { data?: { id?: string } | null } | null)?.data?.id

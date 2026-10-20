@@ -145,7 +145,7 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'member',
     message: ({ memberName, memberNumber }) =>
       `Malanga Welfare: Karibu ${memberName || 'mwanachama'}. Nambari yako ya mwanachama ni ${memberNumber || 'N/A'}.`,
-    rawTemplate: 'Malanga Welfare: Karibu {name}. Nambari yako ya mwanachama ni {memberNumber}.',
+    rawTemplate: 'Malanga Welfare: Karibu {name}. Nambari yako ya mwanachama ni {memberNumber}. Member portal: {portalLink}',
   },
   {
     key: 'case_opened',

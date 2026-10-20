@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 import { isSmsFailure, sendSmsMessage, summarizeSmsFailure } from "../_shared/sms.ts";
+import { ensureMemberPortalLink, MEMBER_PORTAL_LINK } from "../_shared/member_portal.ts";
 
 const originHeaders = (origin: string | null) => buildCorsHeaders(origin);
 const normalizePhone = (value: unknown) => {
@@ -32,7 +33,10 @@ async function notifyApplicant(
       .eq("trigger_key", triggerKey)
       .maybeSingle();
     const rawTemplate = String((template as { raw_template?: unknown } | null)?.raw_template || "").trim();
-    message = renderTemplate(rawTemplate || fallback, values);
+    const rendered = renderTemplate(rawTemplate || fallback, values);
+    message = triggerKey === "registration_activated"
+      ? ensureMemberPortalLink(rendered)
+      : rendered;
     const results = await sendSmsMessage([phone], message);
     const failed = results.some(isSmsFailure);
     await supabase.from("audit_logs").insert({
@@ -183,11 +187,11 @@ serve(async (req) => {
 
       const { data: activatedMember } = await supabase.from("members").select("id, name, member_number, phone_number, probation_end_date").eq("id", activationResult.id).single();
       const { data: activationTemplate } = await supabase.from("sms_templates").select("raw_template").eq("trigger_key", "registration_activated").maybeSingle();
-      const activationMessage = String(activationTemplate?.raw_template || "Malanga Welfare: Congratulations {name}. Your membership is now active. Your member number is {memberNumber}.")
+      const activationMessage = ensureMemberPortalLink(String(activationTemplate?.raw_template || "Malanga Welfare: Congratulations {name}. Your membership is now active. Your member number is {memberNumber}.")
         .replaceAll("{name}", String(activatedMember?.name || application.full_name))
         .replaceAll("{memberNumber}", String(activatedMember?.member_number || activationResult.member_number))
         .replaceAll("{phoneNumber}", String(activatedMember?.phone_number || application.phone_number))
-        .replaceAll("{portalLink}", "https://malangawelfare.org/login?role=member");
+        .replaceAll("{portalLink}", MEMBER_PORTAL_LINK));
       const activationNotification = await supabase.from("notifications").insert({ member_id: activationResult.id, role: "member", title: "Membership Activated", message: activationMessage, category: "registration_activated", event_key: `application:${applicationId}:registration_activated`, data: { source: "suspense_registration_match", application_id: applicationId, suspense_id: suspenseId, sms_delivery_mode: "immediate" } }).select("id").single();
       const { data: whatsappSettings } = await supabase.from("settings").select("whatsapp_group_link").limit(1).maybeSingle();
       const whatsappLink = String(whatsappSettings?.whatsapp_group_link || Deno.env.get("WHATSAPP_GROUP_LINK") || "").trim();
@@ -365,15 +369,15 @@ serve(async (req) => {
       if (error) throw error;
       const { data: activatedMember } = await supabase.from("members").select("probation_end_date, phone_number").eq("id", memberResult.id).maybeSingle();
       const { data: activationTemplate } = await supabase.from("sms_templates").select("raw_template").eq("trigger_key", "registration_activated").maybeSingle();
-      const activationMessage = renderTemplate(
+      const activationMessage = ensureMemberPortalLink(renderTemplate(
         String(activationTemplate?.raw_template || "Malanga Welfare: Congratulations {name}. Your membership is now active. Your member number is {memberNumber}."),
         { name: application.full_name, memberNumber: memberResult.member_number },
-      );
+      ));
       const activationSms = await notifyApplicant(supabase, String(activatedMember?.phone_number || application.phone_number), "registration_activated", activationMessage, {
         name: application.full_name,
         memberNumber: memberResult.member_number,
         phoneNumber: activatedMember?.phone_number || application.phone_number,
-        portalLink: "https://malangawelfare.org/login?role=member",
+        portalLink: MEMBER_PORTAL_LINK,
       });
       const { error: activationNotificationError } = await supabase.from("notifications").insert({
         member_id: memberResult.id,
