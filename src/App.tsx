@@ -3,7 +3,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import * as Sentry from "@sentry/react";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { identifyCurrentUser, trackPageview } from "@/lib/posthog";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -25,10 +24,13 @@ import {
 // Each page only downloads when the user navigates to it.
 const Login = lazy(() => import("./pages/Login"));
 const Index = lazy(() => import("./pages/Index"));
+const AppDownload = lazy(() => import("./pages/AppDownload"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Members = lazy(() => import("./pages/Members"));
 const MemberDetails = lazy(() => import("./pages/MemberDetails"));
 const NewMember = lazy(() => import("./pages/NewMember"));
+const MembershipApplication = lazy(() => import("./pages/MembershipApplication"));
+const Applications = lazy(() => import("./pages/Applications"));
 const Cases = lazy(() => import("./pages/Cases"));
 const CaseDetails = lazy(() => import("./pages/CaseDetails"));
 const NewCase = lazy(() => import("./pages/NewCase"));
@@ -58,8 +60,6 @@ const PageLoader = () => (
   </div>
 );
 
-const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
-
 const PosthogRouteTracker = () => {
   const location = useLocation();
 
@@ -82,10 +82,14 @@ const App = () => (
         <Sonner />
         <PosthogRouteTracker />
         <Suspense fallback={<PageLoader />}>
-          <SentryRoutes>
+          <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/download" element={<AppDownload />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+          <Route path="/apply" element={<MembershipApplication />} />
+          <Route path="/signup" element={<MembershipApplication />} />
+          <Route path="/register" element={<MembershipApplication />} />
           <Route
             path="/dashboard"
             element={
@@ -115,6 +119,14 @@ const App = () => (
             element={
               <ProtectedRoute allowedRoles={MEMBER_MANAGEMENT_ROLES}>
                 <NewMember />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/applications"
+            element={
+              <ProtectedRoute allowedRoles={MEMBER_MANAGEMENT_ROLES}>
+                <Applications />
               </ProtectedRoute>
             }
           />
@@ -257,7 +269,7 @@ const App = () => (
           />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<Navigate to="/login" replace />} />
-        </SentryRoutes>
+        </Routes>
       </Suspense>
       </TooltipProvider>
     </AuthProvider>

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_service.dart';
+import 'local_cache_service.dart';
 
 class MemberWalletSnapshot {
   final double walletBalance;
@@ -22,6 +23,38 @@ class MemberWalletSnapshot {
     required this.penaltyTotal,
     required this.unpaidCasesCount,
   });
+
+  Map<String, dynamic> toMap() => {
+        'wallet_balance': walletBalance,
+        'total_credit': totalCredit,
+        'total_debit': totalDebit,
+        'recent_transactions': recentTransactions,
+        'is_defaulting': isDefaulting,
+        'arrears_total': arrearsTotal,
+        'penalty_total': penaltyTotal,
+        'unpaid_cases_count': unpaidCasesCount,
+      };
+
+  factory MemberWalletSnapshot.fromMap(Map<String, dynamic> map) {
+    return MemberWalletSnapshot(
+      walletBalance: _number(map['wallet_balance']),
+      totalCredit: _number(map['total_credit']),
+      totalDebit: _number(map['total_debit']),
+      recentTransactions: (map['recent_transactions'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+      isDefaulting: map['is_defaulting'] == true,
+      arrearsTotal: _number(map['arrears_total']),
+      penaltyTotal: _number(map['penalty_total']),
+      unpaidCasesCount: (map['unpaid_cases_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
 }
 
 class MemberCaseSnapshot {
@@ -105,25 +138,161 @@ class MemberDependant {
 
 class AdminDashboardSnapshot {
   final int totalMembers;
+  final int activeMembers;
+  final int inactiveMembers;
+  final int probationMembers;
   final int activeCases;
+  final double totalContributions;
   final double pendingSuspenseTotal;
   final int pendingSuspenseCount;
   final List<Map<String, dynamic>> recentActivity;
 
   const AdminDashboardSnapshot({
     required this.totalMembers,
+    required this.activeMembers,
+    required this.inactiveMembers,
+    required this.probationMembers,
     required this.activeCases,
+    required this.totalContributions,
     required this.pendingSuspenseTotal,
     required this.pendingSuspenseCount,
     required this.recentActivity,
   });
+
+  Map<String, dynamic> toMap() => {
+        'total_members': totalMembers,
+        'active_members': activeMembers,
+        'inactive_members': inactiveMembers,
+        'probation_members': probationMembers,
+        'active_cases': activeCases,
+        'total_contributions': totalContributions,
+        'pending_suspense_total': pendingSuspenseTotal,
+        'pending_suspense_count': pendingSuspenseCount,
+        'recent_activity': recentActivity,
+      };
+
+  factory AdminDashboardSnapshot.fromMap(Map<String, dynamic> map) =>
+      AdminDashboardSnapshot(
+        totalMembers: (map['total_members'] as num?)?.toInt() ?? 0,
+        activeMembers: (map['active_members'] as num?)?.toInt() ?? 0,
+        inactiveMembers: (map['inactive_members'] as num?)?.toInt() ?? 0,
+        probationMembers: (map['probation_members'] as num?)?.toInt() ?? 0,
+        activeCases: (map['active_cases'] as num?)?.toInt() ?? 0,
+        totalContributions: _number(map['total_contributions']),
+        pendingSuspenseTotal: _number(map['pending_suspense_total']),
+        pendingSuspenseCount:
+            (map['pending_suspense_count'] as num?)?.toInt() ?? 0,
+        recentActivity: (map['recent_activity'] as List? ?? const [])
+            .whereType<Map>()
+            .map((row) => row.cast<String, dynamic>())
+            .toList(),
+      );
+
+  static double _number(dynamic value) => value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+class _AdminMemberCounts {
+  final int total;
+  final int active;
+  final int inactive;
+  final int probation;
+
+  const _AdminMemberCounts(
+      this.total, this.active, this.inactive, this.probation);
 }
 
 class LiveDataService {
   final SupabaseClient _client = Supabase.instance.client;
   final SupabaseService _supabaseService = SupabaseService();
+  final LocalCacheService _cache = LocalCacheService.instance;
+
+  String _adminCacheScope(String appToken) {
+    // Keep the bearer token out of SQLite keys while still isolating sessions.
+    var hash = 0x811c9dc5;
+    for (final unit in appToken.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return 'admin:${hash.toRadixString(16)}';
+  }
+
+  Future<T?> _readAdminCache<T>({
+    required String appToken,
+    required String key,
+    required bool forceRefresh,
+    required T Function(Map<String, dynamic>) decode,
+  }) async {
+    if (appToken.isEmpty || forceRefresh) return null;
+    final cached = await _cache.read(
+      ownerScope: _adminCacheScope(appToken),
+      key: key,
+    );
+    if (cached == null ||
+        DateTime.now().difference(cached.savedAt) >=
+            const Duration(seconds: 45)) {
+      return null;
+    }
+    try {
+      return decode(cached.value);
+    } catch (_) {
+      await _cache.remove(
+        ownerScope: _adminCacheScope(appToken),
+        key: key,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _writeAdminCache({
+    required String appToken,
+    required String key,
+    required Map<String, dynamic> value,
+  }) async {
+    if (appToken.isEmpty) return;
+    await _cache.write(
+      ownerScope: _adminCacheScope(appToken),
+      key: key,
+      value: value,
+    );
+  }
+
+  Future<void> clearAdminCache(String appToken) async {
+    if (appToken.isNotEmpty) {
+      await _cache.clearOwner(_adminCacheScope(appToken));
+    }
+  }
 
   Future<MemberWalletSnapshot> fetchMemberWalletData({
+    required String memberId,
+    required String appToken,
+    bool forceRefresh = false,
+  }) async {
+    final ownerScope = 'member:$memberId';
+    final cached = await _cache.read(
+      ownerScope: ownerScope,
+      key: 'wallet_snapshot',
+    );
+    if (!forceRefresh &&
+        cached != null &&
+        DateTime.now().difference(cached.savedAt) <
+            const Duration(seconds: 30)) {
+      return MemberWalletSnapshot.fromMap(cached.value);
+    }
+
+    final snapshot = await _fetchMemberWalletDataFromServer(
+      memberId: memberId,
+      appToken: appToken,
+    );
+    await _cache.write(
+      ownerScope: ownerScope,
+      key: 'wallet_snapshot',
+      value: snapshot.toMap(),
+    );
+    return snapshot;
+  }
+
+  Future<MemberWalletSnapshot> _fetchMemberWalletDataFromServer({
     required String memberId,
     required String appToken,
   }) async {
@@ -263,85 +432,12 @@ class LiveDataService {
 
   Future<List<MemberCaseSnapshot>> fetchPayableCases({
     required String memberId,
+    required String appToken,
   }) async {
-    final memberResp = await _client
-        .from('members')
-        .select('status')
-        .eq('id', memberId)
-        .maybeSingle();
-    final memberStatus =
-        ((memberResp as Map?)?['status'] ?? '').toString().toLowerCase().trim();
-    if (memberStatus != 'active' && memberStatus != 'probation') {
-      return const [];
-    }
-
-    final rows = await _client
-        .from('cases')
-        .select(
-            'id, case_number, case_type, contribution_per_member, is_active, is_finalized')
-        .or('is_active.eq.true,is_finalized.eq.true');
-    final raw = (rows as List)
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList();
-
-    if (raw.isEmpty) return const [];
-
-    final caseIds = raw.map((r) => '${r['id']}').toList();
-    final existing = await _client
-        .from('transactions')
-        .select('case_id, status, amount, transaction_type')
-        .eq('member_id', memberId)
-        .inFilter('case_id', caseIds)
-        .inFilter('transaction_type', [
-      'contribution',
-      'case_wallet_deduction',
-      'arrears',
-      'contribution_refund',
-      'case_wallet_refund',
-    ]);
-
-    final paidByCase = <String, double>{};
-    for (final row in (existing as List).whereType<Map>()) {
-      final status = (row['status'] ?? '').toString();
-      if (status.isNotEmpty && status != 'completed') continue;
-      final caseId = (row['case_id'] ?? '').toString();
-      if (caseId.isEmpty) continue;
-      final txType = (row['transaction_type'] ?? '').toString();
-      final txAmount = _toDouble(row['amount']).abs();
-      final current = paidByCase[caseId] ?? 0;
-      if (txType == 'contribution' ||
-          txType == 'case_wallet_deduction' ||
-          txType == 'arrears') {
-        paidByCase[caseId] = current + txAmount;
-      } else if (txType == 'contribution_refund' ||
-          txType == 'case_wallet_refund') {
-        paidByCase[caseId] = current - txAmount;
-      }
-    }
-
-    final mapped = raw.map((r) {
-      final caseId = (r['id'] ?? '').toString();
-      final required = _toDouble(r['contribution_per_member']);
-      final netPaid =
-          (paidByCase[caseId] ?? 0).clamp(0, double.infinity).toDouble();
-      return MemberCaseSnapshot(
-        id: caseId,
-        caseNumber: (r['case_number'] ?? 'N/A').toString(),
-        caseType: (r['case_type'] ?? 'unknown').toString(),
-        contributionPerMember: required,
-        amountPaid: netPaid,
-        remainingAmount:
-            (required - netPaid).clamp(0, double.infinity).toDouble(),
-        progress:
-            required <= 0 ? 0 : (netPaid / required).clamp(0.0, 1.0).toDouble(),
-        isFinalized: r['is_finalized'] == true,
-        paid: netPaid >= required && required > 0,
-      );
-    }).toList();
-
-    mapped.sort((a, b) => a.caseNumber.compareTo(b.caseNumber));
-    return mapped;
+    // The member summary function applies registration-date eligibility and
+    // server-side authorization. Do not rebuild that policy with public table
+    // reads in the client.
+    return fetchMemberCases(memberId: memberId, appToken: appToken);
   }
 
   Future<List<Map<String, dynamic>>> fetchMemberTransactions({
@@ -473,6 +569,7 @@ class LiveDataService {
         throw Exception(fallbackResult.error.message ?? 'Transfer failed');
       }
     }
+    await _invalidateWallet(fromMemberId);
   }
 
   Future<void> payToCase({
@@ -522,6 +619,7 @@ class LiveDataService {
           'Case wallet deduction for case #$caseNumber (member portal)',
       'metadata': {'source': 'member_portal_pay_to_case'},
     });
+    await _invalidateWallet(memberId);
   }
 
   Future<Map<String, dynamic>> payToCases({
@@ -614,11 +712,17 @@ class LiveDataService {
     }
 
     await _client.from('transactions').insert(rows);
+    await _invalidateWallet(memberId);
     return {
       'count': rows.length,
       'total': totalRequired,
     };
   }
+
+  Future<void> _invalidateWallet(String memberId) => _cache.remove(
+        ownerScope: 'member:$memberId',
+        key: 'wallet_snapshot',
+      );
 
   Future<void> updateMemberPin({
     required String memberId,
@@ -639,8 +743,21 @@ class LiveDataService {
     }
   }
 
-  Future<AdminDashboardSnapshot> fetchAdminDashboard({String? appToken}) async {
-    final members = await _client.from('members').select('id');
+  Future<AdminDashboardSnapshot> fetchAdminDashboard({
+    String? appToken,
+    bool forceRefresh = false,
+  }) async {
+    final token = appToken ?? '';
+    final cached = await _readAdminCache<AdminDashboardSnapshot>(
+      appToken: token,
+      key: 'dashboard',
+      forceRefresh: forceRefresh,
+      decode: AdminDashboardSnapshot.fromMap,
+    );
+    if (cached != null) return cached;
+    final summaryRows = await _client.rpc('get_dashboard_summary');
+    final summary = (summaryRows as List?)?.whereType<Map>().firstOrNull;
+    final memberCounts = await _fetchAdminMemberCounts();
     final activeCases =
         await _client.from('cases').select('id').eq('is_active', true);
     final suspenseRows = await fetchSuspenseQueue(
@@ -660,10 +777,15 @@ class LiveDataService {
         .toList();
     final suspenseTotal = suspenseList.fold<double>(
         0, (sum, row) => sum + _toDouble(row['amount']));
-
-    return AdminDashboardSnapshot(
-      totalMembers: (members as List).length,
+    final result = AdminDashboardSnapshot(
+      // The summary RPC returns a database aggregate, so it stays accurate
+      // even when the REST API caps a page of member rows at 1,000.
+      totalMembers: _toInt(summary?['total_members']) ?? memberCounts.total,
+      activeMembers: memberCounts.active,
+      inactiveMembers: memberCounts.inactive,
+      probationMembers: memberCounts.probation,
       activeCases: (activeCases as List).length,
+      totalContributions: _toDouble(summary?['total_contributions']),
       pendingSuspenseTotal: suspenseTotal,
       pendingSuspenseCount: suspenseList.length,
       recentActivity: (recentTx as List)
@@ -671,14 +793,59 @@ class LiveDataService {
           .map((e) => e.cast<String, dynamic>())
           .toList(),
     );
+    await _writeAdminCache(
+        appToken: token, key: 'dashboard', value: result.toMap());
+    return result;
+  }
+
+  Future<_AdminMemberCounts> _fetchAdminMemberCounts() async {
+    const pageSize = 1000;
+    var total = 0;
+    var active = 0;
+    var inactive = 0;
+    var probation = 0;
+
+    for (var offset = 0;; offset += pageSize) {
+      final rows = await _client
+          .from('members')
+          .select('status, is_active')
+          .order('id')
+          .range(offset, offset + pageSize - 1);
+      final page = (rows as List).whereType<Map>();
+      total += page.length;
+      for (final row in page) {
+        final status = '${row['status'] ?? ''}'.toLowerCase();
+        if (status == 'probation' ||
+            status == 'probabation' ||
+            status == 'probabtion') {
+          probation++;
+        } else if (status == 'active' ||
+            (status.isEmpty && row['is_active'] == true)) {
+          active++;
+        } else if (status == 'inactive' ||
+            (status.isEmpty && row['is_active'] == false)) {
+          inactive++;
+        }
+      }
+      if (page.length < pageSize) break;
+    }
+
+    return _AdminMemberCounts(total, active, inactive, probation);
   }
 
   Future<List<MemberDependant>> fetchDependants(String memberId) async {
     final rows = await _client
         .from('dependants')
-        .select('id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+        .select(
+            'id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
         .eq('member_id', memberId)
-        .order('name');
+        .order('name')
+        .timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw Exception(
+            'The server did not respond in time. Check your connection and try again.',
+          ),
+        );
     return (rows as List)
         .whereType<Map>()
         .map((e) => MemberDependant.fromMap(e.cast<String, dynamic>()))
@@ -692,7 +859,8 @@ class LiveDataService {
     final result = await _client
         .from('dependants')
         .insert(dependant.toInsertMap(memberId))
-        .select('id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+        .select(
+            'id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
         .single();
     return MemberDependant.fromMap((result as Map).cast<String, dynamic>());
   }
@@ -705,7 +873,8 @@ class LiveDataService {
         .from('dependants')
         .update(dependant.toUpdateMap())
         .eq('id', dependantId)
-        .select('id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+        .select(
+            'id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
         .single();
     return MemberDependant.fromMap((result as Map).cast<String, dynamic>());
   }
@@ -720,7 +889,20 @@ class LiveDataService {
     String search = '',
     String status = 'all',
     String active = 'all',
+    String appToken = '',
+    bool forceRefresh = false,
   }) async {
+    final cacheKey = 'members:$page:$pageSize:${search.trim()}:$status:$active';
+    final cached = await _readAdminCache<List<Map<String, dynamic>>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => (value['rows'] as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+    if (cached != null) return cached;
     final from = (page - 1) * pageSize;
     final to = from + pageSize - 1;
     var query = _client.from('members').select(
@@ -739,25 +921,230 @@ class LiveDataService {
     } else if (active == 'inactive') {
       query = query.eq('is_active', false);
     }
-    final rows =
-        await query.order('member_number', ascending: true).range(from, to);
-    return (rows as List)
+    // member_number is text, so ordering it directly puts 10 before 2.
+    // This generated numeric column is indexed in the database and must be
+    // used before range() so ordering remains correct across page boundaries.
+    final rows = await query
+        .order('member_number_numeric', ascending: true)
+        .order('member_number', ascending: true)
+        .range(from, to);
+    final result = (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
+    await _writeAdminCache(
+      appToken: appToken,
+      key: cacheKey,
+      value: {'rows': result},
+    );
+    return result;
   }
 
-  Future<List<Map<String, dynamic>>> fetchAdminCases({int limit = 200}) async {
+  Future<List<Map<String, dynamic>>> fetchAllAdminMembers({
+    String search = '',
+    String status = 'all',
+    String active = 'all',
+  }) async {
+    const pageSize = 1000;
+    final members = <Map<String, dynamic>>[];
+    for (var page = 1;; page++) {
+      final rows = await fetchAdminMembers(
+        page: page,
+        pageSize: pageSize,
+        search: search,
+        status: status,
+        active: active,
+      );
+      members.addAll(rows);
+      if (rows.length < pageSize) return members;
+    }
+  }
+
+  Future<String> fetchNextMemberNumber() async {
+    const pageSize = 1000;
+    var offset = 0;
+    var largestNumber = 0;
+    while (true) {
+      final rows = await _client
+          .from('members')
+          .select('member_number')
+          .range(offset, offset + pageSize - 1);
+      final page = (rows as List).whereType<Map>();
+      for (final row in page) {
+        final value = '${row['member_number'] ?? ''}'.trim();
+        if (value.startsWith('M')) continue;
+        final number = int.tryParse(value);
+        if (number != null && number > largestNumber) largestNumber = number;
+      }
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+    return '${largestNumber + 1}';
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRegistrationTransactions() async {
+    const pageSize = 1000;
+    final transactions = <Map<String, dynamic>>[];
+    for (var offset = 0;; offset += pageSize) {
+      final rows = await _client
+          .from('transactions')
+          .select(
+              'id, member_id, amount, transaction_type, payment_method, mpesa_reference, reference, description, status, created_at, members(name, member_number)')
+          .ilike('description', 'Registration%')
+          .order('created_at', ascending: false)
+          .range(offset, offset + pageSize - 1);
+      final page = (rows as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+      transactions.addAll(page);
+      if (page.length < pageSize) return transactions;
+    }
+  }
+
+  Future<Map<String, dynamic>> createAdminMember({
+    required String memberNumber,
+    required String name,
+    required String gender,
+    required String dateOfBirth,
+    required String nationalIdNumber,
+    required String residence,
+    required Map<String, dynamic> nextOfKin,
+    required List<Map<String, dynamic>> dependants,
+    required double registrationFee,
+    required bool feePaid,
+    String? phoneNumber,
+    String? emailAddress,
+    String? pin,
+  }) async {
+    final duplicate = await _client.rpc(
+      'member_number_exists',
+      params: {
+        'p_member_number': memberNumber,
+        'p_exclude_member_id': null,
+      },
+    );
+    if (duplicate == true) {
+      throw Exception('Member number $memberNumber already exists.');
+    }
+
+    final result = await _client.rpc(
+      'insert_member',
+      params: {
+        'p_member_number': memberNumber,
+        'p_name': name,
+        'p_gender': gender,
+        'p_date_of_birth': dateOfBirth,
+        'p_national_id_number': nationalIdNumber,
+        'p_phone_number': phoneNumber,
+        'p_email_address': emailAddress,
+        'p_residence': residence,
+        'p_next_of_kin': nextOfKin,
+        'p_wallet_balance': 0,
+        'p_is_active': true,
+        'p_registration_date':
+            DateTime.now().toIso8601String().substring(0, 10),
+        'p_dependants': dependants,
+        'p_pin': pin,
+        'p_registration_fee': registrationFee,
+        'p_fee_paid': feePaid,
+      },
+    );
+    final payload = (result as Map?)?.cast<String, dynamic>() ?? const {};
+    if (payload['success'] != true || payload['id'] == null) {
+      throw Exception(
+          payload['message']?.toString() ?? 'Member registration failed.');
+    }
+    return payload;
+  }
+
+  Future<void> createManagedMemberUser({
+    required String appToken,
+    required String username,
+    required String password,
+    required String name,
+    required String memberId,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-users-admin',
+      body: {
+        'action': 'create',
+        'username': username,
+        'password': password,
+        'name': name,
+        'role': 'member',
+        'is_active': true,
+        'member_id': memberId,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ??
+          'Could not create login credentials.');
+    }
+  }
+
+  Future<void> sendMemberWelcomeSms({
+    required String appToken,
+    required String memberId,
+    required String memberNumber,
+    required String name,
+    required String phoneNumber,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'send-sms',
+      body: {
+        'recipients': [
+          {
+            'phoneNumber': phoneNumber,
+            'name': name,
+            'memberNumber': memberNumber,
+            'memberId': memberId,
+          }
+        ],
+        'message':
+            'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}. Member portal: {portalLink}',
+        'triggerKey': 'welcome_member',
+        'source': 'member_registration',
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(payload?['error']?.toString() ?? 'Welcome SMS failed.');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAdminCases({
+    int limit = 200,
+    String appToken = '',
+    bool forceRefresh = false,
+  }) async {
+    final cacheKey = 'cases:$limit';
+    final cached = await _readAdminCache<List<Map<String, dynamic>>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => (value['rows'] as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+    if (cached != null) return cached;
     final rows = await _client
         .from('cases')
         .select(
             'id, case_number, case_type, contribution_per_member, expected_amount, actual_amount, is_active, is_finalized, created_at')
         .order('created_at', ascending: false)
         .limit(limit);
-    return (rows as List)
+    final result = (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
+    await _writeAdminCache(
+        appToken: appToken, key: cacheKey, value: {'rows': result});
+    return result;
   }
 
   Future<void> finalizeCase(
@@ -776,11 +1163,28 @@ class LiveDataService {
     }).eq('id', caseId);
   }
 
+  Future<void> deleteAdminCase({required String caseId}) async {
+    await _client.from('cases').delete().eq('id', caseId);
+  }
+
   Future<List<Map<String, dynamic>>> fetchAdminTransactions({
     int page = 1,
     int pageSize = 30,
     String search = '',
+    String appToken = '',
+    bool forceRefresh = false,
   }) async {
+    final cacheKey = 'transactions:$page:$pageSize:${search.trim()}';
+    final cached = await _readAdminCache<List<Map<String, dynamic>>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => (value['rows'] as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+    if (cached != null) return cached;
     final from = (page - 1) * pageSize;
     final to = from + pageSize - 1;
     var query = _client.from('transactions').select(
@@ -793,10 +1197,13 @@ class LiveDataService {
     }
     final rows =
         await query.order('created_at', ascending: false).range(from, to);
-    return (rows as List)
+    final result = (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
+    await _writeAdminCache(
+        appToken: appToken, key: cacheKey, value: {'rows': result});
+    return result;
   }
 
   Future<void> reverseTransaction({
@@ -935,6 +1342,30 @@ class LiveDataService {
     return (payload['settings'] as Map?)?.cast<String, dynamic>();
   }
 
+  Future<List<String>> fetchResidences() async {
+    final rows = await _client
+        .from('residences')
+        .select('name')
+        .not('name', 'is', null)
+        .order('name')
+        .timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw Exception(
+            'The server did not respond in time. Check your connection and try again.',
+          ),
+        );
+    return rows
+        .whereType<Map>()
+        .map((row) => row['name']?.toString().trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Future<void> createResidence({required String name}) async {
+    await _client.from('residences').insert({'name': name.trim()});
+  }
+
   Future<Map<String, dynamic>> fetchReportsSummary({
     required String appToken,
   }) async {
@@ -1070,6 +1501,27 @@ class LiveDataService {
   Future<Map<String, dynamic>> fetchAdminMemberDetails({
     required String appToken,
     required String memberId,
+    bool forceRefresh = false,
+  }) async {
+    final cacheKey = 'member_detail:$memberId';
+    final cached = await _readAdminCache<Map<String, dynamic>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => value,
+    );
+    if (cached != null) return cached;
+    final result = await _fetchAdminMemberDetailsFromServer(
+      appToken: appToken,
+      memberId: memberId,
+    );
+    await _writeAdminCache(appToken: appToken, key: cacheKey, value: result);
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _fetchAdminMemberDetailsFromServer({
+    required String appToken,
+    required String memberId,
   }) async {
     final response = await _supabaseService.invokeFunction(
       'api-member-details',
@@ -1081,17 +1533,84 @@ class LiveDataService {
       throw Exception(
           payload?['error']?.toString() ?? 'Failed to load member details');
     }
-    return (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+    try {
+      final directMember = await _client
+          .from('members')
+          .select(
+              'id, member_number, name, gender, date_of_birth, national_id_number, phone_number, email_address, residence, next_of_kin, registration_date, probation_end_date, wallet_balance, is_active, status')
+          .eq('id', memberId)
+          .maybeSingle();
+      final dependantRows = await _client
+          .from('dependants')
+          .select(
+              'id, member_id, name, gender, relationship, date_of_birth, is_disabled, is_eligible')
+          .eq('member_id', memberId)
+          .order('name');
+      final directCases = await _client
+          .from('cases')
+          .select(
+              'id, case_number, case_type, contribution_per_member, expected_amount, actual_amount, start_date, end_date, is_active, is_finalized, created_at')
+          .eq('affected_member_id', memberId)
+          .order('created_at', ascending: false)
+          .limit(30);
+      if (directMember != null) {
+        final apiMember =
+            (payload['member'] as Map?)?.cast<String, dynamic>() ??
+                <String, dynamic>{};
+        payload['member'] = {
+          ...apiMember,
+          ...(directMember as Map).cast<String, dynamic>(),
+        };
+      }
+      payload['dependants'] = (dependantRows as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+      payload['cases'] = (directCases as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      // The app-token endpoint still provides the core summary if direct
+      // detail-table reads are restricted by row-level security.
+    }
+    return payload;
+  }
+
+  Future<void> updateAdminMemberProfile({
+    required String memberId,
+    required Map<String, dynamic> updates,
+  }) async {
+    await _client.from('members').update(updates).eq('id', memberId);
   }
 
   Future<Map<String, dynamic>> fetchAdminCaseDetails({
     required String appToken,
     required String caseId,
+    bool forceRefresh = false,
   }) async {
-    // Kept for compatibility with existing callers.
-    // ignore: unused_local_variable
-    final unusedAppToken = appToken;
+    final cacheKey = 'case_detail:$caseId';
+    final cached = await _readAdminCache<Map<String, dynamic>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => value,
+    );
+    if (cached != null) return cached;
+    final result = await _fetchAdminCaseDetailsFromServer(
+      appToken: appToken,
+      caseId: caseId,
+    );
+    await _writeAdminCache(appToken: appToken, key: cacheKey, value: result);
+    return result;
+  }
 
+  Future<Map<String, dynamic>> _fetchAdminCaseDetailsFromServer({
+    required String appToken,
+    required String caseId,
+  }) async {
     final caseRef = caseId.trim();
     final normalizedCaseNumber =
         caseRef.startsWith('#') ? caseRef.substring(1).trim() : caseRef;
@@ -1119,6 +1638,53 @@ class LiveDataService {
     }
 
     final caseMap = (direct as Map).cast<String, dynamic>();
+    final memberId = caseMap['affected_member_id']?.toString();
+    if (memberId != null && memberId.isNotEmpty) {
+      Map<String, dynamic> affectedMember = {};
+      try {
+        final memberResponse = await _supabaseService.invokeFunction(
+          'api-member-details',
+          body: {'member_id': memberId},
+          headers: {'x-app-token': appToken},
+        );
+        if (memberResponse.status >= 200 && memberResponse.status < 300) {
+          final data = (memberResponse.data as Map?)?.cast<String, dynamic>();
+          affectedMember =
+              (data?['member'] as Map?)?.cast<String, dynamic>() ?? {};
+        }
+      } catch (_) {
+        // Try the authenticated database client below as a fallback.
+      }
+      try {
+        final member = await _client
+            .from('members')
+            .select('id, name, member_number, gender')
+            .eq('id', memberId)
+            .maybeSingle();
+        if (member != null) {
+          affectedMember = {
+            ...affectedMember,
+            ...(member as Map).cast<String, dynamic>(),
+          };
+        }
+      } catch (_) {
+        // The service role response still supplies the member name and number.
+      }
+      caseMap['affected_member'] = affectedMember;
+    }
+    final dependantId = caseMap['dependant_id']?.toString();
+    if (dependantId != null && dependantId.isNotEmpty) {
+      try {
+        final dependant = await _client
+            .from('dependants')
+            .select('id, name, gender, relationship')
+            .eq('id', dependantId)
+            .maybeSingle();
+        caseMap['affected_dependant'] = dependant;
+      } catch (_) {
+        // Dependant details are optional; the member profile remains available.
+      }
+    }
     final txRows = await _client
         .from('transactions')
         .select('id, member_id, amount, transaction_type, status, created_at')
@@ -1137,7 +1703,6 @@ class LiveDataService {
       final s = (t['status'] ?? '').toString();
       return s.isEmpty || s == 'completed';
     }).toList();
-
     final contributions = txList
         .where((t) => (t['transaction_type'] == 'contribution' ||
             t['transaction_type'] == 'case_wallet_deduction' ||
@@ -1150,6 +1715,39 @@ class LiveDataService {
             (sum, t) => sum + _toDouble(t['amount']).clamp(0, double.infinity));
     final actualAmount =
         (contributions - refunds).clamp(0, double.infinity).toDouble();
+    final paymentStatusRows = await _client.rpc(
+      'get_case_payment_compliance_rows_for_case',
+      params: {'p_case_id': caseMap['id']},
+    );
+    final complianceRows = (paymentStatusRows as List)
+        .whereType<Map>()
+        .map((row) => row.cast<String, dynamic>())
+        .toList();
+    final memberIds = complianceRows
+        .map((row) => row['member_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    final phoneByMemberId = <String, String>{};
+    for (var start = 0; start < memberIds.length; start += 100) {
+      final rows = await _client
+          .from('members')
+          .select('id, phone_number')
+          .inFilter('id', memberIds.skip(start).take(100).toList());
+      for (final row in (rows as List).whereType<Map>()) {
+        final member = row.cast<String, dynamic>();
+        phoneByMemberId['${member['id']}'] = '${member['phone_number'] ?? ''}';
+      }
+    }
+    final paymentRowsWithPhones = complianceRows.map((row) {
+      final phone = row['phone_number']?.toString().trim();
+      return {
+        ...row,
+        'phone_number': phone?.isNotEmpty == true
+            ? phone
+            : phoneByMemberId['${row['member_id']}'],
+      };
+    }).toList();
 
     return {
       'case': {
@@ -1158,6 +1756,7 @@ class LiveDataService {
         'paid': null,
       },
       'transactions': txList,
+      'payment_status': paymentRowsWithPhones,
     };
   }
 
@@ -1303,7 +1902,14 @@ class LiveDataService {
     return double.tryParse(value.toString()) ?? 0;
   }
 
-  Future<List<Map<String, dynamic>>> fetchReportContributions({required String appToken, Map<String, dynamic>? filters}) async {
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value');
+  }
+
+  Future<List<Map<String, dynamic>>> fetchReportContributions(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1312,19 +1918,23 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report =
+          (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
       final monthlyData = (report['monthly_contributions'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
       return monthlyData;
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchReportTransactions({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchReportTransactions(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     final limit = (filters?['limit'] as int?) ?? 200;
     final offset = (filters?['offset'] as int?) ?? 0;
     try {
@@ -1340,17 +1950,20 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       return (payload['transactions'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchReportDefaulters({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchReportDefaulters(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-members-list',
@@ -1360,19 +1973,22 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       final members = (payload['members'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .where((m) => _toDouble(m['wallet_balance']) < 0)
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .where((m) => _toDouble(m['wallet_balance']) < 0)
+              .toList() ??
+          const <Map<String, dynamic>>[];
       return members;
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchReportMembers({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchReportMembers(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-members-list',
@@ -1382,17 +1998,20 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       return (payload['members'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchReportDiscipline({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchReportDiscipline(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     final days = (filters?['days'] as int?) ?? 180;
     try {
       final response = await _supabaseService.invokeFunction(
@@ -1403,18 +2022,21 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       final transitions = (payload['transitions'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
       return transitions;
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<Map<String, dynamic>> fetchFiscalStats({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<Map<String, dynamic>> fetchFiscalStats(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1423,14 +2045,16 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const {};
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       return (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
     } catch (_) {
       return const {};
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchFiscalContributions({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchFiscalContributions(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1439,18 +2063,22 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report =
+          (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
       return (report['monthly_contributions'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchCaseFundingSummary({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchCaseFundingSummary(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-cases-list',
@@ -1463,17 +2091,20 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       return (payload['cases'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchMemberContributionsReport({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchMemberContributionsReport(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-members-list',
@@ -1483,18 +2114,21 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
       final members = (payload['members'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
       return members;
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchComplianceCasePayments({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchComplianceCasePayments(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1503,18 +2137,22 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report =
+          (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
       return (report['case_payments_compliance'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchAuditTrail({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchAuditTrail(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1523,18 +2161,22 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report =
+          (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
       return (report['audit_entries'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchReversalsAudit({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchReversalsAudit(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1543,18 +2185,22 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report =
+          (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
       return (report['reversals'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchComplianceIssues({required String appToken, Map<String, dynamic>? filters}) async {
+  Future<List<Map<String, dynamic>>> fetchComplianceIssues(
+      {required String appToken, Map<String, dynamic>? filters}) async {
     try {
       final response = await _supabaseService.invokeFunction(
         'api-reports-summary',
@@ -1563,12 +2209,15 @@ class LiveDataService {
       if (response.status < 200 || response.status >= 300) {
         return const <Map<String, dynamic>>[];
       }
-      final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final report = (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final payload =
+          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final report =
+          (payload['report'] as Map?)?.cast<String, dynamic>() ?? const {};
       return (report['compliance_issues'] as List?)
-          ?.whereType<Map>()
-          .map((e) => e.cast<String, dynamic>())
-          .toList() ?? const <Map<String, dynamic>>[];
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
     }
@@ -1581,7 +2230,7 @@ class LiveDataService {
   }) async {
     await _client.from('transactions').update({
       'description': description,
-      }).eq('id', transactionId);
+    }).eq('id', transactionId);
   }
 
   Future<void> deleteCase({required String caseId}) async {
@@ -1603,13 +2252,16 @@ class LiveDataService {
     );
     if (response.status < 200 || response.status >= 300) {
       final payload = (response.data as Map?)?.cast<String, dynamic>();
-      throw Exception(payload?['error']?.toString() ?? 'Failed to import members');
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to import members');
     }
-    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
     return payload;
   }
 
-  Future<List<Map<String, dynamic>>> fetchSmsTemplates({required String appToken}) async {
+  Future<List<Map<String, dynamic>>> fetchSmsTemplates(
+      {required String appToken}) async {
     final response = await _supabaseService.invokeFunction(
       'api-sms-templates',
       headers: {'x-app-token': appToken},
@@ -1617,11 +2269,13 @@ class LiveDataService {
     if (response.status < 200 || response.status >= 300) {
       throw Exception('Failed to load SMS templates');
     }
-    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
     return (payload['templates'] as List?)
-        ?.whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .toList() ?? const <Map<String, dynamic>>[];
+            ?.whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList() ??
+        const <Map<String, dynamic>>[];
   }
 
   Future<Map<String, dynamic>> updateSmsTemplate({
@@ -1636,10 +2290,58 @@ class LiveDataService {
     );
     if (response.status < 200 || response.status >= 300) {
       final payload = (response.data as Map?)?.cast<String, dynamic>();
-      throw Exception(payload?['error']?.toString() ?? 'Failed to update template');
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to update template');
     }
-    final payload = (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
     return (payload['template'] as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSmsAlertSettings({
+    required String appToken,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-sms-alert-settings',
+      body: {'action': 'list'},
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to load SMS recipients');
+    }
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['settings'] as List?)
+            ?.whereType<Map>()
+            .map((row) => row.cast<String, dynamic>())
+            .toList() ??
+        const <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> updateSmsAlertRecipients({
+    required String appToken,
+    required String triggerKey,
+    required List<String> adminUserIds,
+  }) async {
+    final response = await _supabaseService.invokeFunction(
+      'api-sms-alert-settings',
+      body: {
+        'action': 'update',
+        'trigger_key': triggerKey,
+        'admin_user_ids': adminUserIds,
+      },
+      headers: {'x-app-token': appToken},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = (response.data as Map?)?.cast<String, dynamic>();
+      throw Exception(
+          payload?['error']?.toString() ?? 'Failed to save SMS recipients');
+    }
+    final payload =
+        (response.data as Map?)?.cast<String, dynamic>() ?? const {};
+    return (payload['setting'] as Map?)?.cast<String, dynamic>() ?? const {};
   }
 
   Future<bool> testMpesaConnection({required String appToken}) async {

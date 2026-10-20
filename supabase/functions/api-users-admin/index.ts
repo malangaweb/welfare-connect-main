@@ -2,17 +2,17 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import bcryptjs from "https://esm.sh/bcryptjs@2.4.3";
 
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsFor } from "../_shared/cors.ts";
 import { requireSuperAdminRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
 type Json = Record<string, unknown>;
 
 const ALLOWED_ROLES = new Set(["super_admin", "chairperson", "treasurer", "secretary", "member"]);
 
-function jsonResponse(status: number, payload: Json) {
+function jsonResponse(req: Request, status: number, payload: Json) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsFor(req), "Content-Type": "application/json" },
   });
 }
 
@@ -24,6 +24,21 @@ function normalizeUsername(username: unknown): string {
   return String(username || "").trim().toLowerCase();
 }
 
+function nestedAudit(
+  supabase: ReturnType<typeof createClient>,
+  claims: { sub?: string; role?: string; sid?: string },
+  action: string,
+  metadata: Record<string, unknown>,
+) {
+  return supabase.from("audit_logs").insert({
+    action,
+    table_name: "users",
+    user_id: String(claims.sub || "") || null,
+    status: "success",
+    metadata: { ...metadata, session_id: claims.sid || null },
+  });
+}
+
 function randomPassword(length = 12): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
   const bytes = new Uint8Array(length);
@@ -32,8 +47,8 @@ function randomPassword(length = 12): string {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse(405, { error: "Method not allowed" });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsFor(req) });
+  if (req.method !== "POST") return jsonResponse(req, 405, { error: "Method not allowed" });
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
@@ -42,7 +57,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Json;
     const action = String(body.action || "").trim().toLowerCase();
 
-    if (!action) return jsonResponse(400, { error: "action is required" });
+    if (!action) return jsonResponse(req, 400, { error: "action is required" });
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -56,7 +71,16 @@ serve(async (req) => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return jsonResponse(200, { users: data || [] });
+      const memberIds = (data || []).map((row) => row.member_id).filter(Boolean) as string[];
+      const { data: members } = memberIds.length
+        ? await supabase.from("members").select("id, phone_number").in("id", memberIds)
+        : { data: [] };
+      const phones = new Map((members || []).map((row) => [String(row.id), row.phone_number]));
+      const users = (data || []).map((row) => ({
+        ...row,
+        phone_number: row.member_id ? phones.get(String(row.member_id)) || null : null,
+      }));
+      return jsonResponse(req, 200, { users });
     }
 
     if (action === "update_status") {
@@ -64,11 +88,11 @@ serve(async (req) => {
       const isActive = body.is_active;
 
       if (!userId || typeof isActive !== "boolean") {
-        return jsonResponse(400, { error: "user_id and boolean is_active are required" });
+        return jsonResponse(req, 400, { error: "user_id and boolean is_active are required" });
       }
 
       if (String(claims.sub || "") === userId && isActive === false) {
-        return jsonResponse(400, { error: "You cannot deactivate your own account" });
+        return jsonResponse(req, 400, { error: "You cannot deactivate your own account" });
       }
 
       const { error } = await supabase
@@ -77,7 +101,10 @@ serve(async (req) => {
         .eq("id", userId);
 
       if (error) throw error;
-      return jsonResponse(200, { success: true });
+      try {
+        await nestedAudit(supabase, claims, "USER_STATUS_UPDATE", { target_user_id: userId, is_active: isActive });
+      } catch { /* audit must not block admin action */ }
+      return jsonResponse(req, 200, { success: true });
     }
 
     if (action === "update_role") {
@@ -85,11 +112,11 @@ serve(async (req) => {
       const role = normalizeRole(body.role);
 
       if (!userId || !ALLOWED_ROLES.has(role)) {
-        return jsonResponse(400, { error: "Valid user_id and role are required" });
+        return jsonResponse(req, 400, { error: "Valid user_id and role are required" });
       }
 
       if (String(claims.sub || "") === userId && role !== "super_admin") {
-        return jsonResponse(400, { error: "You cannot downgrade your own role" });
+        return jsonResponse(req, 400, { error: "You cannot downgrade your own role" });
       }
 
       const { error } = await supabase
@@ -98,17 +125,20 @@ serve(async (req) => {
         .eq("id", userId);
 
       if (error) throw error;
-      return jsonResponse(200, { success: true });
+      try {
+        await nestedAudit(supabase, claims, "USER_ROLE_UPDATE", { target_user_id: userId, role });
+      } catch { /* audit must not block admin action */ }
+      return jsonResponse(req, 200, { success: true });
     }
 
     if (action === "reset_password") {
       const userId = String(body.user_id || "").trim();
-      if (!userId) return jsonResponse(400, { error: "user_id is required" });
+      if (!userId) return jsonResponse(req, 400, { error: "user_id is required" });
 
       const incoming = String(body.new_password || "").trim();
       const nextPassword = incoming || randomPassword(12);
       if (nextPassword.length < 6) {
-        return jsonResponse(400, { error: "new_password must be at least 6 characters" });
+        return jsonResponse(req, 400, { error: "new_password must be at least 6 characters" });
       }
 
       const passwordHash = await bcryptjs.hash(nextPassword, 12);
@@ -119,7 +149,10 @@ serve(async (req) => {
 
       if (error) throw error;
 
-      return jsonResponse(200, {
+      try {
+        await nestedAudit(supabase, claims, "USER_PASSWORD_RESET", { target_user_id: userId });
+      } catch { /* audit must not block admin action */ }
+      return jsonResponse(req, 200, {
         success: true,
         temporary_password: incoming ? null : nextPassword,
       });
@@ -135,10 +168,10 @@ serve(async (req) => {
       const isActive = body.is_active === false ? false : true;
 
       if (!username || !password || password.length < 6 || !name) {
-        return jsonResponse(400, { error: "username, name, and password (min 6 chars) are required" });
+        return jsonResponse(req, 400, { error: "username, name, and password (min 6 chars) are required" });
       }
       if (!ALLOWED_ROLES.has(role)) {
-        return jsonResponse(400, { error: "Invalid role" });
+        return jsonResponse(req, 400, { error: "Invalid role" });
       }
 
       const { data: existing, error: checkError } = await supabase
@@ -149,7 +182,7 @@ serve(async (req) => {
 
       if (checkError) throw checkError;
       if ((existing || []).length > 0) {
-        return jsonResponse(409, { error: "Username already exists" });
+        return jsonResponse(req, 409, { error: "Username already exists" });
       }
 
       const passwordHash = await bcryptjs.hash(password, 12);
@@ -171,7 +204,14 @@ serve(async (req) => {
 
       if (error) throw error;
 
-      return jsonResponse(200, {
+      try {
+        await nestedAudit(supabase, claims, "USER_CREATE", {
+          target_user_id: (data as Record<string, unknown>)?.id || null,
+          username: (data as Record<string, unknown>)?.username || null,
+          role: (data as Record<string, unknown>)?.role || null,
+        });
+      } catch { /* audit must not block admin action */ }
+      return jsonResponse(req, 200, {
         success: true,
         user: data,
       });
@@ -179,7 +219,7 @@ serve(async (req) => {
 
     if (action === "delete_member_links") {
       const memberId = String(body.member_id || "").trim();
-      if (!memberId) return jsonResponse(400, { error: "member_id is required" });
+      if (!memberId) return jsonResponse(req, 400, { error: "member_id is required" });
 
       const { data: usersData, error: usersError } = await supabase
         .from("users")
@@ -203,13 +243,19 @@ serve(async (req) => {
         if (deleteUsersError) throw deleteUsersError;
       }
 
-      return jsonResponse(200, { success: true, deleted_user_count: userIds.length });
+      try {
+        await nestedAudit(supabase, claims, "USER_DELETE_MEMBER_LINKS", {
+          member_id: memberId,
+          deleted_user_count: userIds.length,
+        });
+      } catch { /* audit must not block admin action */ }
+      return jsonResponse(req, 200, { success: true, deleted_user_count: userIds.length });
     }
 
-    return jsonResponse(400, { error: "Unsupported action" });
+    return jsonResponse(req, 400, { error: "Unsupported action" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     const status = msg === "Forbidden" ? 403 : msg.toLowerCase().includes("token") ? 401 : 500;
-    return jsonResponse(status, { error: msg });
+    return jsonResponse(req, status, { error: msg });
   }
 });

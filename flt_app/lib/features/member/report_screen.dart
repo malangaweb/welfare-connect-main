@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
+import '../../core/widgets/async_error_view.dart';
 import '../auth/auth_controller.dart';
 import 'member_shell.dart';
 
@@ -65,7 +66,10 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text(snapshot.error.toString()));
+            return AsyncErrorView(
+              error: snapshot.error,
+              onRetry: () => setState(() => _future = _load()),
+            );
           }
           final vm = snapshot.data!;
           final data = vm.summary;
@@ -73,7 +77,8 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
 
           final totals = _totals(filtered);
           final totalVolume = totals.credit + totals.debit;
-          final creditRatio = totalVolume <= 0 ? 0.0 : totals.credit / totalVolume;
+          final creditRatio =
+              totalVolume <= 0 ? 0.0 : totals.credit / totalVolume;
 
           return ListView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
@@ -109,50 +114,79 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _dateFilter,
-                            items: const [
-                              DropdownMenuItem(value: '3m', child: Text('Last 3 months')),
-                              DropdownMenuItem(value: '6m', child: Text('Last 6 months')),
-                              DropdownMenuItem(value: '12m', child: Text('Last 12 months')),
-                              DropdownMenuItem(value: 'all', child: Text('All time')),
-                            ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() => _dateFilter = v);
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Date',
-                              isDense: true,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final stacked = constraints.maxWidth < 460;
+                        final fieldWidth = stacked
+                            ? constraints.maxWidth
+                            : (constraints.maxWidth - 8) / 2;
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            SizedBox(
+                              width: fieldWidth,
+                              child: DropdownButtonFormField<String>(
+                                isExpanded: true,
+                                initialValue: _dateFilter,
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: '3m',
+                                      child: Text('Last 3 months')),
+                                  DropdownMenuItem(
+                                      value: '6m',
+                                      child: Text('Last 6 months')),
+                                  DropdownMenuItem(
+                                      value: '12m',
+                                      child: Text('Last 12 months')),
+                                  DropdownMenuItem(
+                                      value: 'all', child: Text('All time')),
+                                ],
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  setState(() => _dateFilter = v);
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Date',
+                                  isDense: true,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _typeFilter,
-                            items: const [
-                              DropdownMenuItem(value: 'all', child: Text('All types')),
-                              DropdownMenuItem(value: 'contribution', child: Text('Contributions')),
-                              DropdownMenuItem(value: 'disbursement', child: Text('Disbursements')),
-                              DropdownMenuItem(value: 'wallet_funding', child: Text('Wallet funding')),
-                              DropdownMenuItem(value: 'arrears', child: Text('Arrears')),
-                              DropdownMenuItem(value: 'penalty', child: Text('Penalty')),
-                            ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() => _typeFilter = v);
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Type',
-                              isDense: true,
+                            SizedBox(
+                              width: fieldWidth,
+                              child: DropdownButtonFormField<String>(
+                                isExpanded: true,
+                                initialValue: _typeFilter,
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'all', child: Text('All types')),
+                                  DropdownMenuItem(
+                                      value: 'contribution',
+                                      child: Text('Contributions')),
+                                  DropdownMenuItem(
+                                      value: 'disbursement',
+                                      child: Text('Disbursements')),
+                                  DropdownMenuItem(
+                                      value: 'wallet_funding',
+                                      child: Text('Wallet funding')),
+                                  DropdownMenuItem(
+                                      value: 'arrears', child: Text('Arrears')),
+                                  DropdownMenuItem(
+                                      value: 'penalty', child: Text('Penalty')),
+                                ],
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  setState(() => _typeFilter = v);
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Type',
+                                  isDense: true,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ],
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -172,7 +206,8 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
                 children: [
                   _tile(
                     'Wallet Balance',
-                    money.format((data['wallet_balance'] as num?)?.toDouble() ?? 0),
+                    money.format(
+                        (data['wallet_balance'] as num?)?.toDouble() ?? 0),
                     icon: Icons.account_balance_wallet,
                   ),
                   _tile(
@@ -208,7 +243,8 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Credit vs Debit', style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Text('Credit vs Debit',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     LinearProgressIndicator(
                       value: creditRatio,
@@ -216,7 +252,8 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     const SizedBox(height: 6),
-                    Text('Credit share: ${(creditRatio * 100).toStringAsFixed(1)}%'),
+                    Text(
+                        'Credit share: ${(creditRatio * 100).toStringAsFixed(1)}%'),
                   ],
                 ),
               ),
@@ -224,7 +261,8 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _copyReportToClipboard(filtered, totals, data),
+                  onPressed: () =>
+                      _copyReportToClipboard(filtered, totals, data),
                   icon: const Icon(Icons.copy),
                   label: const Text('Copy report summary'),
                 ),
@@ -250,11 +288,13 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
                 ...filtered.take(25).map((tx) {
                   final createdAt = DateTime.tryParse('${tx['created_at']}');
                   final amount = _toDouble(tx['amount']).abs();
-                  final desc = '${tx['description'] ?? tx['transaction_type'] ?? '-'}';
+                  final desc =
+                      '${tx['description'] ?? tx['transaction_type'] ?? '-'}';
                   final status = '${tx['status'] ?? '-'}';
                   return Container(
                     margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
@@ -262,23 +302,49 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
                     ),
                     child: Row(
                       children: [
-                        Expanded(child: Text(desc, maxLines: 2, overflow: TextOverflow.ellipsis)),
-                        const SizedBox(width: 8),
-                        Text(
-                          createdAt == null
-                              ? '-'
-                              : DateFormat('MMM d, yyyy').format(createdAt.toLocal()),
-                          style: const TextStyle(color: Color(0xFF5E6B7A)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(desc,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 4),
+                              Text(
+                                createdAt == null
+                                    ? '-'
+                                    : DateFormat('MMM d, yyyy')
+                                        .format(createdAt.toLocal()),
+                                style: const TextStyle(
+                                    color: Color(0xFF5E6B7A), fontSize: 12),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          money.format(amount),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          status.toUpperCase(),
-                          style: const TextStyle(fontSize: 10, color: Color(0xFF5E6B7A)),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  money.format(amount),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                status.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Color(0xFF5E6B7A),
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -355,7 +421,9 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
     DateTime start = DateTime(2000);
     if (_dateFilter == '3m') start = DateTime(now.year, now.month - 3, now.day);
     if (_dateFilter == '6m') start = DateTime(now.year, now.month - 6, now.day);
-    if (_dateFilter == '12m') start = DateTime(now.year, now.month - 12, now.day);
+    if (_dateFilter == '12m') {
+      start = DateTime(now.year, now.month - 12, now.day);
+    }
 
     return input.where((tx) {
       final createdAt = DateTime.tryParse('${tx['created_at']}');
@@ -367,7 +435,8 @@ class _MemberReportScreenState extends ConsumerState<MemberReportScreen> {
         if (type != _typeFilter) return false;
       }
       if (_search.isNotEmpty) {
-        final hay = '${tx['description'] ?? ''} ${tx['transaction_type'] ?? ''}'.toLowerCase();
+        final hay = '${tx['description'] ?? ''} ${tx['transaction_type'] ?? ''}'
+            .toLowerCase();
         if (!hay.contains(_search.toLowerCase())) return false;
       }
       return true;

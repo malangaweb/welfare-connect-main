@@ -1,6 +1,6 @@
 name: Deploy to GitHub Pages
 
-# The custom domain malangawelfare.org is served by GitHub Pages. It must be
+# The custom domain malangawelfare.co.ke is served by GitHub Pages. It must be
 # served from the built Vite output (dist/), NOT the repo root — serving the
 # root exposes /src/main.tsx, which the browser rejects (octet-stream MIME).
 #
@@ -29,7 +29,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - run: bun install --frozen-lockfile
 
@@ -44,7 +44,7 @@ jobs:
 
       - name: Ensure CNAME is present in build output
         run: |
-          echo "malangawelfare.org" > dist/CNAME
+          echo "malangawelfare.co.ke" > dist/CNAME
           test -f dist/index.html || { echo "dist/index.html missing"; exit 1; }
           grep -q "/assets/" dist/index.html || { echo "dist/index.html missing built asset refs"; exit 1; }
 

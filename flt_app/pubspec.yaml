@@ -1,7 +1,7 @@
 name: malanga_welfare_companion
 description: Flutter companion app for Malanga Welfare.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.3+4
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -31,15 +31,15 @@ dependencies:
   # Local Database
   drift: ^2.20.2
   sqlite3_flutter_libs: ^0.6.0+eol
+  sqlite3: ^3.3.1
   path_provider: ^2.1.4
   path: ^1.9.0
   
   # Connectivity
   connectivity_plus: ^7.1.1
   
-  # Push Notifications
-  firebase_core: ^4.7.0
-  firebase_messaging: ^16.2.0
+  # On-device notification tray support; remote delivery is deferred.
+  flutter_local_notifications: ^21.0.0
   
   # Utilities
   intl: ^0.20.2

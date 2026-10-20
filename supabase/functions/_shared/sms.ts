@@ -15,13 +15,20 @@ export type SmsSendResult = {
   phoneNumber: string;
 };
 
-function normalizePhoneNumber(phoneNumber: string): string {
+export function normalizePhoneNumber(phoneNumber: string): string {
   const digits = String(phoneNumber || '').replace(/\D/g, '');
   if (!digits) return '';
   if (digits.startsWith('254')) return digits;
   if (digits.startsWith('0')) return `254${digits.slice(1)}`;
   if (digits.length === 9 && digits.startsWith('7')) return `254${digits}`;
   return digits;
+}
+
+export function isValidSmsPhoneNumber(phoneNumber: string): boolean {
+  // Kenyan mobile numbers in E.164-without-plus form: 254 + (7|1) + 8 digits.
+  // Previously anything non-empty was attempted and rejected by the provider
+  // (e.g. '114366708'), producing confusing SMS_FAILED rows.
+  return /^254(7|1)\d{8}$/.test(normalizePhoneNumber(phoneNumber));
 }
 
 function readProviderMessage(response: unknown, fallback: string): string {
@@ -252,6 +259,11 @@ export function summarizeSmsFailure(results: SmsSendResult[]): string {
 
 export function isSmsFailure(result: SmsSendResult): boolean {
   return !result.ok || result.status === 'failed';
+}
+
+export function isSmsQuotaFailure(result: SmsSendResult): boolean {
+  const raw = JSON.stringify(result.raw || {}).toLowerCase();
+  return raw.includes('exceeded your sending limit') || raw.includes('sending limit') || raw.includes('insufficient balance') || raw.includes('insufficient credits');
 }
 
 export async function fetchSmsBalance(): Promise<{ balance: number | null; raw: unknown | null }> {

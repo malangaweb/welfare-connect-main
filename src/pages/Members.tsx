@@ -55,7 +55,8 @@ import type { Database } from '@/integrations/supabase/types';
 import { loadXlsx } from '@/lib/reportExportLibs';
 import { logSystemEvent } from '@/lib/systemLog';
 import { SmsMessageComposer } from '@/components/messages/SmsMessageComposer';
-import type { SmsRecipient } from '@/lib/smsMessaging';
+import type { SmsRecipient, SmsSendSummary } from '@/lib/smsMessaging';
+import { summarizeSkippedReasons } from '@/lib/smsMessaging';
 
 const getMemberNumberValue = (memberNumber?: string) => {
   if (!memberNumber) return Number.MAX_SAFE_INTEGER;
@@ -529,19 +530,23 @@ const Members = () => {
   const handleSendSms = async (payload: { triggerKey: string; message: string; recipients: SmsRecipient[] }) => {
     setMessageSending(true);
     try {
-      const result = await invokeWithAppToken<{ sent: number; failed: number; recipients: number }>('send-sms', {
+      const result = await invokeWithAppToken<SmsSendSummary>('send-sms', {
         recipients: payload.recipients,
         message: payload.message,
         triggerKey: payload.triggerKey,
         source: 'members_page',
       });
 
+      const skippedNote = result.skipped
+        ? ` ${result.skipped.toLocaleString()} skipped${summarizeSkippedReasons(result) ? ` (${summarizeSkippedReasons(result)})` : ''}.`
+        : '';
       toast({
         title: result.failed ? 'SMS partially sent' : 'SMS sent',
-        description: `${result.sent.toLocaleString()} of ${result.recipients.toLocaleString()} recipient(s) accepted.`,
+        description: `${result.sent.toLocaleString()} of ${result.recipients.toLocaleString()} recipient(s) accepted.${result.failed ? ` ${result.failed.toLocaleString()} failed.` : ''}${skippedNote}`,
         variant: result.failed ? 'destructive' : 'default',
       });
       setMessageDialogOpen(false);
+      return result;
     } catch (error: any) {
       console.error('Error sending SMS:', error);
       toast({
@@ -1694,25 +1699,25 @@ const Members = () => {
                           />
                         </TableHead>
                       )}
-                      <TableHead className="w-[44px] md:w-[52px] font-bold text-slate-900 cursor-pointer hover:text-primary transition-colors h-12 md:h-14 px-1 md:px-1.5 text-xs md:text-sm whitespace-nowrap" onClick={() => setSortConfig({...sortConfig, key: 'memberNumber', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})}>
-                        <div className="flex items-center gap-1 md:gap-2">
+                      <TableHead aria-sort={sortConfig.key === 'memberNumber' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="w-[44px] md:w-[52px] h-12 md:h-14 px-1 md:px-1.5 text-xs md:text-sm whitespace-nowrap">
+                        <button type="button" onClick={() => setSortConfig({...sortConfig, key: 'memberNumber', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})} aria-label={`Sort by member number${sortConfig.key === 'memberNumber' ? `, currently ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}` : ''}`} className="flex min-h-11 items-center gap-1 rounded-sm font-bold text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 md:gap-2">
                           Mem No.
                           {sortConfig.key === 'memberNumber' ? (
                             <ArrowUpDown className={`h-3 w-3 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
                           ) : (
                             <ArrowUpDown className="h-3 w-3 opacity-50" />
                           )}
-                        </div>
+                        </button>
                       </TableHead>
-                      <TableHead className="font-bold text-slate-900 cursor-pointer hover:text-primary transition-colors px-2 md:px-4 text-xs md:text-sm whitespace-nowrap" onClick={() => setSortConfig({...sortConfig, key: 'name', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})}>
-                        <div className="flex items-center gap-1 md:gap-2">
+                      <TableHead aria-sort={sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">
+                        <button type="button" onClick={() => setSortConfig({...sortConfig, key: 'name', direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'})} aria-label={`Sort by name${sortConfig.key === 'name' ? `, currently ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}` : ''}`} className="flex min-h-11 items-center gap-1 rounded-sm font-bold text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 md:gap-2">
                           Name
                           {sortConfig.key === 'name' ? (
                             <ArrowUpDown className={`h-3 w-3 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
                           ) : (
                             <ArrowUpDown className="h-3 w-3 opacity-50" />
                           )}
-                        </div>
+                        </button>
                       </TableHead>
                       <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Phone</TableHead>
                       <TableHead className="font-bold text-slate-900 px-2 md:px-4 text-xs md:text-sm whitespace-nowrap">Status</TableHead>

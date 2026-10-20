@@ -8,6 +8,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { parseBillReference } from './reference-parser.ts'
 import { isSmsFailure, sendSmsMessage } from "../_shared/sms.ts"
+import { ensureMemberPortalLink, MEMBER_PORTAL_LINK } from "../_shared/member_portal.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -119,6 +120,22 @@ serve(async (req: Request): Promise<Response> => {
     let phoneMatchedMemberId: string | null = null
     let caseActive: boolean = false
     let caseContributionAmount: number | null = null
+    let membershipApplication: any = null
+
+    // Application payment codes are resolved before member numbers. An approved
+    // applicant is not a member yet, so routing this through members would lose
+    // the payment in suspense.
+    if (billRefNumber.trim()) {
+      const { data: application } = await supabase
+        .from('membership_applications')
+        .select('id, full_name, phone_number, status, payment_status, payment_code')
+        .eq('payment_code', billRefNumber.trim().toUpperCase())
+        .maybeSingle()
+      if (application?.status === 'payment_pending') {
+        membershipApplication = application
+        console.log('✅ Membership application resolved by payment code:', application.payment_code)
+      }
+    }
 
     // 1. Resolve member number if present in reference
     if (parsed.memberNumber) {
@@ -221,6 +238,185 @@ serve(async (req: Request): Promise<Response> => {
             existing_transaction_id: existingTxByReceipt.id,
             reference: billRefNumber || null,
           },
+        })
+      }
+    }
+
+    if (!existingTxByReceipt && membershipApplication && transAmount > 0 && hasMpesaReceipt) {
+      const { data: settings } = await supabase
+        .from('settings')
+        .select('registration_fee')
+        .limit(1)
+        .maybeSingle()
+      const expectedAmount = Number(settings?.registration_fee || 0)
+      if (expectedAmount > 0 && transAmount !== expectedAmount) {
+        console.warn('⚠️ Application payment amount mismatch; sending to suspense', { expectedAmount, transAmount })
+      } else {
+        const { error: applicationPaymentError } = await supabase
+          .from('membership_applications')
+          .update({
+            payment_status: 'received',
+            payment_received_at: new Date().toISOString(),
+            payment_receipt: normalizedTransID,
+            payment_amount: transAmount,
+            payment_phone_number: normalizedPhone || null,
+            payment_metadata: {
+              source: 'c2b_webhook',
+              bill_reference: billRefNumber,
+              sender_name: senderName,
+              transaction_date: transactionDate.toISOString(),
+              raw_callback: callback,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', membershipApplication.id)
+          .eq('status', 'payment_pending')
+
+        if (applicationPaymentError) throw applicationPaymentError
+
+        await supabase.from('audit_logs').insert({
+          action: 'MEMBERSHIP_PAYMENT_RECEIVED',
+          table_name: 'membership_applications',
+          record_id: membershipApplication.id,
+          status: 'success',
+          new_values: { payment_code: billRefNumber, receipt: normalizedTransID, amount: transAmount },
+        })
+
+        const { error: notificationError } = await supabase.from('notifications').insert({
+          role: 'admin',
+          title: 'New Member Registration Payment',
+          message: `Registration payment of KES ${transAmount.toLocaleString('en-KE')} received for ${membershipApplication.full_name} (${membershipApplication.payment_code}). Receipt: ${normalizedTransID}.`,
+          category: 'registration_payment_received',
+          event_key: `application:${membershipApplication.id}:registration_payment_received`,
+          data: {
+            source: 'c2b_webhook',
+            application_id: membershipApplication.id,
+            payment_code: membershipApplication.payment_code,
+            amount: transAmount,
+            receipt: normalizedTransID,
+          },
+        })
+        if (notificationError) {
+          console.error('Could not queue registration payment admin alert:', notificationError.message)
+        }
+
+        // Registration payments are matched to a unique application payment code,
+        // so they can be activated immediately. Previously this callback only
+        // marked the payment as received and waited for an admin click, which
+        // delayed member-number delivery by 20+ minutes.
+        const { data: activationResult, error: activationError } = await supabase.rpc('activate_membership_application', {
+          p_application_id: membershipApplication.id,
+        })
+        if (activationError || !activationResult?.success) {
+          const message = activationError?.message || activationResult?.message || 'Membership activation failed'
+          await supabase.from('audit_logs').insert({
+            action: 'MEMBERSHIP_ACTIVATION_FAILED',
+            table_name: 'membership_applications',
+            record_id: membershipApplication.id,
+            status: 'error',
+            new_values: { payment_code: billRefNumber, receipt: normalizedTransID, error: message },
+          })
+          throw new Error(message)
+        }
+
+        const { data: activatedMember } = await supabase
+          .from('members')
+          .select('id, name, member_number, phone_number, probation_end_date')
+          .eq('id', activationResult.id)
+          .single()
+        const { data: activationTemplate } = await supabase
+          .from('sms_templates')
+          .select('raw_template')
+          .eq('trigger_key', 'registration_activated')
+          .maybeSingle()
+        const activationMessage = String(
+          activationTemplate?.raw_template ||
+          'Malanga Welfare: Congratulations {name}. Your membership is now active. Your member number is {memberNumber}.',
+        )
+          .replaceAll('{name}', String(activatedMember?.name || membershipApplication.full_name))
+          .replaceAll('{memberNumber}', String(activatedMember?.member_number || activationResult.member_number))
+          .replaceAll('{phoneNumber}', String(activatedMember?.phone_number || membershipApplication.phone_number))
+          .replaceAll('{portalLink}', MEMBER_PORTAL_LINK)
+        const linkedActivationMessage = ensureMemberPortalLink(activationMessage)
+
+        const { data: activationNotification, error: activationNotificationError } = await supabase.from('notifications').insert({
+          member_id: activationResult.id,
+          role: 'member',
+          title: 'Membership Activated',
+          message: linkedActivationMessage,
+          category: 'registration_activated',
+          event_key: `application:${membershipApplication.id}:registration_activated`,
+          data: {
+            source: 'c2b_webhook',
+            application_id: membershipApplication.id,
+            member_number: activationResult.member_number,
+            probation_end_date: activatedMember?.probation_end_date || null,
+          },
+        })
+        if (activationNotificationError) {
+          console.error('Could not queue membership activation notification:', activationNotificationError.message)
+        }
+
+        const { data: whatsappNotification } = await supabase.from('notifications').insert({
+          member_id: activationResult.id,
+          role: 'member',
+          title: 'Members WhatsApp Group Invitation',
+          message: 'Your members WhatsApp group invitation is ready.',
+          category: 'whatsapp_group_invite',
+          event_key: `application:${membershipApplication.id}:whatsapp_group_invite`,
+          data: { source: 'c2b_webhook', application_id: membershipApplication.id, use_current_whatsapp_group_link: true },
+        }).select('id').single()
+
+        try {
+          const { data: template } = await supabase
+            .from('sms_templates')
+            .select('raw_template')
+            .eq('trigger_key', 'registration_activated')
+            .maybeSingle()
+          const rawTemplate = String((template as { raw_template?: unknown } | null)?.raw_template || '').trim()
+          const message = ensureMemberPortalLink((rawTemplate || activationMessage)
+            .replaceAll('{name}', String(activatedMember?.name || membershipApplication.full_name))
+            .replaceAll('{memberNumber}', String(activatedMember?.member_number || activationResult.member_number))
+            .replaceAll('{phoneNumber}', String(activatedMember?.phone_number || membershipApplication.phone_number))
+            .replaceAll('{portalLink}', MEMBER_PORTAL_LINK))
+          const results = await sendSmsMessage([activatedMember?.phone_number || membershipApplication.phone_number], message)
+          const activationSmsSent = results.length > 0 && results.every((result) => !isSmsFailure(result))
+          const activationNotificationId = (activationNotification as { data?: { id?: string } | null } | null)?.data?.id
+          if (activationSmsSent && activationNotificationId) {
+            await supabase.from('notifications').update({ sms_sent_at: new Date().toISOString(), data: { source: 'c2b_webhook', application_id: membershipApplication.id, member_number: activationResult.member_number, sms_delivery_mode: 'immediate' } }).eq('id', activationNotificationId)
+          }
+          await Promise.all(results.map((result) => supabase.from('audit_logs').insert({
+            action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT',
+            table_name: 'sms',
+            status: isSmsFailure(result) ? 'error' : 'success',
+            metadata: {
+              source: 'c2b_webhook',
+              trigger_key: 'registration_activated',
+              phone_number: result.phoneNumber,
+              provider: result.provider,
+              provider_message_id: result.providerMessageId,
+              provider_response: result.raw,
+              application_id: membershipApplication.id,
+              member_number: activatedMember?.member_number || activationResult.member_number,
+            },
+          })))
+
+          const { data: whatsappSettings } = await supabase.from('settings').select('whatsapp_group_link').limit(1).maybeSingle()
+          const whatsappLink = String(whatsappSettings?.whatsapp_group_link || Deno.env.get('WHATSAPP_GROUP_LINK') || '').trim()
+          if (whatsappLink && whatsappNotification?.id) {
+            const { data: whatsappTemplate } = await supabase.from('sms_templates').select('raw_template').eq('trigger_key', 'whatsapp_group_invite').maybeSingle()
+            const whatsappMessage = String(whatsappTemplate?.raw_template || 'Malanga Welfare: Join the members WhatsApp group here: {whatsappLink}. Please do not share this link publicly.').replaceAll('{whatsappLink}', whatsappLink)
+            const whatsappResults = await sendSmsMessage([activatedMember?.phone_number || membershipApplication.phone_number], whatsappMessage)
+            const whatsappSent = whatsappResults.length > 0 && whatsappResults.every((result) => !isSmsFailure(result))
+            if (whatsappSent) await supabase.from('notifications').update({ sms_sent_at: new Date().toISOString(), data: { source: 'c2b_webhook', application_id: membershipApplication.id, sms_delivery_mode: 'immediate' } }).eq('id', whatsappNotification.id)
+            await Promise.all(whatsappResults.map((result) => supabase.from('audit_logs').insert({ action: isSmsFailure(result) ? 'SMS_FAILED' : 'SMS_SENT', table_name: 'sms', status: isSmsFailure(result) ? 'error' : 'success', metadata: { source: 'c2b_webhook', trigger_key: 'whatsapp_group_invite', phone_number: result.phoneNumber, provider: result.provider, provider_message_id: result.providerMessageId, provider_response: result.raw, application_id: membershipApplication.id } })))
+          }
+        } catch (smsError) {
+          console.error('Membership activation SMS failed:', smsError instanceof Error ? smsError.message : String(smsError))
+        }
+
+        return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: 'Accepted' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
     }

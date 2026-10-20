@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jwtVerify } from "https://esm.sh/jose@5.9.6";
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 const FINANCE_ROLES = new Set(["super_admin", "treasurer"]);
 
-function jsonResponse(status: number, payload: Record<string, unknown>) {
+function jsonResponse(status: number, payload: Record<string, unknown>, origin?: string | null) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...buildCorsHeaders(origin), "Content-Type": "application/json" },
   });
 }
 
@@ -102,12 +102,13 @@ async function verifyToken(req: Request) {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: buildCorsHeaders(origin) });
   }
 
   if (!["GET", "POST"].includes(req.method)) {
-    return jsonResponse(405, { error: "Method not allowed" });
+    return jsonResponse(405, { error: "Method not allowed" }, origin);
   }
 
   try {
@@ -130,7 +131,7 @@ serve(async (req) => {
     );
 
     if (selectors.length === 0) {
-      return jsonResponse(400, { error: "member_id is required" });
+      return jsonResponse(400, { error: "member_id is required" }, origin);
     }
 
     const supabase = createClient(
@@ -140,7 +141,7 @@ serve(async (req) => {
 
     const member = await resolveMember(supabase, selectors);
     if (!member) {
-      return jsonResponse(404, { error: "Member not found" });
+      return jsonResponse(404, { error: "Member not found" }, origin);
     }
 
     const resolvedMemberId = String(member.id);
@@ -202,6 +203,7 @@ serve(async (req) => {
             "contribution",
             "case_wallet_deduction",
             "arrears",
+            "late_payment",
             "contribution_refund",
             "case_wallet_refund",
           ]);
@@ -214,7 +216,7 @@ serve(async (req) => {
             const txType = String(r.transaction_type || "");
             const amount = Number(r.amount) || 0;
             const current = netByCase.get(caseId) || 0;
-            if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears") {
+            if (txType === "contribution" || txType === "case_wallet_deduction" || txType === "arrears" || txType === "late_payment") {
               netByCase.set(caseId, current + Math.abs(amount));
               return;
             }
@@ -275,11 +277,11 @@ serve(async (req) => {
       },
       recent_transactions: transactions || [],
       active_cases_summary: activeCasesSummary,
-    });
+    }, origin);
   } catch (error: unknown) {
     console.error("api-member-summary error:", error);
     const msg = error instanceof Error ? error.message : "Unauthorized or invalid request";
-    if (msg === "Forbidden") return jsonResponse(403, { error: msg });
-    return jsonResponse(401, { error: "Unauthorized or invalid request" });
+    if (msg === "Forbidden") return jsonResponse(403, { error: msg }, origin);
+    return jsonResponse(401, { error: "Unauthorized or invalid request" }, origin);
   }
 });

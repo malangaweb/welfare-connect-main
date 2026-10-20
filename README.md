@@ -70,5 +70,4 @@ This project is built with .
 
 ## How can I deploy this project?
 
-This project has been deployed on Netlify mwelfare.netlify.app which is also connected to custom domain malangawelfare.org
-The malangawelfare.org domain is renewable on Netlify every 29th of July
+This project is published on GitHub Pages at https://malangawelfare.co.ke.

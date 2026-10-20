@@ -10,7 +10,7 @@ Scope: React SPA (`src/`) + Supabase (Postgres, 41 Edge Functions, 112 migration
 This is a **functionally rich, genuinely useful welfare-society management
 system** with a deep, hard-won financial domain model (wallet ledger, case
 waterfall, discipline/probation automation). It is run in production
-(malangawelfare.org / mwelfare.netlify.app) and clearly serves a real society.
+(malangawelfare.co.ke) and clearly serves a real society.
 
 It is **NOT safe at its current security posture** and must not be scaled to
 "millions of users" until the data-access model is fixed. Three findings are

@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsFor } from "../_shared/cors.ts";
 import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
-function jsonResponse(status: number, payload: Record<string, unknown>) {
+function jsonResponse(req: Request, status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsFor(req), "Content-Type": "application/json" },
   });
 }
 
@@ -17,8 +17,8 @@ const toNum = (value: unknown) => {
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (!['GET', 'POST'].includes(req.method)) return jsonResponse(405, { error: "Method not allowed" });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsFor(req) });
+  if (!['GET', 'POST'].includes(req.method)) return jsonResponse(req, 405, { error: "Method not allowed" });
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
@@ -73,7 +73,7 @@ serve(async (req) => {
       supabase
         .from('transactions')
         .select('id, member_id, case_id, amount, transaction_type, status, description, created_at, metadata')
-        .eq('transaction_type', 'arrears')
+        .in('transaction_type', ['arrears', 'late_payment'])
         .gte('created_at', fromDate)
         .in('status', ['completed', 'success'])
         .order('created_at', { ascending: false })
@@ -90,6 +90,20 @@ serve(async (req) => {
     if (latePaymentErr) throw latePaymentErr;
     if (latePaymentAggregateErr) throw latePaymentAggregateErr;
 
+    const caseIds = Array.from(new Set(
+      (latePaymentRows || []).map((row: any) => row.case_id).filter(Boolean),
+    ));
+    const caseLookup = new Map<string, string>();
+    if (caseIds.length > 0) {
+      const { data: caseRows, error: casesErr } = await supabase
+        .from('cases')
+        .select('id, case_number')
+        .in('id', caseIds);
+      if (casesErr) throw casesErr;
+      for (const c of caseRows || []) {
+        caseLookup.set(c.id, c.case_number);
+      }
+    }
     const memberIds = Array.from(new Set([
       ...(transitions || []).map((row: any) => row.member_id).filter(Boolean),
       ...(reinstatements || []).map((row: any) => row.member_id).filter(Boolean),
@@ -154,7 +168,7 @@ serve(async (req) => {
       member_number: memberLookup.get(row.member_id)?.member_number || null,
       member_name: memberLookup.get(row.member_id)?.name || null,
       member_status: memberLookup.get(row.member_id)?.status || null,
-      case_number: String(row?.metadata?.paid_case_number || ''),
+      case_number: caseLookup.get(String(row.case_id || '')) || String(row?.metadata?.paid_case_number || ''),
     }));
 
     const sampledTotal = late_payments.reduce((sum: number, row: any) => sum + Math.abs(toNum(row.amount)), 0);
@@ -178,7 +192,7 @@ serve(async (req) => {
       sample_truncated: fullCount > late_payments.length,
     };
 
-    return jsonResponse(200, {
+    return jsonResponse(req, 200, {
       days,
       status_distribution,
       default_outcomes,
@@ -213,6 +227,6 @@ serve(async (req) => {
       }
     }
     const status = msg === "Forbidden" ? 403 : msg.toLowerCase().includes("token") ? 401 : 500;
-    return jsonResponse(status, { error: msg });
+    return jsonResponse(req, status, { error: msg });
   }
 });

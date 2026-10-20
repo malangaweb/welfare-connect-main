@@ -1,19 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsFor } from "../_shared/cors.ts";
 import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
-function jsonResponse(status: number, payload: Record<string, unknown>) {
+function jsonResponse(req: Request, status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsFor(req), "Content-Type": "application/json" },
   });
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (!["GET", "POST"].includes(req.method)) return jsonResponse(405, { error: "Method not allowed" });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsFor(req) });
+  if (!["GET", "POST"].includes(req.method)) return jsonResponse(req, 405, { error: "Method not allowed" });
 
   try {
     const claims = await verifyAppJwtFromRequest(req);
@@ -34,9 +34,41 @@ serve(async (req) => {
       .limit(300);
     if (error) throw error;
 
-    return jsonResponse(200, { transactions: data || [] });
+    const { data: settings } = await supabase.from("settings").select("registration_fee").limit(1).maybeSingle();
+    const registrationFee = Number(settings?.registration_fee || 0);
+    const { data: applications } = await supabase
+      .from("membership_applications")
+      .select("id, application_reference, full_name, phone_number, status, payment_code")
+      .in("status", ["pending_review", "approved", "payment_pending"])
+      .order("application_date", { ascending: false })
+      .limit(500);
+
+    const withCandidates = (data || []).map((transaction) => {
+      const txRef = String(transaction.reference || "").trim().toUpperCase();
+
+      return {
+        ...transaction,
+        registration_candidates: (applications || [])
+          .filter((application) => {
+            const appRef = String(application.payment_code || "").trim().toUpperCase();
+            return !!txRef && !!appRef && txRef === appRef;
+          })
+          .map((application) => ({
+            id: application.id,
+            application_reference: application.application_reference,
+            full_name: application.full_name,
+            phone_number: application.phone_number,
+            status: application.status,
+            payment_code: application.payment_code,
+            amount_matches: registrationFee > 0 && Number(transaction.amount || 0) === registrationFee,
+            expected_amount: registrationFee,
+          })),
+      };
+    });
+
+    return jsonResponse(req, 200, { transactions: withCandidates });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unauthorized";
-    return jsonResponse(msg === "Forbidden" ? 403 : 401, { error: msg });
+    return jsonResponse(req, msg === "Forbidden" ? 403 : 401, { error: msg });
   }
 });

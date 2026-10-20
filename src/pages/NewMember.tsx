@@ -19,7 +19,7 @@ const sendWelcomeSMS = async (memberId: string, name: string, phoneNumber: strin
   try {
     await invokeWithAppToken('send-sms', {
       recipients: [{ phoneNumber, name, memberNumber, memberId }],
-      message: 'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}.',
+      message: 'Malanga Welfare: Welcome {name}. Your member number is {memberNumber}. Member portal: {portalLink}',
       triggerKey: 'welcome_member',
       source: 'member_registration',
     });

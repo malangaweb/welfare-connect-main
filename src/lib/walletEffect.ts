@@ -3,12 +3,15 @@ const WALLET_DEBIT_TYPES = new Set([
   "renewal",
   "penalty",
   "arrears",
+  "late_payment",
   "case_wallet_deduction",
+  "wallet_manual_adjustment",
 ]);
 
 const WALLET_NEUTRAL_TYPES = new Set([
   "reversal_memo",
   "contribution",
+  "registration_payment",
 ]);
 
 /**
@@ -28,4 +31,3 @@ export function walletRowDelta(
   if (WALLET_DEBIT_TYPES.has(txType)) return -Math.abs(txAmount);
   return txAmount;
 }
-

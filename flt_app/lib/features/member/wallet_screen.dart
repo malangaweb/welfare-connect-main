@@ -6,6 +6,7 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
+import '../../core/widgets/async_error_view.dart';
 import '../auth/auth_controller.dart';
 import 'member_shell.dart';
 
@@ -27,7 +28,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     _future = _load();
   }
 
-  Future<MemberWalletSnapshot> _load() {
+  Future<MemberWalletSnapshot> _load({bool forceRefresh = false}) {
     final auth = ref.read(authControllerProvider);
     if ((auth.memberId ?? '').isEmpty || (auth.appToken ?? '').isEmpty) {
       throw Exception('Session missing member identity. Please log in again.');
@@ -35,6 +36,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     return _service.fetchMemberWalletData(
       memberId: auth.memberId!,
       appToken: auth.appToken!,
+      forceRefresh: forceRefresh,
     );
   }
 
@@ -53,7 +55,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       currentIndex: 0,
       actions: [
         IconButton(
-          onPressed: () => setState(() => _future = _load()),
+          onPressed: () => setState(() => _future = _load(forceRefresh: true)),
           icon: const Icon(Icons.refresh),
         ),
       ],
@@ -64,13 +66,16 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text(snapshot.error.toString()));
+            return AsyncErrorView(
+                error: snapshot.error,
+                onRetry: () =>
+                    setState(() => _future = _load(forceRefresh: true)));
           }
 
           final data = snapshot.data!;
           return RefreshIndicator(
             onRefresh: () async {
-              setState(() => _future = _load());
+              setState(() => _future = _load(forceRefresh: true));
               await _future;
             },
             child: ListView(
@@ -173,20 +178,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                   runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
-                      onPressed:
-                          _busy ? null : () => _openPayToCaseDialog(data),
-                      icon: const Icon(Icons.assignment_turned_in),
-                      label: const Text('Pay To Case'),
-                    ),
-                    OutlinedButton.icon(
                       onPressed: _busy ? null : _openTransferDialog,
                       icon: const Icon(Icons.swap_horiz),
                       label: const Text('Transfer Funds'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _busy ? null : _openPinDialog,
-                      icon: const Icon(Icons.lock_reset),
-                      label: const Text('Change PIN'),
                     ),
                   ],
                 ),
@@ -249,6 +243,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             children: [
                               Text(
                                 type.replaceAll('_', ' '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -265,10 +261,17 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          money.format(amount.abs()),
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              money.format(amount.abs()),
+                              maxLines: 1,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -277,151 +280,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 }),
               ],
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _openPayToCaseDialog(MemberWalletSnapshot snapshot) async {
-    final auth = ref.read(authControllerProvider);
-    if ((auth.memberId ?? '').isEmpty || (auth.appToken ?? '').isEmpty) return;
-
-    final cases = await _service.fetchPayableCases(
-      memberId: auth.memberId!,
-    );
-    final pending = cases.where((c) => !c.paid).toList();
-    if (!mounted) return;
-    if (pending.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No unpaid cases found.')),
-      );
-      return;
-    }
-
-    final selectedIds = <String>{};
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocalState) {
-          final selectedCases =
-              pending.where((c) => selectedIds.contains(c.id)).toList();
-          final selectedTotal = selectedCases.fold<double>(
-            0,
-            (sum, c) => sum + c.contributionPerMember,
-          );
-          return AlertDialog(
-            title: const Text('Pay To Case'),
-            content: SizedBox(
-              width: 420,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Select Cases*'),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 240,
-                    child: ListView.builder(
-                      itemCount: pending.length,
-                      itemBuilder: (_, i) {
-                        final c = pending[i];
-                        final checked = selectedIds.contains(c.id);
-                        return CheckboxListTile(
-                          dense: true,
-                          value: checked,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            '#${c.caseNumber} • KES ${c.contributionPerMember.toStringAsFixed(2)}',
-                          ),
-                          subtitle: c.isFinalized
-                              ? const Text('Finalized case (posts as arrears)')
-                              : null,
-                          onChanged: (v) {
-                            setLocalState(() {
-                              if (v == true) {
-                                selectedIds.add(c.id);
-                              } else {
-                                selectedIds.remove(c.id);
-                              }
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (selectedIds.isNotEmpty)
-                    Text(
-                      'Selected: ${selectedIds.length} case(s) • Required total: KES ${selectedTotal.toStringAsFixed(2)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: _busy
-                    ? null
-                    : () async {
-                        final toPay =
-                            pending.where((c) => selectedIds.contains(c.id)).toList();
-                        if (toPay.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Choose one or more cases to pay first.'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                          return;
-                        }
-
-                        setState(() => _busy = true);
-                        try {
-                          final result = await _service.payToCases(
-                            memberId: auth.memberId!,
-                            selectedCases: toPay,
-                            walletBalance: snapshot.walletBalance,
-                          );
-                          if (!mounted) return;
-                          Navigator.of(context).pop();
-                          final count = (result['count'] as num?)?.toInt() ?? 0;
-                          final total = (result['total'] as num?)?.toDouble() ?? 0;
-                          Posthog().capture(
-                            eventName: 'case_payment_completed',
-                            properties: {
-                              'case_count': count,
-                              'total_amount': total,
-                            },
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Paid $count case(s), total KES ${total.toStringAsFixed(2)}.'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                          setState(() => _future = _load());
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text('Failed: $e'),
-                                  backgroundColor: Colors.red),
-                            );
-                          }
-                        } finally {
-                          if (mounted) setState(() => _busy = false);
-                        }
-                      },
-                child: Text(_busy ? 'Paying...' : 'Pay'),
-              ),
-            ],
           );
         },
       ),
@@ -494,7 +352,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       (auth.memberId ?? '').isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Choose a member and enter a valid amount.'),
+                        content:
+                            Text('Choose a member and enter a valid amount.'),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -531,7 +390,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         content: Text('Transfer successful.'),
                         backgroundColor: Colors.green),
                   );
-                  setState(() => _future = _load());
+                  setState(() => _future = _load(forceRefresh: true));
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -548,96 +407,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Future<void> _openPinDialog() async {
-    final auth = ref.read(authControllerProvider);
-    final oldCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Change PIN'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: oldCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Old PIN')),
-            const SizedBox(height: 8),
-            TextField(
-                controller: newCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'New PIN')),
-            const SizedBox(height: 8),
-            TextField(
-                controller: confirmCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Confirm PIN')),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if ((auth.memberId ?? '').isEmpty) return;
-              final oldPin = oldCtrl.text.trim();
-              final newPin = newCtrl.text.trim();
-              final confirmPin = confirmCtrl.text.trim();
-              if (oldPin.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Old PIN is required.'),
-                      backgroundColor: Colors.red),
-                );
-                return;
-              }
-              final isSixDigits = RegExp(r'^\d{6}$').hasMatch(newPin);
-              if (newPin != confirmPin || !isSixDigits) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content:
-                          Text('PIN must be 6 digits and match confirmation.'),
-                      backgroundColor: Colors.red),
-                );
-                return;
-              }
-              setState(() => _busy = true);
-              try {
-                await _service.updateMemberPin(
-                  memberId: auth.memberId!,
-                  oldPin: oldPin,
-                  newPin: newPin,
-                );
-                if (!mounted) return;
-                Posthog().capture(eventName: 'wallet_pin_updated');
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('PIN updated successfully.'),
-                      backgroundColor: Colors.green),
-                );
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text('Failed: $e'),
-                        backgroundColor: Colors.red),
-                  );
-                }
-              } finally {
-                if (mounted) setState(() => _busy = false);
-              }
-            },
-            child: const Text('Update PIN'),
-          ),
-        ],
       ),
     );
   }

@@ -25,33 +25,20 @@ class AdminShell extends ConsumerWidget {
     final role = auth.role;
     final canSeeSettings = canAccessAdminPath('/admin/settings', role);
     final canSeeAccounts = canAccessAdminPath('/admin/accounts', role);
+    final canSeeApplications = canAccessAdminPath('/admin/applications', role);
 
     const routes = <String>[
       '/admin/dashboard',
       '/admin/members',
       '/admin/cases',
       '/admin/transactions',
-      '/admin/suspense-queue',
-      '/admin/reports',
-      '/admin/users',
     ];
-    const labels = <String>[
-      'Dashboard',
-      'Members',
-      'Cases',
-      'Txns',
-      'Suspense',
-      'Reports',
-      'Users',
-    ];
+    const labels = <String>['Home', 'Members', 'Cases', 'Transactions'];
     const icons = <IconData>[
-      Icons.dashboard,
-      Icons.group,
-      Icons.assignment,
-      Icons.receipt_long,
-      Icons.pending_actions,
-      Icons.bar_chart,
-      Icons.manage_accounts,
+      Icons.dashboard_outlined,
+      Icons.group_outlined,
+      Icons.assignment_outlined,
+      Icons.receipt_long_outlined,
     ];
 
     final visibleRoutes = <String>[];
@@ -66,8 +53,10 @@ class AdminShell extends ConsumerWidget {
     }
 
     final currentIndex = visibleRoutes.indexOf(route);
-    final resolvedIndex = currentIndex >= 0 ? currentIndex : 0;
+    final expanded = MediaQuery.sizeOf(context).width >= 840;
+    final resolvedIndex = currentIndex >= 0 ? currentIndex : null;
 
+    final router = GoRouter.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       appBar: AppBar(
@@ -75,15 +64,28 @@ class AdminShell extends ConsumerWidget {
         backgroundColor: const Color(0xFF1F3556),
         foregroundColor: Colors.white,
         actions: [
-          const NotificationBell(),
+          NotificationBell(
+            key: ValueKey(
+              'admin:${auth.user?.id ?? auth.memberId ?? 'unknown'}',
+            ),
+          ),
           ...?actions,
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (v) {
-              if (v == 'settings' && canSeeSettings) context.go('/admin/settings');
-              if (v == 'accounts' && canSeeAccounts) context.go('/admin/accounts');
-              if (v == 'fiscal') context.go('/admin/fiscal-reports');
-              if (v == 'compliance') context.go('/admin/compliance-reports');
+              if (v == 'settings' && canSeeSettings) {
+                context.go('/admin/settings');
+              }
+              if (v == 'accounts' && canSeeAccounts) {
+                context.go('/admin/accounts');
+              }
+              if (v == 'applications' && canSeeApplications) {
+                context.go('/admin/applications');
+              }
+              if (v == 'suspense' &&
+                  canAccessAdminPath('/admin/suspense-queue', role)) {
+                context.go('/admin/suspense-queue');
+              }
               if (v == 'logout') {
                 ref.read(authControllerProvider.notifier).logout();
                 context.go('/login');
@@ -94,37 +96,81 @@ class AdminShell extends ConsumerWidget {
                 const PopupMenuItem(value: 'settings', child: Text('Settings')),
               if (canSeeAccounts)
                 const PopupMenuItem(value: 'accounts', child: Text('Accounts')),
-              const PopupMenuItem(value: 'fiscal', child: Text('Fiscal Reports')),
-              const PopupMenuItem(value: 'compliance', child: Text('Compliance Reports')),
+              if (canSeeApplications)
+                const PopupMenuItem(
+                    value: 'applications',
+                    child: Text('Membership applications')),
+              if (canAccessAdminPath('/admin/suspense-queue', role))
+                const PopupMenuItem(
+                    value: 'suspense', child: Text('Suspense queue')),
               const PopupMenuItem(value: 'logout', child: Text('Logout')),
             ],
           ),
         ],
       ),
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: body,
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: resolvedIndex,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: const Color(0xFF1F3556),
-        selectedItemColor: const Color(0xFF9FD3FF),
-        unselectedItemColor: const Color(0xFFA9B6C8),
-        onTap: (i) {
-          if (i < 0 || i >= visibleRoutes.length) return;
-          context.go(visibleRoutes[i]);
+      body: PopScope<Object?>(
+        canPop: router.canPop(),
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && !router.canPop()) {
+            router.go('/admin/dashboard');
+          }
         },
-        items: List.generate(visibleRoutes.length, (i) {
-          return BottomNavigationBarItem(
-            icon: Icon(visibleIcons[i]),
-            label: visibleLabels[i],
-          );
-        }),
+        child: Row(children: [
+          if (expanded)
+            NavigationRail(
+              selectedIndex: resolvedIndex,
+              labelType: NavigationRailLabelType.all,
+              onDestinationSelected: (i) => context.go(visibleRoutes[i]),
+              destinations: List.generate(
+                  visibleRoutes.length,
+                  (i) => NavigationRailDestination(
+                        icon: Icon(visibleIcons[i]),
+                        label: Text(visibleLabels[i]),
+                      )),
+            ),
+          Expanded(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1120),
+                child: DataTableTheme(
+                  data: DataTableThemeData(
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 36,
+                    dataRowMaxHeight: 48,
+                    horizontalMargin: 12,
+                    columnSpacing: 16,
+                    headingTextStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    dataTextStyle: const TextStyle(fontSize: 13),
+                  ),
+                  child: ListTileTheme(
+                    dense: true,
+                    minVerticalPadding: 4,
+                    horizontalTitleGap: 10,
+                    minLeadingWidth: 32,
+                    child: body,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
       ),
+      bottomNavigationBar: expanded
+          ? null
+          : NavigationBar(
+              selectedIndex: resolvedIndex ?? 0,
+              onDestinationSelected: (i) => context.go(visibleRoutes[i]),
+              destinations: List.generate(
+                  visibleRoutes.length,
+                  (i) => NavigationDestination(
+                        icon: Icon(visibleIcons[i]),
+                        label: visibleLabels[i],
+                      )),
+            ),
     );
   }
 }

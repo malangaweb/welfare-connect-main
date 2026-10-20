@@ -206,7 +206,10 @@ const getContributionSignedAmount = (tx: Transaction) => {
   const amount = Math.abs(Number(tx.amount || 0));
   return normalizeType(tx.transaction_type) === 'contribution_refund' ? -amount : amount;
 };
-const isArrearsTransaction = (tx: Transaction) => normalizeType(tx.transaction_type) === 'arrears';
+const isLatePaymentTransaction = (tx: Transaction) => {
+  const type = normalizeType(tx.transaction_type);
+  return type === 'arrears' || type === 'late_payment';
+};
 const isPenaltyTransaction = (tx: Transaction) => normalizeType(tx.transaction_type) === 'penalty';
 
 const ITEMS_PER_PAGE = 20;
@@ -328,6 +331,31 @@ async function fetchReportTransactionsBatched(startDateIso: string): Promise<Tra
   }
   return rows;
 }
+
+type SortableHeaderProps = {
+  column: string;
+  label: string;
+  sortColumn: string;
+  sortDirection: 'asc' | 'desc';
+  onSort: (column: string) => void;
+};
+
+const SortableHeader = ({ column, label, sortColumn, sortDirection, onSort }: SortableHeaderProps) => {
+  const active = sortColumn === column;
+  return (
+    <TableHead aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        aria-label={`Sort by ${label}${active ? `, currently ${sortDirection === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+        className="inline-flex min-h-11 items-center gap-2 rounded-sm text-left font-bold text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
+        {label}
+        {active ? (sortDirection === 'asc' ? <SortAsc aria-hidden="true" className="h-4 w-4" /> : <SortDesc aria-hidden="true" className="h-4 w-4" />) : null}
+      </button>
+    </TableHead>
+  );
+};
 
 const Reports = () => {
   const navigate = useNavigate();
@@ -743,7 +771,7 @@ const Reports = () => {
       return s === '' || s === 'completed' || s === 'success';
     };
 
-    const arrearsRows = transactions.filter((tx) => inScope(tx) && successful(tx) && isArrearsTransaction(tx));
+    const arrearsRows = transactions.filter((tx) => inScope(tx) && successful(tx) && isLatePaymentTransaction(tx));
     const penaltyRows = transactions.filter((tx) => inScope(tx) && successful(tx) && isPenaltyTransaction(tx));
 
     const arrearsLedgerCount = arrearsRows.length;
@@ -877,7 +905,7 @@ const Reports = () => {
 
   const arrearsAnalytics = useMemo(() => {
     const filtered = transactions.filter((tx) => {
-      if (!isCountableTransaction(tx) || !isArrearsTransaction(tx)) return false;
+      if (!isCountableTransaction(tx) || !isLatePaymentTransaction(tx)) return false;
       if (selectedCaseIds.length > 0 && (!tx.case_id || !selectedCaseIds.includes(tx.case_id))) return false;
       const txDate = new Date(String(tx.created_at));
       return txDate >= dateRange.startDate && txDate <= dateRange.endDate;
@@ -1137,7 +1165,7 @@ const Reports = () => {
     <DashboardLayout>
       <div className="space-y-8 p-3 sm:p-6 min-h-screen bg-background">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-          <Card className="shadow-sm border-l-4 border-primary/70 hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Members</CardTitle>
             </CardHeader>
@@ -1147,7 +1175,7 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-l-4 border-primary/50 hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Cases</CardTitle>
             </CardHeader>
@@ -1157,7 +1185,7 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-l-4 border-accent/70 hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Contributions</CardTitle>
             </CardHeader>
@@ -1167,7 +1195,7 @@ const Reports = () => {
               </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-l-4 border-accent/50 hover:shadow-md transition-shadow">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Registration Fees</CardTitle>
             </CardHeader>
@@ -1268,11 +1296,11 @@ const Reports = () => {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Arrears Collected (Default Account)</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Late Payments Collected</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">KES {arrearsAnalytics.total.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">{arrearsAnalytics.count.toLocaleString()} arrears transactions in range</p>
+                  <p className="text-xs text-muted-foreground">{arrearsAnalytics.count.toLocaleString()} late-payment transactions in range</p>
                 </CardContent>
               </Card>
               <Card>
@@ -1292,7 +1320,7 @@ const Reports = () => {
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-1">
                 <p><span className="font-semibold text-foreground">Case payments:</span> `contribution`, `case_wallet_deduction`</p>
-                <p><span className="font-semibold text-foreground">Late/default-account payments:</span> `arrears`</p>
+                <p><span className="font-semibold text-foreground">Late/closed-case payments:</span> `late_payment` (legacy: `arrears`)</p>
                 <p><span className="font-semibold text-foreground">Reinstatement penalty:</span> `penalty`</p>
               </CardContent>
             </Card>
@@ -1438,23 +1466,13 @@ const Reports = () => {
 <div className="overflow-x-auto"><Table>
                       <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50 font-bold border-b-2">
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('id')}>
-                        Transaction ID {sortColumn === 'id' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('case_number')}>
-                        Case {sortColumn === 'case_number' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('transaction_type')}>
-                        Type {sortColumn === 'transaction_type' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('amount')}>
-                        Amount (KES) {sortColumn === 'amount' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg">M-Pesa Ref</TableHead>
-                      <TableHead className="font-bold text-black text-lg">Description</TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('created_at')}>
-                        Date {sortColumn === 'created_at' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
+                      <SortableHeader column="id" label="Transaction ID" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="case_number" label="Case" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="transaction_type" label="Type" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="amount" label="Amount (KES)" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <TableHead className="font-bold text-foreground text-lg">M-Pesa Ref</TableHead>
+                      <TableHead className="font-bold text-foreground text-lg">Description</TableHead>
+                      <SortableHeader column="created_at" label="Date" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1590,12 +1608,12 @@ const Reports = () => {
 <div className="overflow-x-auto"><Table>
                       <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50 border-b-2">
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('id')}>Transaction ID</TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('created_at')}>Date</TableHead>
+                      <SortableHeader column="id" label="Transaction ID" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="created_at" label="Date" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
                       <TableHead className="font-bold text-foreground text-lg">Member</TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('transaction_type')}>Type</TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('status')}>Status</TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('amount')}>Amount (KES)</TableHead>
+                      <SortableHeader column="transaction_type" label="Type" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="status" label="Status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="amount" label="Amount (KES)" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
                       <TableHead className="font-bold text-foreground text-lg">Reference</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1685,19 +1703,11 @@ const Reports = () => {
 <div className="overflow-x-auto"><Table>
                       <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50 border-b-2">
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('memberNumber')}>
-                        Member # {sortColumn === 'memberNumber' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('name')}>
-                        Name {sortColumn === 'name' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('walletBalance')}>
-                        Balance (KES) {sortColumn === 'walletBalance' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
+                      <SortableHeader column="memberNumber" label="Member number" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="name" label="Name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="walletBalance" label="Balance (KES)" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
                       <TableHead className="font-bold text-foreground text-lg">Phone</TableHead>
-                      <TableHead className="font-bold text-foreground text-lg cursor-pointer" onClick={() => handleSort('residence')}>
-                        Residence {sortColumn === 'residence' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
+                      <SortableHeader column="residence" label="Residence" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1768,26 +1778,14 @@ const Reports = () => {
 <div className="overflow-x-auto"><Table>
                       <TableHeader>
                     <TableRow className="border-b-2 bg-muted/50 hover:bg-muted/50">
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('memberNumber')}>
-                        Member # {sortColumn === 'memberNumber' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('name')}>
-                        Name {sortColumn === 'name' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('walletBalance')}>
-                        Balance {sortColumn === 'walletBalance' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg">Status</TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('totalContributions')}>
-                        Total Contributed {sortColumn === 'totalContributions' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('transactionCount')}>
-                        Transactions {sortColumn === 'transactionCount' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
-                      <TableHead className="font-bold text-black text-lg">Last Contribution</TableHead>
-                      <TableHead className="font-bold text-black text-lg cursor-pointer" onClick={() => handleSort('residence')}>
-                        Residence {sortColumn === 'residence' && (sortDirection === 'asc' ? <SortAsc className="inline h-4 w-4" /> : <SortDesc className="inline h-4 w-4" />)}
-                      </TableHead>
+                      <SortableHeader column="memberNumber" label="Member number" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="name" label="Name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="walletBalance" label="Balance" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <TableHead className="font-bold text-foreground text-lg">Status</TableHead>
+                      <SortableHeader column="totalContributions" label="Total contributed" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <SortableHeader column="transactionCount" label="Transactions" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
+                      <TableHead className="font-bold text-foreground text-lg">Last Contribution</TableHead>
+                      <SortableHeader column="residence" label="Residence" sortColumn={sortColumn} sortDirection={sortDirection} onSort={handleSort} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1902,9 +1900,9 @@ const Reports = () => {
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-md border p-4 space-y-2">
-                    <div className="font-semibold">Arrears Account vs Late Payments</div>
+                    <div className="font-semibold">Late-Payment Ledger vs Late-Payment Metric</div>
                     <div className="text-sm text-muted-foreground">
-                      Ledger arrears: {disciplineAccountReconciliation.arrearsLedgerCount.toLocaleString()} tx, KES {disciplineAccountReconciliation.arrearsLedgerTotal.toLocaleString()}
+                      Ledger late payments: {disciplineAccountReconciliation.arrearsLedgerCount.toLocaleString()} tx, KES {disciplineAccountReconciliation.arrearsLedgerTotal.toLocaleString()}
                     </div>
                     <div className="text-sm text-muted-foreground">
                       Late payments metric: {disciplineAccountReconciliation.lateCount.toLocaleString()} tx, KES {disciplineAccountReconciliation.lateTotal.toLocaleString()}
@@ -1939,8 +1937,8 @@ const Reports = () => {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle>Late Payments (Default Account)</CardTitle>
-                  <CardDescription>Closed-case settlements collected as arrears/default-account entries.</CardDescription>
+                  <CardTitle>Late Payments</CardTitle>
+                  <CardDescription>Closed-case settlements collected after close (late payments, incl. legacy arrears).</CardDescription>
                   {disciplineReport?.late_payment_scope?.sample_truncated && (
                     <p className="mt-1 text-xs text-amber-700">
                       Showing latest {disciplineReport.late_payment_scope.sampled_row_count.toLocaleString()} of {disciplineReport.late_payment_scope.full_row_count.toLocaleString()} rows.

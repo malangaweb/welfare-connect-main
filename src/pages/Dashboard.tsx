@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, CreditCard, CalendarDays, Calendar,
-  TrendingUp, BarChart3, UserPlus, Home, Wallet, UserCog, Settings, ChevronRight
+  TrendingUp, BarChart3, UserPlus, Home, Wallet, UserCog, Settings, ChevronRight, ClipboardList
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -204,6 +204,7 @@ const Dashboard = () => {
   const adminLinks = [
     { icon: <Home className="w-5 h-5" />, label: "Dashboard", href: "/dashboard" },
     { icon: <Users className="w-5 h-5" />, label: "Members", href: "/members" },
+    { icon: <ClipboardList className="w-5 h-5" />, label: "Applications", href: "/applications" },
     { icon: <Calendar className="w-5 h-5" />, label: "Cases", href: "/cases" },
     { icon: <CreditCard className="w-5 h-5" />, label: "Transactions", href: "/transactions" },
     { icon: <Wallet className="w-5 h-5" />, label: "Accounts", href: "/accounts" },
@@ -254,7 +255,6 @@ const Dashboard = () => {
                 title="Total Members"
                 value={data.totalMembers.toLocaleString()}
                 icon={<Users className="h-5 w-5" />}
-                trend={{ value: 12, isPositive: true }}
               />
               <StatsCard
                 title="Active Cases"
@@ -266,13 +266,11 @@ const Dashboard = () => {
                 title="Total Contributions"
                 value={`KES ${data.totalContributions.toLocaleString()}`}
                 icon={<CreditCard className="h-5 w-5" />}
-                trend={{ value: 8.5, isPositive: true }}
               />
               <StatsCard
                 title="Defaulters"
                 value={data.defaultersCount}
                 icon={<TrendingUp className="h-5 w-5" />}
-                trend={{ value: 2.1, isPositive: false }}
               />
             </>
           )}

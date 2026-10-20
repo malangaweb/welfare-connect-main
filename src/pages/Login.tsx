@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -82,9 +83,10 @@ const Login = () => {
         }
       }
 
-      // Check Supabase session first
+      // A Supabase session is only an admin-session signal. Member access uses
+      // the app token returned by auth-member-login and its member id.
       const { data } = await supabase.auth.getSession();
-      if (data.session) {
+      if (loginMode === 'admin' && data.session) {
         navigate('/dashboard', { replace: true });
         return;
       }
@@ -219,10 +221,11 @@ const Login = () => {
       navigate('/member/dashboard', { replace: true });
     } catch (error) {
       console.error('Member login error:', error);
+      const message = error instanceof Error ? error.message : 'Invalid credentials. Please try again.';
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'An unexpected error occurred. Please try again.',
+        title: 'Member login failed',
+        description: message,
       });
     } finally {
       setMemberLoading(false);
@@ -413,6 +416,10 @@ const Login = () => {
               </Button>
             </form>
           )}
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <Link to="/" className="text-primary underline-offset-4 hover:underline">Back Home</Link>
+            <Link to="/signup" className="text-primary underline-offset-4 hover:underline">New member? Apply online</Link>
+          </div>
         </section>
       </div>
     </div>

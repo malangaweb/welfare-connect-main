@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
+import '../../core/widgets/async_error_view.dart';
 import 'admin_shell.dart';
+import '../auth/auth_controller.dart';
 
-class AdminCasesScreen extends StatefulWidget {
+class AdminCasesScreen extends ConsumerStatefulWidget {
   const AdminCasesScreen({super.key});
 
   @override
-  State<AdminCasesScreen> createState() => _AdminCasesScreenState();
+  ConsumerState<AdminCasesScreen> createState() => _AdminCasesScreenState();
 }
 
-class _AdminCasesScreenState extends State<AdminCasesScreen> {
+class _AdminCasesScreenState extends ConsumerState<AdminCasesScreen> {
   final _service = LiveDataService();
   final _searchCtrl = TextEditingController();
   late Future<List<Map<String, dynamic>>> _future;
@@ -24,7 +27,14 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _service.fetchAdminCases();
+    _future = _loadCases();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadCases({bool forceRefresh = false}) {
+    final token = ref.read(authControllerProvider).appToken ?? '';
+    return _service
+        .fetchAdminCases(appToken: token, forceRefresh: forceRefresh)
+        .timeout(const Duration(seconds: 20));
   }
 
   @override
@@ -34,47 +44,8 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _service.fetchAdminCases());
+    setState(() => _future = _loadCases(forceRefresh: true));
     await _future;
-  }
-
-  Future<void> _deleteCase(Map<String, dynamic> row) async {
-    final caseId = (row['id'] ?? '').toString();
-    if (caseId.isEmpty) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Case'),
-        content: Text('Are you sure you want to delete case #${row['case_number'] ?? '-'}? This action cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => ctx.pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => ctx.pop(true), child: const Text('Delete')),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      await _service.deleteCase(caseId: caseId);
-      Posthog().capture(
-        eventName: 'case_deleted',
-        properties: {
-          'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
-        },
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Case deleted successfully.')),
-      );
-      await _refresh();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delete failed: $e')),
-      );
-    }
   }
 
   Future<void> _toggleCase(Map<String, dynamic> row) async {
@@ -87,7 +58,8 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
         Posthog().capture(
           eventName: 'case_reopened',
           properties: {
-            'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
+            'case_type':
+                (row['case_type'] ?? 'unknown').toString().toLowerCase(),
           },
         );
         if (!mounted) return;
@@ -100,7 +72,8 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
         Posthog().capture(
           eventName: 'case_finalized',
           properties: {
-            'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
+            'case_type':
+                (row['case_type'] ?? 'unknown').toString().toLowerCase(),
             'actual_amount': amount,
           },
         );
@@ -109,6 +82,8 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
           const SnackBar(content: Text('Case finalized successfully.')),
         );
       }
+      await _service
+          .clearAdminCache(ref.read(authControllerProvider).appToken ?? '');
       await _refresh();
     } catch (e) {
       if (!mounted) return;
@@ -139,7 +114,10 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text(snapshot.error.toString()));
+            return AsyncErrorView(
+              error: snapshot.error,
+              onRetry: _refresh,
+            );
           }
 
           final rows = snapshot.data ?? const [];
@@ -149,8 +127,12 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
             final isFinalized = r['is_finalized'] == true;
             final isActive = r['is_active'] == true;
 
-            if (_statusFilter == 'active' && !(isActive && !isFinalized)) return false;
-            if (_statusFilter == 'inactive' && (isActive || isFinalized)) return false;
+            if (_statusFilter == 'active' && !(isActive && !isFinalized)) {
+              return false;
+            }
+            if (_statusFilter == 'inactive' && (isActive || isFinalized)) {
+              return false;
+            }
             if (_statusFilter == 'finalized' && !isFinalized) return false;
 
             if (_caseTypeFilter != 'all') {
@@ -159,239 +141,192 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
             }
 
             if (query.isEmpty) return true;
-            final caseNumber = (r['case_number'] ?? '').toString().toLowerCase();
+            final caseNumber =
+                (r['case_number'] ?? '').toString().toLowerCase();
             final caseType = (r['case_type'] ?? '').toString().toLowerCase();
             return caseNumber.contains(query) || caseType.contains(query);
           }).toList();
 
-          final finalizedCount = rows.where((r) => r['is_finalized'] == true).length;
-          final activeCount = rows.where((r) => r['is_active'] == true && r['is_finalized'] != true).length;
-          final inactiveCount = rows.where((r) => r['is_active'] != true && r['is_finalized'] != true).length;
+          final finalizedCount =
+              rows.where((r) => r['is_finalized'] == true).length;
+          final activeCount = rows
+              .where((r) => r['is_active'] == true && r['is_finalized'] != true)
+              .length;
+          final inactiveCount = rows
+              .where((r) => r['is_active'] != true && r['is_finalized'] != true)
+              .length;
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 600;
-              final crossAxisCount = isWide ? 2 : 1;
-              final childAspectRatio = isWide ? 2.8 : 3.5;
-
-              return ListView(
-                padding: const EdgeInsets.all(AppConstants.marginEdge),
+          return ListView(
+            padding: const EdgeInsets.all(AppConstants.marginEdge),
+            children: [
+              Row(
                 children: [
-                  Text(
-                    'Case Management',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Total ${rows.length} • Active $activeCount • Inactive $inactiveCount • Finalized $finalizedCount',
-                    style: const TextStyle(color: Color(0xFF64748B)),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _searchCtrl,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Search by case number or type',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchCtrl.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() {});
-                              },
-                            ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _statusFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'all', child: Text('All')),
-                            DropdownMenuItem(value: 'active', child: Text('Active')),
-                            DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
-                            DropdownMenuItem(value: 'finalized', child: Text('Finalized')),
-                          ],
-                          onChanged: (v) => setState(() => _statusFilter = v ?? 'all'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _caseTypeFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Case Type',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'all', child: Text('All')),
-                            DropdownMenuItem(value: 'education', child: Text('Education')),
-                            DropdownMenuItem(value: 'sickness', child: Text('Sickness')),
-                            DropdownMenuItem(value: 'death', child: Text('Death')),
-                          ],
-                          onChanged: (v) => setState(() => _caseTypeFilter = v ?? 'all'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  if (filtered.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(child: Text('No cases match current filters.')),
-                    )
-                  else
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        childAspectRatio: childAspectRatio,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        final r = filtered[index];
-                        final isFinalized = r['is_finalized'] == true;
-                        final isActive = r['is_active'] == true;
-
-                        final expected = _toDouble(r['expected_amount']);
-                        final actual = _toDouble(r['actual_amount']);
-                        final contribution = _toDouble(r['contribution_per_member']);
-
-                        final progress = expected > 0
-                            ? (actual / expected).clamp(0.0, 1.0)
-                            : (isFinalized ? 1.0 : 0.0);
-                        final variance = actual - expected;
-                        final caseType = (r['case_type'] ?? 'unknown').toString().toLowerCase();
-
-                        return Card(
-                          elevation: AppConstants.elevationCard,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-                            side: const BorderSide(color: Color(0xFFE2E8F0)),
-                          ),
-                          child: InkWell(
-                            onTap: () => context.go('/admin/cases/${r['id']}'),
-                            borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '#${r['case_number'] ?? '-'}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                      _caseTypeBadge(caseType),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    children: [
-                                      _statusBadge(isFinalized, isActive),
-                                      if (contribution > 0)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(999),
-                                          ),
-                                          child: Text(
-                                            '${money.format(contribution)} / member',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: Color(0xFF475569),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  LinearProgressIndicator(
-                                    value: progress,
-                                    minHeight: 8,
-                                    borderRadius: BorderRadius.circular(999),
-                                    color: progress >= 1.0
-                                        ? const Color(0xFF16A34A)
-                                        : const Color(0xFF3B82F6),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        '${(progress * 100).toStringAsFixed(0)}% collected',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                      Text(
-                                        'Variance: ${variance >= 0 ? '+' : ''}${money.format(variance)}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: variance >= 0 ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: FilledButton.tonal(
-                                          onPressed: () => _toggleCase(r),
-                                          child: Text(isFinalized ? 'Reopen' : 'Finalize'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        onPressed: () => _deleteCase(r),
-                                        icon: const Icon(Icons.delete_outline, size: 18),
-                                        tooltip: 'Delete',
-                                        style: IconButton.styleFrom(
-                                          backgroundColor: const Color(0xFFFEF2F2),
-                                          foregroundColor: const Color(0xFFDC2626),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'Search by case number or type',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchCtrl.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {});
+                                },
                               ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Badge(
+                    isLabelVisible:
+                        _statusFilter != 'all' || _caseTypeFilter != 'all',
+                    child: PopupMenuButton<String>(
+                      tooltip: 'Filters',
+                      icon: const Icon(Icons.tune),
+                      onSelected: (value) {
+                        final parts = value.split(':');
+                        if (parts.length != 2) return;
+                        setState(() {
+                          if (parts.first == 'status') {
+                            _statusFilter = parts.last;
+                          } else if (parts.first == 'type') {
+                            _caseTypeFilter = parts.last;
+                          } else {
+                            _statusFilter = 'all';
+                            _caseTypeFilter = 'all';
+                          }
+                        });
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem<String>(
+                          enabled: false,
+                          child: Text('Status'),
+                        ),
+                        ...[
+                          ('all', 'All'),
+                          ('active', 'Active'),
+                          ('inactive', 'Inactive'),
+                          ('finalized', 'Finalized'),
+                        ].map((option) => CheckedPopupMenuItem<String>(
+                              value: 'status:${option.$1}',
+                              checked: _statusFilter == option.$1,
+                              child: Text(option.$2),
+                            )),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem<String>(
+                          enabled: false,
+                          child: Text('Case type'),
+                        ),
+                        ...[
+                          ('all', 'All types'),
+                          ('education', 'Education'),
+                          ('sickness', 'Medical Emergencies'),
+                          ('death', 'Funeral Contributions'),
+                        ].map((option) => CheckedPopupMenuItem<String>(
+                              value: 'type:${option.$1}',
+                              checked: _caseTypeFilter == option.$1,
+                              child: Text(option.$2),
+                            )),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem<String>(
+                          value: 'reset:all',
+                          child: Text('Reset filters'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total ${rows.length} • Active $activeCount • Inactive $inactiveCount • Finalized $finalizedCount',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 14),
+              if (filtered.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: Text('No cases match current filters.')),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filtered.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final r = filtered[index];
+                    final isFinalized = r['is_finalized'] == true;
+                    final isActive = r['is_active'] == true;
+                    final contribution =
+                        _toDouble(r['contribution_per_member']);
+                    final caseType =
+                        (r['case_type'] ?? 'unknown').toString().toLowerCase();
+
+                    return ListTile(
+                      dense: true,
+                      visualDensity: const VisualDensity(vertical: -3),
+                      minVerticalPadding: 0,
+                      contentPadding: EdgeInsets.zero,
+                      onTap: () => context.push('/admin/cases/${r['id']}'),
+                      title: Row(
+                        children: [
+                          Text(
+                            '#${r['case_number'] ?? '-'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
                             ),
                           ),
-                        );
-                      },
-                    ),
-                ],
-              );
-            },
+                          const SizedBox(width: 8),
+                          Flexible(child: _caseTypeBadge(caseType)),
+                          if (isFinalized) ...[
+                            const SizedBox(width: 6),
+                            _statusBadge(isFinalized, isActive),
+                          ],
+                        ],
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (!isFinalized)
+                              _statusBadge(isFinalized, isActive),
+                            if (contribution > 0)
+                              Text(
+                                '${money.format(contribution)} per member',
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      trailing: FilledButton.tonal(
+                        onPressed: () => _toggleCase(r),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(72, 34),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
+                        child: Text(isFinalized ? 'Reopen' : 'Close'),
+                      ),
+                    );
+                  },
+                ),
+            ],
           );
         },
       ),
@@ -426,7 +361,12 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        caseType.toUpperCase(),
+        switch (caseType) {
+          'education' => 'EDUCATION',
+          'sickness' => 'MEDICAL EMERGENCIES',
+          'death' => 'DEATH',
+          _ => caseType.replaceAll('_', ' ').toUpperCase(),
+        },
         style: TextStyle(
           color: fg,
           fontSize: 11,

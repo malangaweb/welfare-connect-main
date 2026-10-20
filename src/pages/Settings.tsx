@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, Save, Edit, X, MessageSquare, PenLine, ChevronDown, ChevronRight } from 'lucide-react';
 import DashboardLayout from '@/layouts/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ResidenceForm from '@/components/forms/ResidenceForm';
 import { SmsMessageComposer } from '@/components/messages/SmsMessageComposer';
-import type { SmsRecipient } from '@/lib/smsMessaging';
+import type { SmsRecipient, SmsSendSummary, SmsTriggerKey } from '@/lib/smsMessaging';
+import { summarizeSkippedReasons } from '@/lib/smsMessaging';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -20,6 +22,7 @@ import { z } from 'zod';
 import { Plus } from 'lucide-react';
 import { invokeWithAppToken } from '@/lib/appAuth';
 import { fetchSafeSettings } from '@/lib/settingsClient';
+import { listAdminUsers, type AdminUserRow } from '@/lib/adminUsersApi';
 
 interface Residence {
   id: string;
@@ -36,6 +39,7 @@ interface SettingsData {
   organization_name: string;
   organization_email: string | null;
   organization_phone: string | null;
+  whatsapp_group_link: string | null;
   member_id_start: number | null;
   case_id_start: number | null;
   mpesa_consumer_key: string | null;
@@ -75,7 +79,37 @@ type MembersListResponse = {
     phone_number: string | null;
     status: string | null;
   }>;
+  has_more?: boolean;
 };
+
+type SmsAlertSetting = {
+  trigger_key: string;
+  admin_user_ids: string[];
+  is_active: boolean;
+  updated_at?: string;
+};
+
+const smsAlertEvents = [
+  { key: 'registration_submitted', label: 'Registration submitted', description: 'A new membership application has been submitted.' },
+  { key: 'registration_pending_review', label: 'Registration pending review', description: 'An application is waiting for Committee review.' },
+  { key: 'registration_approved', label: 'Registration approved', description: 'An applicant has been approved and should pay the registration fee.' },
+  { key: 'registration_payment_pending', label: 'Registration payment pending', description: 'An approved applicant has not completed payment.' },
+  { key: 'registration_payment_received', label: 'Registration payment received', description: 'Payment was received and is awaiting administrator verification.' },
+  { key: 'registration_activated', label: 'Membership activated', description: 'Verified payment created the member account.' },
+  { key: 'registration_expired', label: 'Application expired', description: 'An unpaid or rejected application expired after one week.' },
+  { key: 'whatsapp_group_invite', label: 'WhatsApp group invitation', description: 'Send the group link separately after activation.' },
+  { key: 'registration_rejected', label: 'Registration rejected', description: 'An application has been rejected.' },
+  { key: 'payment_received', label: 'Payment received', description: 'A member payment has been received.' },
+  { key: 'payment_failed', label: 'Payment failed or needs attention', description: 'A payment failed or could not be confirmed.' },
+  { key: 'case_opened', label: 'Case opened', description: 'A welfare case has been opened.' },
+  { key: 'case_closed', label: 'Case closed', description: 'A welfare case has been closed.' },
+  { key: 'status_changed', label: 'Member status changed', description: 'A member status changed manually.' },
+  { key: 'auto_inactive', label: 'Suspension / inactive status', description: 'A member was suspended or became inactive.' },
+  { key: 'penalty_posted', label: 'Penalty posted', description: 'A penalty was posted to a member account.' },
+  { key: 'probation_ending', label: 'Probation ending', description: 'A member probation period is nearing its end.' },
+  { key: 'probation_completed', label: 'Probation completed', description: 'A member became a full member.' },
+  { key: 'closed_case_overdue', label: 'Closed case overdue', description: 'A closed-case balance remains unpaid.' },
+] as const;
 
 const settingsFormSchema = z.object({
   registration_fee: z.coerce.number().min(0, 'Fee must be a positive number'),
@@ -85,6 +119,7 @@ const settingsFormSchema = z.object({
   organization_name: z.string().min(1, 'Organization name is required'),
   organization_email: z.string().email().optional().or(z.literal('')),
   organization_phone: z.string().optional().or(z.literal('')),
+  whatsapp_group_link: z.string().url('Enter a valid WhatsApp group URL').optional().or(z.literal('')),
   member_id_start: z.coerce.number().min(1, 'Member ID start must be a positive number').optional(),
   case_id_start: z.coerce.number().min(1, 'Case ID start must be a positive number').optional(),
   mpesa_consumer_key: z.string().optional().or(z.literal('')),
@@ -110,9 +145,16 @@ const Settings = () => {
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
   const [editingRawTemplate, setEditingRawTemplate] = useState('');
   const [smsTemplatesSaving, setSmsTemplatesSaving] = useState(false);
+  const [smsAlertSettings, setSmsAlertSettings] = useState<SmsAlertSetting[]>([]);
+  const [smsAlertAdmins, setSmsAlertAdmins] = useState<AdminUserRow[]>([]);
+  const [smsAlertLoading, setSmsAlertLoading] = useState(false);
+  const [smsAlertSaving, setSmsAlertSaving] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [smsPage, setSmsPage] = useState(1);
   const [smsPageSize] = useState(20);
+  const [onlyDebtors, setOnlyDebtors] = useState(false);
+  const [debtorIds, setDebtorIds] = useState<Set<string> | null>(null);
+  const [debtFilterLoading, setDebtFilterLoading] = useState(false);
   const [settingsMeta, setSettingsMeta] = useState<Pick<
     SettingsData,
     'has_mpesa_consumer_key' | 'has_mpesa_consumer_secret' | 'has_mpesa_passkey' | 'has_mpesa_initiator_password'
@@ -128,6 +170,7 @@ const Settings = () => {
       organization_name: 'Welfare Society',
       organization_email: '',
       organization_phone: '',
+      whatsapp_group_link: '',
       member_id_start: 1,
       case_id_start: 1,
       mpesa_consumer_key: '',
@@ -182,6 +225,7 @@ const Settings = () => {
             organization_name: settings.organization_name,
             organization_email: settings.organization_email || '',
             organization_phone: settings.organization_phone || '',
+            whatsapp_group_link: settings.whatsapp_group_link || '',
             member_id_start: settings.member_id_start || 1,
             case_id_start: settings.case_id_start || 1,
             mpesa_consumer_key: '',
@@ -204,6 +248,7 @@ const Settings = () => {
 
   useEffect(() => {
     void fetchSmsData(1);
+    void fetchSmsAlertSettings();
     const id = window.setInterval(() => fetchSmsData(), 30000);
     return () => window.clearInterval(id);
   }, []);
@@ -220,25 +265,59 @@ const Settings = () => {
     const currentPage = page ?? smsPage;
     setSmsLoading(true);
     try {
-      const [summary, membersResult, templatesResult] = await Promise.all([
+      // Load summary + templates first (fast, single requests)
+      const [summary, templatesResult] = await Promise.all([
         invokeWithAppToken<SmsSummary>('api-sms-summary', { page: currentPage, page_size: smsPageSize }),
-        invokeWithAppToken<MembersListResponse>('api-members-list', {
-          status: 'active',
-          limit: 300,
-        }),
         invokeWithAppToken<{ templates: any[] }>('api-sms-templates', {}).catch(() => ({ templates: [] })),
       ]);
 
+      // Fetch ALL active members with phones — sequential pages with timeout+retry
+      // to avoid the burst of 3 parallel requests that fails on slow devices.
+      const allMembers: MembersListResponse['members'] = [];
+      let offset = 0;
+      const maxPages = 20;
+      for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
+        let batch: MembersListResponse['members'] = [];
+        let hasMore = false;
+        // Retry each page up to 2 times with exponential backoff
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const membersResult = await invokeWithAppToken<MembersListResponse>('api-members-list', {
+              status: 'active',
+              limit: 300,
+              offset,
+            });
+            clearTimeout(timeoutId);
+            batch = membersResult.members || [];
+            hasMore = membersResult.has_more ?? false;
+            break; // success
+          } catch (e: any) {
+            if (attempt === 2) throw e; // last attempt, rethrow
+            const delay = 500 * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+        allMembers.push(...batch);
+        if (!hasMore || batch.length < 300 || allMembers.length >= 5000) break;
+        offset += 300;
+      }
+
       setSmsSummary(summary);
-      setSmsRecipients((membersResult.members || [])
+      setSmsRecipients(allMembers
         .filter((member) => String(member.phone_number || '').trim().length > 0)
         .map((member) => ({
           id: member.id,
+          memberId: member.id,
           name: member.name || undefined,
           memberNumber: member.member_number || undefined,
           phoneNumber: String(member.phone_number || '').trim(),
           status: member.status || undefined,
         })));
+      // A refresh can change the audience, so drop a stale debtor pre-filter.
+      setDebtorIds(null);
+      setOnlyDebtors(false);
       if (templatesResult?.templates) {
         setSmsTemplates(templatesResult.templates);
       }
@@ -253,6 +332,43 @@ const Settings = () => {
       setSmsLoading(false);
     }
   };
+
+  const fetchSmsAlertSettings = async () => {
+    setSmsAlertLoading(true);
+    try {
+      const [settingsResult, admins] = await Promise.all([
+        invokeWithAppToken<{ settings: SmsAlertSetting[] }>('api-sms-alert-settings', { action: 'list' }),
+        listAdminUsers(),
+      ]);
+      setSmsAlertSettings(settingsResult.settings || []);
+      setSmsAlertAdmins((admins || []).filter((admin) => admin.is_active && admin.role !== 'member'));
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Failed to load SMS alert settings', description: error.message });
+    } finally {
+      setSmsAlertLoading(false);
+    }
+  };
+
+  const saveSmsAlertRecipients = async (triggerKey: string, adminUserIds: string[]) => {
+    setSmsAlertSaving(triggerKey);
+    try {
+      const result = await invokeWithAppToken<{ setting: SmsAlertSetting }>('api-sms-alert-settings', {
+        action: 'update', trigger_key: triggerKey, admin_user_ids: adminUserIds,
+      });
+      setSmsAlertSettings((current) => [
+        ...current.filter((item) => item.trigger_key !== triggerKey),
+        result.setting,
+      ].sort((a, b) => a.trigger_key.localeCompare(b.trigger_key)));
+      toast({ title: 'Alert recipients saved' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Failed to save alert recipients', description: error.message });
+    } finally {
+      setSmsAlertSaving(null);
+    }
+  };
+
+  const getAlertRecipients = (triggerKey: string) =>
+    smsAlertSettings.find((setting) => setting.trigger_key === triggerKey)?.admin_user_ids || [];
 
   const handleSaveTemplate = async (triggerKey: string) => {
     setSmsTemplatesSaving(true);
@@ -276,22 +392,88 @@ const Settings = () => {
     }
   };
 
+  const smsTemplateOverrides = useMemo(() => {
+    const map: Partial<Record<SmsTriggerKey, string>> = {};
+    for (const tmpl of smsTemplates) {
+      const text = String(tmpl?.raw_template || '').trim();
+      if (tmpl?.trigger_key && text) map[tmpl.trigger_key as SmsTriggerKey] = text;
+    }
+    return map;
+  }, [smsTemplates]);
+
+  const smsComposerRecipients = useMemo(() => {
+    if (!onlyDebtors || !debtorIds) return smsRecipients;
+    return smsRecipients.filter((recipient) => recipient.id && debtorIds.has(recipient.id));
+  }, [smsRecipients, onlyDebtors, debtorIds]);
+
+  const handleToggleDebtFilter = async (enabled: boolean) => {
+    setOnlyDebtors(enabled);
+    if (!enabled || debtorIds) return;
+    setDebtFilterLoading(true);
+    try {
+      const ids = smsRecipients.map((recipient) => recipient.id).filter(Boolean) as string[];
+      const debtors = new Set<string>();
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = ids.slice(i, i + 500);
+        let data: any = null;
+        let error: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const result = await supabase.rpc('get_members_bulk_unpaid_totals', { p_member_ids: chunk });
+            data = result.data;
+            error = result.error;
+            if (!error) break;
+          } catch (e) {
+            error = e;
+          }
+          if (attempt === 2) throw error;
+          await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+        }
+        if (error) throw error;
+        for (const row of ((data as Array<{ member_id: string; unpaid_case_count: number }> | null) || [])) {
+          if (Number(row.unpaid_case_count || 0) > 0) debtors.add(row.member_id);
+        }
+      }
+      setDebtorIds(debtors);
+      if (debtors.size === 0) {
+        toast({
+          title: 'No debtors found',
+          description: 'None of the active members currently have unpaid case balances.',
+        });
+      }
+    } catch (error: any) {
+      console.error('Error computing debtor list:', error);
+      setOnlyDebtors(false);
+      toast({
+        variant: 'destructive',
+        title: 'Could not filter debtors',
+        description: error.message || 'The unpaid-balance lookup failed.',
+      });
+    } finally {
+      setDebtFilterLoading(false);
+    }
+  };
+
   const handleSendSms = async (payload: { triggerKey: string; message: string; recipients: SmsRecipient[] }) => {
     setSmsSending(true);
     try {
-      const result = await invokeWithAppToken<{ sent: number; failed: number; recipients: number }>('send-sms', {
+      const result = await invokeWithAppToken<SmsSendSummary>('send-sms', {
         recipients: payload.recipients,
         message: payload.message,
         triggerKey: payload.triggerKey,
         source: 'settings_sms_tab',
       });
 
+      const skippedNote = result.skipped
+        ? ` ${result.skipped.toLocaleString()} skipped${summarizeSkippedReasons(result) ? ` (${summarizeSkippedReasons(result)})` : ''}.`
+        : '';
       toast({
         title: result.failed ? 'SMS partially sent' : 'SMS sent',
-        description: `${result.sent.toLocaleString()} of ${result.recipients.toLocaleString()} recipient(s) accepted.`,
+        description: `${result.sent.toLocaleString()} of ${result.recipients.toLocaleString()} recipient(s) accepted.${result.failed ? ` ${result.failed.toLocaleString()} failed.` : ''}${skippedNote}`,
         variant: result.failed ? 'destructive' : 'default',
       });
       await fetchSmsData();
+      return result;
     } catch (error: any) {
       console.error('Error sending SMS:', error);
       toast({
@@ -855,6 +1037,33 @@ const Settings = () => {
                           </FormItem>
                         )}
                       />
+
+                      <FormField
+                        control={form.control}
+                        name="whatsapp_group_link"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Members WhatsApp Group Link</FormLabel>
+                            <div className="flex items-center gap-2">
+                              <FormControl>
+                                <Input
+                                  type="url"
+                                  placeholder="https://chat.whatsapp.com/..."
+                                  {...field}
+                                  readOnly={editingField !== 'whatsapp_group_link'}
+                                  className={editingField !== 'whatsapp_group_link' ? "bg-muted cursor-not-allowed" : ""}
+                                />
+                              </FormControl>
+                              {editingField === 'whatsapp_group_link' ? (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => toggleEdit('whatsapp_group_link')}><X className="h-4 w-4" /></Button>
+                              ) : (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => toggleEdit('whatsapp_group_link')}><Edit className="h-4 w-4" /></Button>
+                              )}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
                     
                     <div className="flex justify-end">
@@ -1129,7 +1338,13 @@ const Settings = () => {
             </Card>
           </TabsContent>
           <TabsContent value="sms" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
+            <Tabs defaultValue="delivery" className="space-y-4">
+              <TabsList className="grid h-auto w-full grid-cols-2">
+                <TabsTrigger value="delivery">SMS & Templates</TabsTrigger>
+                <TabsTrigger value="recipients">Member Alert Recipients</TabsTrigger>
+              </TabsList>
+              <TabsContent value="delivery" className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-4">
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>Mobiwave balance</CardDescription>
@@ -1156,7 +1371,7 @@ const Settings = () => {
                   <CardTitle className="text-2xl">{(smsSummary?.failed || 0).toLocaleString()}</CardTitle>
                 </CardHeader>
               </Card>
-            </div>
+                </div>
 
             <div className="flex justify-end">
               <Button type="button" variant="outline" onClick={() => void fetchSmsData()} disabled={smsLoading}>
@@ -1165,12 +1380,31 @@ const Settings = () => {
               </Button>
             </div>
 
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <Checkbox
+                id="sms-only-debtors"
+                checked={onlyDebtors}
+                disabled={debtFilterLoading || smsRecipients.length === 0}
+                onCheckedChange={(checked) => void handleToggleDebtFilter(checked === true)}
+              />
+              <label htmlFor="sms-only-debtors" className="text-sm text-slate-700">
+                Only members with unpaid case balances
+                {debtFilterLoading
+                  ? ' — checking balances…'
+                  : debtorIds
+                    ? ` (${debtorIds.size.toLocaleString()} of ${smsRecipients.length.toLocaleString()})`
+                    : ' (recommended for overdue / amount-due triggers)'}
+              </label>
+            </div>
+
             <SmsMessageComposer
-              recipients={smsRecipients}
-              audienceLabel="Active members with phone numbers"
+              recipients={smsComposerRecipients}
+              audienceLabel={onlyDebtors ? 'Active members with unpaid balances' : 'Active members with phone numbers'}
               audienceDescription="Send a Mobiwave SMS to active members that have phone numbers on file."
               onSend={handleSendSms}
               isSending={smsSending}
+              templateOverrides={smsTemplateOverrides}
+              templatesVersion={refreshTrigger}
             />
 
             <Card>
@@ -1346,6 +1580,75 @@ const Settings = () => {
                 )}
               </CardContent>
             </Card>
+              </TabsContent>
+              <TabsContent value="recipients" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Member Alert SMS Recipients</CardTitle>
+                    <CardDescription>
+                      Select the active administrators who should receive a copy of each member, payment, case, suspension, penalty, probation, or registration alert. Choose one or two administrators for routine events; leave an event unselected if no admin SMS is required.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {smsAlertLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading administrators and alert settings…</p>
+                    ) : smsAlertAdmins.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No active administrators with SMS-ready accounts were found.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {smsAlertEvents.map((event) => {
+                          const selected = getAlertRecipients(event.key);
+                          return (
+                            <div key={event.key} className="rounded-lg border p-3">
+                              <div className="mb-2">
+                                <p className="font-semibold text-sm">{event.label}</p>
+                                <p className="text-xs text-muted-foreground">{event.description}</p>
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {smsAlertAdmins.map((admin) => {
+                                  const checked = selected.includes(admin.id);
+                                  return (
+                                    <label key={admin.id} className="flex items-start gap-2 rounded-md border bg-slate-50 p-2 text-sm">
+                                      <Checkbox
+                                        checked={checked}
+                                        onCheckedChange={(value) => {
+                                          const next = value === true
+                                            ? [...selected, admin.id]
+                                            : selected.filter((id) => id !== admin.id);
+                                          setSmsAlertSettings((current) => [
+                                            ...current.filter((item) => item.trigger_key !== event.key),
+                                            { trigger_key: event.key, admin_user_ids: next, is_active: true },
+                                          ]);
+                                        }}
+                                      />
+                                      <span>
+                                        <span className="block font-medium">{admin.name} <Badge variant="outline" className="ml-1 text-[10px]">{admin.role}</Badge></span>
+                                        <span className="block text-xs text-muted-foreground">{admin.phone_number || 'No linked phone number'}</span>
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-3 flex justify-end">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void saveSmsAlertRecipients(event.key, getAlertRecipients(event.key))}
+                                  disabled={smsAlertSaving === event.key}
+                                >
+                                  <Save className="mr-1 h-3.5 w-3.5" />
+                                  {smsAlertSaving === event.key ? 'Saving…' : 'Save recipients'}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">Admin SMS delivery uses the phone number on the administrator’s linked member record. Update that member phone number if it changes.</p>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       </div>

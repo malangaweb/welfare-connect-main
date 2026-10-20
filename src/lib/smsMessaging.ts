@@ -1,12 +1,28 @@
 export type SmsTriggerKey =
   | 'welcome_member'
+  | 'registration_submitted'
+  | 'registration_pending_review'
+  | 'registration_approved'
+  | 'registration_payment_pending'
+  | 'registration_payment_received'
+  | 'registration_activated'
+  | 'registration_expired'
+  | 'whatsapp_group_invite'
+  | 'registration_rejected'
   | 'case_opened'
+  | 'case_closed'
   | 'payment_received'
   | 'payment_failed'
   | 'case_due'
   | 'overdue_reminder'
   | 'amount_due'
   | 'renewal_reminder'
+  | 'closed_case_overdue'
+  | 'probation_ending'
+  | 'probation_completed'
+  | 'penalty_posted'
+  | 'status_changed'
+  | 'auto_inactive'
   | 'manual_custom';
 
 export type SmsRecipient = {
@@ -14,6 +30,9 @@ export type SmsRecipient = {
   name?: string;
   phoneNumber: string;
   memberNumber?: string;
+  paymentCode?: string;
+  paybill?: string;
+  whatsappLink?: string;
   memberId?: string;
   residence?: string;
   status?: string;
@@ -28,6 +47,9 @@ export type SmsTemplateContext = {
   audienceCount: number;
   memberName?: string;
   memberNumber?: string;
+  paymentCode?: string;
+  paybill?: string;
+  whatsappLink?: string;
   caseNumber?: string;
   amount?: string;
   deadline?: string;
@@ -38,12 +60,84 @@ export type SmsTemplate = {
   key: SmsTriggerKey;
   label: string;
   description: string;
-  category: 'member' | 'case' | 'payment' | 'renewal' | 'custom';
+  category: 'member' | 'case' | 'payment' | 'renewal' | 'registration' | 'custom';
   message: (context: SmsTemplateContext) => string;
   rawTemplate: string;
 };
 
 export const smsTemplates: SmsTemplate[] = [
+  {
+    key: 'registration_submitted',
+    label: 'Registration Submitted',
+    description: 'Confirm a membership application was received.',
+    category: 'member',
+    message: () => 'Malanga Welfare: Your membership application has been received and is awaiting review.',
+    rawTemplate: 'Malanga Welfare: Your membership application has been received and is awaiting review.',
+  },
+  {
+    key: 'registration_pending_review',
+    label: 'Registration Pending Review',
+    description: 'Notify an applicant that review is pending.',
+    category: 'member',
+    message: () => 'Malanga Welfare: Your membership application is pending Welfare Committee review.',
+    rawTemplate: 'Malanga Welfare: Your membership application is pending Welfare Committee review.',
+  },
+  {
+    key: 'registration_approved',
+    label: 'Registration Approved',
+    description: 'Notify an applicant that approval is complete and payment is pending.',
+    category: 'payment',
+    message: ({ paymentCode, paybill, amount, deadline }) => `Malanga Welfare: Your membership application has been approved. Pay KES ${amount || 'the registration fee'} via Paybill ${paybill || 'the stated Paybill'}, account ${paymentCode || 'the payment code'} by ${deadline || 'the stated deadline'}. Your member number will be issued after payment is verified.`,
+    rawTemplate: 'Malanga Welfare: Your membership application has been approved. Pay KES {amount} via Paybill {paybill}, account {paymentCode} by {deadline}. Your member number will be issued after payment is verified.',
+  },
+  {
+    key: 'registration_payment_pending',
+    label: 'Registration Payment Pending',
+    description: 'Remind an approved applicant that payment is still pending.',
+    category: 'registration',
+    message: ({ paymentCode, paybill, amount, deadline }) => `Malanga Welfare: Payment for your approved membership is still pending. Pay KES ${amount || 'the registration fee'} via Paybill ${paybill || 'the stated Paybill'}, account ${paymentCode || 'the payment code'} by ${deadline || 'the stated deadline'}.`,
+    rawTemplate: 'Malanga Welfare: Payment for your approved membership is still pending. Pay KES {amount} via Paybill {paybill}, account {paymentCode} by {deadline}.',
+  },
+  {
+    key: 'registration_payment_received',
+    label: 'Registration Payment Received',
+    description: 'Acknowledge receipt while activation is awaiting administrator verification.',
+    category: 'payment',
+    message: ({ paymentCode }) => `Malanga Welfare: We have received payment for application code ${paymentCode || 'provided'}. The Welfare Committee will verify it before activating your membership.`,
+    rawTemplate: 'Malanga Welfare: We have received payment for application code {paymentCode}. The Welfare Committee will verify it before activating your membership.',
+  },
+  {
+    key: 'registration_activated',
+    label: 'Membership Activated',
+    description: 'Send after payment is verified and the member is created.',
+    category: 'member',
+    message: ({ memberName, memberNumber }) => `Malanga Welfare: Congratulations${memberName ? ` ${memberName}` : ''}. Your membership is now active. Your member number is ${memberNumber || 'provided separately'}.`,
+    rawTemplate: 'Malanga Welfare: Congratulations {name}. Your membership is now active. Your member number is {memberNumber}.',
+  },
+  {
+    key: 'registration_expired',
+    label: 'Application Expired',
+    description: 'Notify an applicant when an unpaid or rejected application expires after one week.',
+    category: 'registration',
+    message: () => 'Malanga Welfare: Your membership application has expired after one week without completion. Please submit a new application or contact the Welfare Committee.',
+    rawTemplate: 'Malanga Welfare: Your membership application has expired after one week without completion. Please submit a new application or contact the Welfare Committee.',
+  },
+  {
+    key: 'whatsapp_group_invite',
+    label: 'WhatsApp Group Invitation',
+    description: 'Send separately after membership activation.',
+    category: 'member',
+    message: ({ whatsappLink }) => `Malanga Welfare: Join the members WhatsApp group here: ${whatsappLink || 'link to be provided'}. Please do not share this link publicly.`,
+    rawTemplate: 'Malanga Welfare: Join the members WhatsApp group here: {whatsappLink}. Please do not share this link publicly.',
+  },
+  {
+    key: 'registration_rejected',
+    label: 'Registration Rejected',
+    description: 'Notify an applicant that the application was not approved.',
+    category: 'member',
+    message: () => 'Malanga Welfare: Your membership application was not approved. Please contact the Welfare Committee for assistance.',
+    rawTemplate: 'Malanga Welfare: Your membership application was not approved. Please contact the Welfare Committee for assistance.',
+  },
   {
     key: 'welcome_member',
     label: 'Welcome Member',
@@ -51,7 +145,7 @@ export const smsTemplates: SmsTemplate[] = [
     category: 'member',
     message: ({ memberName, memberNumber }) =>
       `Malanga Welfare: Karibu ${memberName || 'mwanachama'}. Nambari yako ya mwanachama ni ${memberNumber || 'N/A'}.`,
-    rawTemplate: 'Malanga Welfare: Karibu {name}. Nambari yako ya mwanachama ni {memberNumber}.',
+    rawTemplate: 'Malanga Welfare: Karibu {name}. Nambari yako ya mwanachama ni {memberNumber}. Member portal: {portalLink}',
   },
   {
     key: 'case_opened',
@@ -71,6 +165,14 @@ export const smsTemplates: SmsTemplate[] = [
       'Mwanachama: {name}.',
       'Tarehe: {deadline}.',
     ].join(' '),
+  },
+  {
+    key: 'case_closed',
+    label: 'Case Closed',
+    description: 'Notify members when a welfare case is closed.',
+    category: 'case',
+    message: ({ caseNumber }) => `Malanga Welfare: Case ${caseNumber || 'N/A'} has been closed. Thank you for your support.`,
+    rawTemplate: 'Malanga Welfare: Case {caseNumber} has been closed. Thank you for your support.',
   },
   {
     key: 'payment_received',
@@ -149,6 +251,66 @@ export const smsTemplates: SmsTemplate[] = [
     rawTemplate: 'Malanga Welfare: Usajili wako unakaribia kufikia mwisho. Tafadhali lipa kabla ya {deadline}.',
   },
   {
+    key: 'closed_case_overdue',
+    label: 'Closed Case Overdue',
+    description: 'Follow up on unpaid balances for finalized (closed) cases.',
+    category: 'case',
+    message: ({ memberName, amount, caseNumber, memberNumber }) =>
+      [
+        `Mwanachama mpendwa ${memberName || 'mwanachama'}, kesi ${caseNumber || 'N/A'} ilifungwa na hujalipa KES ${amount || '0'}.`,
+        `Tafadhali lipa kama malipo ya kuchelewa kwa paybill 4164179 account ${memberNumber || 'N/A'}.`,
+      ].join(' '),
+    rawTemplate: 'Mwanachama mpendwa {name}, kesi {caseNumber} ilifungwa na hujalipa KES {amount}. Tafadhali lipa kama malipo ya kuchelewa kwa paybill 4164179 account {memberNumber}.',
+  },
+  {
+    key: 'probation_ending',
+    label: 'Probation Ending',
+    description: 'Notify members whose probation period ends soon.',
+    category: 'member',
+    message: ({ memberName, deadline }) =>
+      [
+        `Mwanachama mpendwa ${memberName || 'mwanachama'}, muda wako wa majaribio unaisha ${deadline || 'hivi karibuni'}.`,
+        'Endelea kuchangia ili uwe mwanachama kamili.',
+      ].join(' '),
+    rawTemplate: 'Mwanachama mpendwa {name}, muda wako wa majaribio unaisha {deadline}. Endelea kuchangia ili uwe mwanachama kamili.',
+  },
+  {
+    key: 'probation_completed',
+    label: 'Probation Completed',
+    description: 'Congratulate members who became full members.',
+    category: 'member',
+    message: ({ memberName }) =>
+      `Hongera ${memberName || 'mwanachama'}! Muda wako wa majaribio umeisha na sasa wewe ni mwanachama kamili wa Malanga Welfare.`,
+    rawTemplate: 'Hongera {name}! Muda wako wa majaribio umeisha na sasa wewe ni mwanachama kamili wa Malanga Welfare.',
+  },
+  {
+    key: 'penalty_posted',
+    label: 'Penalty Posted',
+    description: 'Notify members when a reinstatement penalty is posted.',
+    category: 'payment',
+    message: ({ memberName, amount }) =>
+      `Mwanachama mpendwa ${memberName || 'mwanachama'}, adhabu ya KES ${amount || '0'} imewekwa kwenye akaunti yako. Lipa kupitia paybill ili kuendelea kupata huduma.`,
+    rawTemplate: 'Mwanachama mpendwa {name}, adhabu ya KES {amount} imewekwa kwenye akaunti yako. Lipa kupitia paybill ili kuendelea kupata huduma.',
+  },
+  {
+    key: 'status_changed',
+    label: 'Status Changed',
+    description: 'Notify members when their membership status changes.',
+    category: 'member',
+    message: ({ memberName }) =>
+      `Mwanachama mpendwa ${memberName || 'mwanachama'}, hali yako ya uanachama imebadilika. Fungua programu kuona maelezo.`,
+    rawTemplate: 'Mwanachama mpendwa {name}, hali yako ya uanachama imebadilika kutoka {from} hadi {to}.',
+  },
+  {
+    key: 'auto_inactive',
+    label: 'Auto Inactive',
+    description: 'Notify members suspended for unpaid contributions.',
+    category: 'member',
+    message: ({ memberName }) =>
+      `Mwanachama mpendwa ${memberName || 'mwanachama'}, uanachama wako umesimamishwa kwa sababu ya malipo yanayodaiwa. Lipa kupitia paybill 4164179 ili kurejesha uanachama.`,
+    rawTemplate: 'Mwanachama mpendwa {name}, uanachama wako umesimamishwa kwa sababu ya malipo yanayodaiwa. Lipa kupitia paybill 4164179 ili kurejesha uanachama.',
+  },
+  {
     key: 'manual_custom',
     label: 'Manual Custom',
     description: 'Write a completely custom message.',
@@ -183,6 +345,46 @@ function normalizePhone(phone: string): string {
   return digits;
 }
 
+export function isValidKenyanSmsPhone(phone: string): boolean {
+  // Mirrors the backend check in supabase/functions/_shared/sms.ts.
+  // Kenyan mobiles: 254 + (7|1) + 8 digits. Anything else (e.g. '114366708')
+  // is rejected by the provider, so we exclude it up front with an explanation.
+  return /^254(7|1)\d{8}$/.test(normalizePhone(phone));
+}
+
+export type SmsSkippedDetail = {
+  phoneNumber: string;
+  reason: string;
+  name?: string;
+};
+
+export type SmsSendSummary = {
+  sent: number;
+  failed: number;
+  skipped: number;
+  recipients: number;
+  skippedDetails?: SmsSkippedDetail[];
+  skippedSummary?: Record<string, number>;
+};
+
+export function summarizeSkippedReasons(summary: SmsSendSummary | null | undefined): string {
+  const entries = Object.entries(summary?.skippedSummary || {});
+  if (!entries.length) return '';
+  return entries.map(([reason, count]) => `${count.toLocaleString()} × ${reason}`).join('; ');
+}
+
+export function partitionSmsRecipients(
+  recipients: SmsRecipient[],
+): { valid: SmsRecipient[]; invalid: SmsRecipient[] } {
+  const valid: SmsRecipient[] = [];
+  const invalid: SmsRecipient[] = [];
+  for (const recipient of normalizeSmsRecipients(recipients)) {
+    if (isValidKenyanSmsPhone(recipient.phoneNumber)) valid.push(recipient);
+    else invalid.push(recipient);
+  }
+  return { valid, invalid };
+}
+
 export function normalizeSmsRecipients(
   recipients: SmsRecipient[],
 ): SmsRecipient[] {
@@ -199,4 +401,3 @@ export function normalizeSmsRecipients(
     }))
     .filter((recipient) => recipient.phoneNumber.length > 0);
 }
-

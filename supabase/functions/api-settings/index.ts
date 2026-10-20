@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { requirePrivilegedRole, verifyAppJwtFromRequest } from "../_shared/app_jwt.ts";
 
 const SENSITIVE_FIELDS = new Set([
@@ -11,10 +11,10 @@ const SENSITIVE_FIELDS = new Set([
   "mpesa_initiator_password",
 ]);
 
-function jsonResponse(status: number, payload: Record<string, unknown>) {
+function jsonResponse(status: number, payload: Record<string, unknown>, origin?: string | null) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...buildCorsHeaders(origin), "Content-Type": "application/json" },
   });
 }
 
@@ -48,6 +48,7 @@ function buildSettingsPayload(input: Record<string, unknown>, existing: Record<s
     organization_name: String(input.organization_name ?? existing?.organization_name ?? "Welfare Society").trim() || "Welfare Society",
     organization_email: toNullableString(input.organization_email ?? existing?.organization_email),
     organization_phone: toNullableString(input.organization_phone ?? existing?.organization_phone),
+    whatsapp_group_link: toNullableString(input.whatsapp_group_link ?? existing?.whatsapp_group_link),
     member_id_start: toPositiveNumber(input.member_id_start ?? existing?.member_id_start, 1),
     case_id_start: toPositiveNumber(input.case_id_start ?? existing?.case_id_start, 1),
     mpesa_shortcode: toNullableString(input.mpesa_shortcode ?? existing?.mpesa_shortcode),
@@ -79,6 +80,7 @@ function sanitizeSettings(row: Record<string, any>) {
     organization_name: row.organization_name,
     organization_email: row.organization_email,
     organization_phone: row.organization_phone,
+    whatsapp_group_link: row.whatsapp_group_link,
     member_id_start: row.member_id_start,
     case_id_start: row.case_id_start,
     mpesa_shortcode: row.mpesa_shortcode,
@@ -96,12 +98,15 @@ function sanitizeSettings(row: Record<string, any>) {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("Origin");
+  const corsHeaders = buildCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   if (!["GET", "POST"].includes(req.method)) {
-    return jsonResponse(405, { error: "Method not allowed" });
+    return jsonResponse(405, { error: "Method not allowed" }, origin);
   }
 
   try {
@@ -131,11 +136,11 @@ serve(async (req) => {
       const existing = await fetchExisting();
       return jsonResponse(200, {
         settings: existing ? sanitizeSettings(existing) : null,
-      });
+      }, origin);
     }
 
     if (action !== "update") {
-      return jsonResponse(400, { error: "Unsupported action" });
+      return jsonResponse(400, { error: "Unsupported action" }, origin);
     }
     requirePrivilegedRole(claims.role);
 
@@ -163,8 +168,10 @@ serve(async (req) => {
       action: "SETTINGS_UPDATE",
       table_name: "settings",
       status: "success",
+      user_id: String((claims as any)?.sub || "") || null,
       metadata: {
         actor_role: claims.role || null,
+        session_id: (claims as any)?.sid || null,
         updated_at: new Date().toISOString(),
       },
     });
@@ -172,10 +179,10 @@ serve(async (req) => {
     return jsonResponse(200, {
       success: true,
       settings: saved ? sanitizeSettings(saved) : null,
-    });
+    }, origin);
   } catch (e) {
     const msg = getErrorMessage(e);
     const status = msg === "Forbidden" ? 403 : msg.toLowerCase().includes("token") ? 401 : 500;
-    return jsonResponse(status, { error: msg });
+    return jsonResponse(status, { error: msg }, origin);
   }
 });
