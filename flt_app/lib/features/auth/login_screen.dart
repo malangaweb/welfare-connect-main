@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_controller.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/storage_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +20,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _secretFocusNode = FocusNode();
   bool _isMemberPortal = true;
   bool _rememberMe = false;
+  bool _rememberPreferenceLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    StorageService().getRememberMe().then((rememberMe) {
+      if (mounted) {
+        setState(() {
+          _rememberMe = rememberMe;
+          _rememberPreferenceLoaded = true;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -30,6 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    if (!_rememberPreferenceLoaded) return;
     FocusScope.of(context).unfocus();
     if (_formKey.currentState!.validate()) {
       await ref.read(authControllerProvider.notifier).login(
@@ -285,7 +301,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             // Sign In Button
             FilledButton(
               key: const ValueKey('login_submit_button'),
-              onPressed: authState.isLoading ? null : _handleLogin,
+              onPressed: authState.isLoading || !_rememberPreferenceLoaded
+                  ? null
+                  : _handleLogin,
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF111827),
                 foregroundColor: Colors.white,

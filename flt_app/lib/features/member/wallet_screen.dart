@@ -28,7 +28,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     _future = _load();
   }
 
-  Future<MemberWalletSnapshot> _load() {
+  Future<MemberWalletSnapshot> _load({bool forceRefresh = false}) {
     final auth = ref.read(authControllerProvider);
     if ((auth.memberId ?? '').isEmpty || (auth.appToken ?? '').isEmpty) {
       throw Exception('Session missing member identity. Please log in again.');
@@ -36,6 +36,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     return _service.fetchMemberWalletData(
       memberId: auth.memberId!,
       appToken: auth.appToken!,
+      forceRefresh: forceRefresh,
     );
   }
 
@@ -54,7 +55,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       currentIndex: 0,
       actions: [
         IconButton(
-          onPressed: () => setState(() => _future = _load()),
+          onPressed: () => setState(() => _future = _load(forceRefresh: true)),
           icon: const Icon(Icons.refresh),
         ),
       ],
@@ -67,13 +68,14 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           if (snapshot.hasError) {
             return AsyncErrorView(
                 error: snapshot.error,
-                onRetry: () => setState(() => _future = _load()));
+                onRetry: () =>
+                    setState(() => _future = _load(forceRefresh: true)));
           }
 
           final data = snapshot.data!;
           return RefreshIndicator(
             onRefresh: () async {
-              setState(() => _future = _load());
+              setState(() => _future = _load(forceRefresh: true));
               await _future;
             },
             child: ListView(
@@ -388,7 +390,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         content: Text('Transfer successful.'),
                         backgroundColor: Colors.green),
                   );
-                  setState(() => _future = _load());
+                  setState(() => _future = _load(forceRefresh: true));
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(

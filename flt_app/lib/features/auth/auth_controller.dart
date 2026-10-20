@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/services/storage_service.dart';
+import '../../core/services/local_cache_service.dart';
+import '../../core/services/live_data_service.dart';
 import '../../core/utils/error_message.dart';
 
 /// Auth state model
@@ -133,7 +135,8 @@ class AuthController extends Notifier<AuthState> {
             : 'Invalid credentials';
         state = state.copyWith(
           isLoading: false,
-          error: userFacingError(Exception(message), fallback: 'Invalid credentials.'),
+          error: userFacingError(Exception(message),
+              fallback: 'Invalid credentials.'),
         );
         return;
       }
@@ -150,9 +153,8 @@ class AuthController extends Notifier<AuthState> {
         role = user is Map<String, dynamic>
             ? (user['role']?.toString())
             : (payload['role']?.toString());
-        authenticatedUserId = user is Map<String, dynamic>
-            ? user['id']?.toString()
-            : null;
+        authenticatedUserId =
+            user is Map<String, dynamic> ? user['id']?.toString() : null;
         final member = payload['member'];
         if (member is Map<String, dynamic>) {
           memberId = member['id']?.toString();
@@ -194,21 +196,23 @@ class AuthController extends Notifier<AuthState> {
         );
       }
 
-      if (appToken != null && appToken.isNotEmpty) {
-        if (rememberMe) {
-          await _storage.saveAuthToken(appToken);
+      if (rememberMe && appToken != null && appToken.isNotEmpty) {
+        await _storage.saveAuthToken(appToken);
+        await _storage.saveIsAdmin(isAdmin);
+        await _storage.saveRememberMe(true);
+        if (role != null && role.isNotEmpty) {
+          await _storage.saveUserRole(role);
         }
-      }
-      await _storage.saveIsAdmin(isAdmin);
-      await _storage.saveRememberMe(rememberMe);
-      if (role != null && role.isNotEmpty) {
-        await _storage.saveUserRole(role);
-      }
-      if (memberId != null && memberId.isNotEmpty) {
-        await _storage.saveMemberId(memberId);
-      }
-      if (memberName != null && memberName.isNotEmpty) {
-        await _storage.saveMemberName(memberName);
+        if (memberId != null && memberId.isNotEmpty) {
+          await _storage.saveMemberId(memberId);
+        }
+        if (memberName != null && memberName.isNotEmpty) {
+          await _storage.saveMemberName(memberName);
+        }
+      } else {
+        // Remove an earlier remembered session when the user opts out.
+        await _storage.clearAll();
+        await _storage.saveRememberMe(false);
       }
     } catch (e) {
       state = state.copyWith(
@@ -219,9 +223,17 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    final adminToken = state.appToken;
     try {
       await Supabase.instance.client.auth.signOut();
     } finally {
+      final memberId = state.memberId;
+      if (memberId != null && memberId.isNotEmpty) {
+        await LocalCacheService.instance.clearOwner('member:$memberId');
+      }
+      if (adminToken != null && adminToken.isNotEmpty) {
+        await LiveDataService().clearAdminCache(adminToken);
+      }
       await _storage.clearAll();
       await Posthog().reset();
       state = const AuthState(isLoading: false, appToken: null);

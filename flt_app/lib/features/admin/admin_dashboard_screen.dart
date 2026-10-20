@@ -42,13 +42,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _loadDashboard());
+    setState(() => _future = _loadDashboard(forceRefresh: true));
     await _future;
   }
 
-  Future<AdminDashboardSnapshot> _loadDashboard() {
+  Future<AdminDashboardSnapshot> _loadDashboard({bool forceRefresh = false}) {
     final token = ref.read(authControllerProvider).appToken;
-    return _service.fetchAdminDashboard(appToken: token);
+    return _service.fetchAdminDashboard(
+      appToken: token,
+      forceRefresh: forceRefresh,
+    );
   }
 
   @override

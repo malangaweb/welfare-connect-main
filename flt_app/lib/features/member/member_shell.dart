@@ -22,6 +22,7 @@ class MemberShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authControllerProvider);
     final expanded = MediaQuery.sizeOf(context).width >= 840;
     const destinations = <NavigationDestination>[
       NavigationDestination(
@@ -72,7 +73,11 @@ class MemberShell extends ConsumerWidget {
         flexibleSpace: Container(color: const Color(0xFF1F3556)),
         foregroundColor: Colors.white,
         actions: [
-          const NotificationBell(),
+          NotificationBell(
+            key: ValueKey(
+              '${auth.isAdmin ? 'admin' : 'member'}:${auth.memberId ?? auth.user?.id ?? 'unknown'}',
+            ),
+          ),
           ...?actions,
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
@@ -124,14 +129,14 @@ class MemberShell extends ConsumerWidget {
         ]),
       ),
       bottomNavigationBar: expanded
-            ? null
-            : NavigationBar(
-                selectedIndex: currentIndex < 0 ? 0 : currentIndex,
-                indicatorColor: currentIndex < 0 ? Colors.transparent : null,
-                onDestinationSelected: (index) =>
-                    _goToDestination(context, index),
-                destinations: destinations,
-              ),
+          ? null
+          : NavigationBar(
+              selectedIndex: currentIndex < 0 ? 0 : currentIndex,
+              indicatorColor: currentIndex < 0 ? Colors.transparent : null,
+              onDestinationSelected: (index) =>
+                  _goToDestination(context, index),
+              destinations: destinations,
+            ),
     );
   }
 

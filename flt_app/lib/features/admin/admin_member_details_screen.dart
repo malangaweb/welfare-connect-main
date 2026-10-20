@@ -50,6 +50,7 @@ class _AdminMemberDetailsScreenState
         memberId: widget.memberId,
         status: selected,
       );
+      await _clearAdminCache();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Status updated.')));
@@ -103,6 +104,7 @@ class _AdminMemberDetailsScreenState
         amount: amount,
         toMemberNumber: toCtrl.text.trim(),
       );
+      await _clearAdminCache();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Transfer completed.')));
@@ -173,6 +175,7 @@ class _AdminMemberDetailsScreenState
         amount: amount,
         description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
       );
+      await _clearAdminCache();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Wallet funded.')),
@@ -349,6 +352,7 @@ class _AdminMemberDetailsScreenState
         memberId: widget.memberId,
         updates: updates,
       );
+      await _clearAdminCache();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Member information updated.')),
@@ -471,6 +475,7 @@ class _AdminMemberDetailsScreenState
         memberId: widget.memberId,
         dependant: dependant,
       );
+      await _clearAdminCache();
       if (!mounted) return;
       setState(() => _future = _load());
       ScaffoldMessenger.of(context).showSnackBar(
@@ -544,6 +549,7 @@ class _AdminMemberDetailsScreenState
     setState(() => _busy = true);
     try {
       await _service.deleteMember(memberId: widget.memberId);
+      await _clearAdminCache();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Member deleted successfully.')),
@@ -559,12 +565,19 @@ class _AdminMemberDetailsScreenState
     }
   }
 
-  Future<Map<String, dynamic>> _load() async {
+  Future<Map<String, dynamic>> _load({bool forceRefresh = false}) async {
     final token = ref.read(authControllerProvider).appToken ?? '';
     if (token.isEmpty) throw Exception('Missing session token');
     return _service.fetchAdminMemberDetails(
       appToken: token,
       memberId: widget.memberId,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<void> _clearAdminCache() async {
+    await _service.clearAdminCache(
+      ref.read(authControllerProvider).appToken ?? '',
     );
   }
 
@@ -576,7 +589,9 @@ class _AdminMemberDetailsScreenState
       route: '/admin/members',
       actions: [
         IconButton(
-          onPressed: _busy ? null : () => setState(() => _future = _load()),
+          onPressed: _busy
+              ? null
+              : () => setState(() => _future = _load(forceRefresh: true)),
           icon: const Icon(Icons.refresh),
         ),
       ],
@@ -747,8 +762,11 @@ class _AdminMemberDetailsScreenState
                   _detailRow(
                       'Email address', '${member['email_address'] ?? '-'}'),
                   _detailRow('Residence', '${member['residence'] ?? '-'}'),
-                  _detailRow('Member since',
-                      _formatDate(member['registration_date'] ?? member['created_at'], dateFormatter)),
+                  _detailRow(
+                      'Member since',
+                      _formatDate(
+                          member['registration_date'] ?? member['created_at'],
+                          dateFormatter)),
                 ]),
                 const SizedBox(height: 12),
                 _sectionCard('Next of Kin', [

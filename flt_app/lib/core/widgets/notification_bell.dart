@@ -14,6 +14,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
   int _unreadCount = 0;
   List<Map<String, dynamic>> _items = const [];
   bool _loading = false;
+  DateTime? _lastLoadedAt;
 
   @override
   void initState() {
@@ -42,21 +43,23 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
         setState(() {
           _items = rows;
           _unreadCount = (payload['unread_count'] as num?)?.toInt() ?? 0;
+          _lastLoadedAt = DateTime.now();
         });
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _items = const [];
-        _unreadCount = 0;
-      });
+      // Keep the last known list visible during a temporary network failure.
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _openSheet() async {
-    await _load();
+    final lastLoadedAt = _lastLoadedAt;
+    if (lastLoadedAt == null ||
+        DateTime.now().difference(lastLoadedAt) > const Duration(seconds: 30)) {
+      await _load();
+    }
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,

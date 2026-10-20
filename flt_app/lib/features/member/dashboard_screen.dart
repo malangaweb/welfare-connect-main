@@ -26,7 +26,7 @@ class _MemberDashboardScreenState extends ConsumerState<MemberDashboardScreen> {
     _future = _load();
   }
 
-  Future<MemberWalletSnapshot> _load() async {
+  Future<MemberWalletSnapshot> _load({bool forceRefresh = false}) async {
     final auth = ref.read(authControllerProvider);
     if ((auth.memberId ?? '').isEmpty || (auth.appToken ?? '').isEmpty) {
       throw Exception('Missing member session');
@@ -34,6 +34,7 @@ class _MemberDashboardScreenState extends ConsumerState<MemberDashboardScreen> {
     return _service.fetchMemberWalletData(
       memberId: auth.memberId!,
       appToken: auth.appToken!,
+      forceRefresh: forceRefresh,
     );
   }
 
@@ -55,13 +56,15 @@ class _MemberDashboardScreenState extends ConsumerState<MemberDashboardScreen> {
           if (snapshot.hasError) {
             return AsyncErrorView(
                 error: snapshot.error,
-                onRetry: () => setState(() => _future = _load()));
+                onRetry: () =>
+                    setState(() => _future = _load(forceRefresh: true)));
           }
 
           final data = snapshot.data!;
           final name = (auth.memberName ?? '').trim().split(' ').first;
           return RefreshIndicator(
-            onRefresh: () async => setState(() => _future = _load()),
+            onRefresh: () async =>
+                setState(() => _future = _load(forceRefresh: true)),
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
               children: [

@@ -37,11 +37,11 @@ class _AdminCaseDetailsScreenState
     _future = _load();
   }
 
-  Future<Map<String, dynamic>> _load() async {
+  Future<Map<String, dynamic>> _load({bool forceRefresh = false}) async {
     final token = ref.read(authControllerProvider).appToken ?? '';
     if (token.isEmpty) throw Exception('Missing session token');
     return _service.fetchAdminCaseDetails(
-        appToken: token, caseId: widget.caseId);
+        appToken: token, caseId: widget.caseId, forceRefresh: forceRefresh);
   }
 
   Future<void> _exportPaymentRows(
@@ -236,7 +236,9 @@ class _AdminCaseDetailsScreenState
       actions: [
         IconButton(
           tooltip: 'Refresh',
-          onPressed: _busy ? null : () => setState(() => _future = _load()),
+          onPressed: _busy
+              ? null
+              : () => setState(() => _future = _load(forceRefresh: true)),
           icon: const Icon(Icons.refresh),
         ),
       ],

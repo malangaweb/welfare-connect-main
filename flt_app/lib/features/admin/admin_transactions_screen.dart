@@ -42,12 +42,16 @@ class _AdminTransactionsScreenState
     _future = _loadPage();
   }
 
-  Future<List<Map<String, dynamic>>> _loadPage() async {
+  Future<List<Map<String, dynamic>>> _loadPage(
+      {bool forceRefresh = false}) async {
+    final token = ref.read(authControllerProvider).appToken ?? '';
     final rows = await _service
         .fetchAdminTransactions(
           page: _page,
           pageSize: _pageSize,
           search: _search,
+          appToken: token,
+          forceRefresh: forceRefresh,
         )
         .timeout(const Duration(seconds: 20));
     _hasMore = rows.length == _pageSize;
@@ -55,7 +59,7 @@ class _AdminTransactionsScreenState
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _loadPage());
+    setState(() => _future = _loadPage(forceRefresh: true));
     await _future;
   }
 
@@ -117,6 +121,9 @@ class _AdminTransactionsScreenState
         transactionId: txId,
         reason: reasonCtrl.text.trim(),
         adminUserId: adminId,
+      );
+      await _service.clearAdminCache(
+        ref.read(authControllerProvider).appToken ?? '',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -239,6 +246,11 @@ class _AdminTransactionsScreenState
       } catch (_) {
         failed += 1;
       }
+    }
+    if (success > 0) {
+      await _service.clearAdminCache(
+        ref.read(authControllerProvider).appToken ?? '',
+      );
     }
     if (!mounted) return;
     setState(() {

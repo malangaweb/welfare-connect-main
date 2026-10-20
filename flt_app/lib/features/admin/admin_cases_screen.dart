@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
@@ -7,15 +8,16 @@ import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
 import '../../core/widgets/async_error_view.dart';
 import 'admin_shell.dart';
+import '../auth/auth_controller.dart';
 
-class AdminCasesScreen extends StatefulWidget {
+class AdminCasesScreen extends ConsumerStatefulWidget {
   const AdminCasesScreen({super.key});
 
   @override
-  State<AdminCasesScreen> createState() => _AdminCasesScreenState();
+  ConsumerState<AdminCasesScreen> createState() => _AdminCasesScreenState();
 }
 
-class _AdminCasesScreenState extends State<AdminCasesScreen> {
+class _AdminCasesScreenState extends ConsumerState<AdminCasesScreen> {
   final _service = LiveDataService();
   final _searchCtrl = TextEditingController();
   late Future<List<Map<String, dynamic>>> _future;
@@ -28,8 +30,12 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
     _future = _loadCases();
   }
 
-  Future<List<Map<String, dynamic>>> _loadCases() =>
-      _service.fetchAdminCases().timeout(const Duration(seconds: 20));
+  Future<List<Map<String, dynamic>>> _loadCases({bool forceRefresh = false}) {
+    final token = ref.read(authControllerProvider).appToken ?? '';
+    return _service
+        .fetchAdminCases(appToken: token, forceRefresh: forceRefresh)
+        .timeout(const Duration(seconds: 20));
+  }
 
   @override
   void dispose() {
@@ -38,7 +44,7 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _loadCases());
+    setState(() => _future = _loadCases(forceRefresh: true));
     await _future;
   }
 
@@ -76,6 +82,8 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
           const SnackBar(content: Text('Case finalized successfully.')),
         );
       }
+      await _service
+          .clearAdminCache(ref.read(authControllerProvider).appToken ?? '');
       await _refresh();
     } catch (e) {
       if (!mounted) return;

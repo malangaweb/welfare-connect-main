@@ -70,8 +70,11 @@ class StorageService {
   }
 
   Future<bool> getRememberMe() async {
-    // Existing installs predate this preference; preserve their saved session.
-    return (await _storage.read(key: _keyRememberMe)) != 'false';
+    final preference = await _storage.read(key: _keyRememberMe);
+    if (preference != null) return preference == 'true';
+    // Older installs had no preference key. Preserve a session only when one
+    // was actually saved; new installs remain unchecked until the user opts in.
+    return (await getAuthToken())?.isNotEmpty ?? false;
   }
 
   Future<void> clearAll() async {

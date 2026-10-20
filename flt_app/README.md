@@ -25,4 +25,4 @@ passwords in `android/key.properties`. Both files are intentionally excluded
 from Git. Back them up together in secure storage and reuse the same key for
 every app update; losing it prevents existing installations from receiving
 signed updates. The APK currently linked from the website is approximately
-73 MB.
+68 MB.

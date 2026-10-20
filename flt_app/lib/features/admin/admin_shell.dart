@@ -64,7 +64,11 @@ class AdminShell extends ConsumerWidget {
         backgroundColor: const Color(0xFF1F3556),
         foregroundColor: Colors.white,
         actions: [
-          const NotificationBell(),
+          NotificationBell(
+            key: ValueKey(
+              'admin:${auth.user?.id ?? auth.memberId ?? 'unknown'}',
+            ),
+          ),
           ...?actions,
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
@@ -156,17 +160,17 @@ class AdminShell extends ConsumerWidget {
         ]),
       ),
       bottomNavigationBar: expanded
-            ? null
-            : NavigationBar(
-                selectedIndex: resolvedIndex ?? 0,
-                onDestinationSelected: (i) => context.go(visibleRoutes[i]),
-                destinations: List.generate(
-                    visibleRoutes.length,
-                    (i) => NavigationDestination(
-                          icon: Icon(visibleIcons[i]),
-                          label: visibleLabels[i],
-                        )),
-              ),
+          ? null
+          : NavigationBar(
+              selectedIndex: resolvedIndex ?? 0,
+              onDestinationSelected: (i) => context.go(visibleRoutes[i]),
+              destinations: List.generate(
+                  visibleRoutes.length,
+                  (i) => NavigationDestination(
+                        icon: Icon(visibleIcons[i]),
+                        label: visibleLabels[i],
+                      )),
+            ),
     );
   }
 }

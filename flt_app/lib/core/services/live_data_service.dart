@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_service.dart';
+import 'local_cache_service.dart';
 
 class MemberWalletSnapshot {
   final double walletBalance;
@@ -22,6 +23,38 @@ class MemberWalletSnapshot {
     required this.penaltyTotal,
     required this.unpaidCasesCount,
   });
+
+  Map<String, dynamic> toMap() => {
+        'wallet_balance': walletBalance,
+        'total_credit': totalCredit,
+        'total_debit': totalDebit,
+        'recent_transactions': recentTransactions,
+        'is_defaulting': isDefaulting,
+        'arrears_total': arrearsTotal,
+        'penalty_total': penaltyTotal,
+        'unpaid_cases_count': unpaidCasesCount,
+      };
+
+  factory MemberWalletSnapshot.fromMap(Map<String, dynamic> map) {
+    return MemberWalletSnapshot(
+      walletBalance: _number(map['wallet_balance']),
+      totalCredit: _number(map['total_credit']),
+      totalDebit: _number(map['total_debit']),
+      recentTransactions: (map['recent_transactions'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+      isDefaulting: map['is_defaulting'] == true,
+      arrearsTotal: _number(map['arrears_total']),
+      penaltyTotal: _number(map['penalty_total']),
+      unpaidCasesCount: (map['unpaid_cases_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
 }
 
 class MemberCaseSnapshot {
@@ -125,6 +158,39 @@ class AdminDashboardSnapshot {
     required this.pendingSuspenseCount,
     required this.recentActivity,
   });
+
+  Map<String, dynamic> toMap() => {
+        'total_members': totalMembers,
+        'active_members': activeMembers,
+        'inactive_members': inactiveMembers,
+        'probation_members': probationMembers,
+        'active_cases': activeCases,
+        'total_contributions': totalContributions,
+        'pending_suspense_total': pendingSuspenseTotal,
+        'pending_suspense_count': pendingSuspenseCount,
+        'recent_activity': recentActivity,
+      };
+
+  factory AdminDashboardSnapshot.fromMap(Map<String, dynamic> map) =>
+      AdminDashboardSnapshot(
+        totalMembers: (map['total_members'] as num?)?.toInt() ?? 0,
+        activeMembers: (map['active_members'] as num?)?.toInt() ?? 0,
+        inactiveMembers: (map['inactive_members'] as num?)?.toInt() ?? 0,
+        probationMembers: (map['probation_members'] as num?)?.toInt() ?? 0,
+        activeCases: (map['active_cases'] as num?)?.toInt() ?? 0,
+        totalContributions: _number(map['total_contributions']),
+        pendingSuspenseTotal: _number(map['pending_suspense_total']),
+        pendingSuspenseCount:
+            (map['pending_suspense_count'] as num?)?.toInt() ?? 0,
+        recentActivity: (map['recent_activity'] as List? ?? const [])
+            .whereType<Map>()
+            .map((row) => row.cast<String, dynamic>())
+            .toList(),
+      );
+
+  static double _number(dynamic value) => value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 class _AdminMemberCounts {
@@ -140,8 +206,93 @@ class _AdminMemberCounts {
 class LiveDataService {
   final SupabaseClient _client = Supabase.instance.client;
   final SupabaseService _supabaseService = SupabaseService();
+  final LocalCacheService _cache = LocalCacheService.instance;
+
+  String _adminCacheScope(String appToken) {
+    // Keep the bearer token out of SQLite keys while still isolating sessions.
+    var hash = 0x811c9dc5;
+    for (final unit in appToken.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return 'admin:${hash.toRadixString(16)}';
+  }
+
+  Future<T?> _readAdminCache<T>({
+    required String appToken,
+    required String key,
+    required bool forceRefresh,
+    required T Function(Map<String, dynamic>) decode,
+  }) async {
+    if (appToken.isEmpty || forceRefresh) return null;
+    final cached = await _cache.read(
+      ownerScope: _adminCacheScope(appToken),
+      key: key,
+    );
+    if (cached == null ||
+        DateTime.now().difference(cached.savedAt) >=
+            const Duration(seconds: 45)) {
+      return null;
+    }
+    try {
+      return decode(cached.value);
+    } catch (_) {
+      await _cache.remove(
+        ownerScope: _adminCacheScope(appToken),
+        key: key,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _writeAdminCache({
+    required String appToken,
+    required String key,
+    required Map<String, dynamic> value,
+  }) async {
+    if (appToken.isEmpty) return;
+    await _cache.write(
+      ownerScope: _adminCacheScope(appToken),
+      key: key,
+      value: value,
+    );
+  }
+
+  Future<void> clearAdminCache(String appToken) async {
+    if (appToken.isNotEmpty) {
+      await _cache.clearOwner(_adminCacheScope(appToken));
+    }
+  }
 
   Future<MemberWalletSnapshot> fetchMemberWalletData({
+    required String memberId,
+    required String appToken,
+    bool forceRefresh = false,
+  }) async {
+    final ownerScope = 'member:$memberId';
+    final cached = await _cache.read(
+      ownerScope: ownerScope,
+      key: 'wallet_snapshot',
+    );
+    if (!forceRefresh &&
+        cached != null &&
+        DateTime.now().difference(cached.savedAt) <
+            const Duration(seconds: 30)) {
+      return MemberWalletSnapshot.fromMap(cached.value);
+    }
+
+    final snapshot = await _fetchMemberWalletDataFromServer(
+      memberId: memberId,
+      appToken: appToken,
+    );
+    await _cache.write(
+      ownerScope: ownerScope,
+      key: 'wallet_snapshot',
+      value: snapshot.toMap(),
+    );
+    return snapshot;
+  }
+
+  Future<MemberWalletSnapshot> _fetchMemberWalletDataFromServer({
     required String memberId,
     required String appToken,
   }) async {
@@ -418,6 +569,7 @@ class LiveDataService {
         throw Exception(fallbackResult.error.message ?? 'Transfer failed');
       }
     }
+    await _invalidateWallet(fromMemberId);
   }
 
   Future<void> payToCase({
@@ -467,6 +619,7 @@ class LiveDataService {
           'Case wallet deduction for case #$caseNumber (member portal)',
       'metadata': {'source': 'member_portal_pay_to_case'},
     });
+    await _invalidateWallet(memberId);
   }
 
   Future<Map<String, dynamic>> payToCases({
@@ -559,11 +712,17 @@ class LiveDataService {
     }
 
     await _client.from('transactions').insert(rows);
+    await _invalidateWallet(memberId);
     return {
       'count': rows.length,
       'total': totalRequired,
     };
   }
+
+  Future<void> _invalidateWallet(String memberId) => _cache.remove(
+        ownerScope: 'member:$memberId',
+        key: 'wallet_snapshot',
+      );
 
   Future<void> updateMemberPin({
     required String memberId,
@@ -584,7 +743,18 @@ class LiveDataService {
     }
   }
 
-  Future<AdminDashboardSnapshot> fetchAdminDashboard({String? appToken}) async {
+  Future<AdminDashboardSnapshot> fetchAdminDashboard({
+    String? appToken,
+    bool forceRefresh = false,
+  }) async {
+    final token = appToken ?? '';
+    final cached = await _readAdminCache<AdminDashboardSnapshot>(
+      appToken: token,
+      key: 'dashboard',
+      forceRefresh: forceRefresh,
+      decode: AdminDashboardSnapshot.fromMap,
+    );
+    if (cached != null) return cached;
     final summaryRows = await _client.rpc('get_dashboard_summary');
     final summary = (summaryRows as List?)?.whereType<Map>().firstOrNull;
     final memberCounts = await _fetchAdminMemberCounts();
@@ -607,7 +777,7 @@ class LiveDataService {
         .toList();
     final suspenseTotal = suspenseList.fold<double>(
         0, (sum, row) => sum + _toDouble(row['amount']));
-    return AdminDashboardSnapshot(
+    final result = AdminDashboardSnapshot(
       // The summary RPC returns a database aggregate, so it stays accurate
       // even when the REST API caps a page of member rows at 1,000.
       totalMembers: _toInt(summary?['total_members']) ?? memberCounts.total,
@@ -623,6 +793,9 @@ class LiveDataService {
           .map((e) => e.cast<String, dynamic>())
           .toList(),
     );
+    await _writeAdminCache(
+        appToken: token, key: 'dashboard', value: result.toMap());
+    return result;
   }
 
   Future<_AdminMemberCounts> _fetchAdminMemberCounts() async {
@@ -716,7 +889,20 @@ class LiveDataService {
     String search = '',
     String status = 'all',
     String active = 'all',
+    String appToken = '',
+    bool forceRefresh = false,
   }) async {
+    final cacheKey = 'members:$page:$pageSize:${search.trim()}:$status:$active';
+    final cached = await _readAdminCache<List<Map<String, dynamic>>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => (value['rows'] as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+    if (cached != null) return cached;
     final from = (page - 1) * pageSize;
     final to = from + pageSize - 1;
     var query = _client.from('members').select(
@@ -742,10 +928,16 @@ class LiveDataService {
         .order('member_number_numeric', ascending: true)
         .order('member_number', ascending: true)
         .range(from, to);
-    return (rows as List)
+    final result = (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
+    await _writeAdminCache(
+      appToken: appToken,
+      key: cacheKey,
+      value: {'rows': result},
+    );
+    return result;
   }
 
   Future<List<Map<String, dynamic>>> fetchAllAdminMembers({
@@ -924,17 +1116,35 @@ class LiveDataService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchAdminCases({int limit = 200}) async {
+  Future<List<Map<String, dynamic>>> fetchAdminCases({
+    int limit = 200,
+    String appToken = '',
+    bool forceRefresh = false,
+  }) async {
+    final cacheKey = 'cases:$limit';
+    final cached = await _readAdminCache<List<Map<String, dynamic>>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => (value['rows'] as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+    if (cached != null) return cached;
     final rows = await _client
         .from('cases')
         .select(
             'id, case_number, case_type, contribution_per_member, expected_amount, actual_amount, is_active, is_finalized, created_at')
         .order('created_at', ascending: false)
         .limit(limit);
-    return (rows as List)
+    final result = (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
+    await _writeAdminCache(
+        appToken: appToken, key: cacheKey, value: {'rows': result});
+    return result;
   }
 
   Future<void> finalizeCase(
@@ -961,7 +1171,20 @@ class LiveDataService {
     int page = 1,
     int pageSize = 30,
     String search = '',
+    String appToken = '',
+    bool forceRefresh = false,
   }) async {
+    final cacheKey = 'transactions:$page:$pageSize:${search.trim()}';
+    final cached = await _readAdminCache<List<Map<String, dynamic>>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => (value['rows'] as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+    if (cached != null) return cached;
     final from = (page - 1) * pageSize;
     final to = from + pageSize - 1;
     var query = _client.from('transactions').select(
@@ -974,10 +1197,13 @@ class LiveDataService {
     }
     final rows =
         await query.order('created_at', ascending: false).range(from, to);
-    return (rows as List)
+    final result = (rows as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .toList();
+    await _writeAdminCache(
+        appToken: appToken, key: cacheKey, value: {'rows': result});
+    return result;
   }
 
   Future<void> reverseTransaction({
@@ -1275,6 +1501,27 @@ class LiveDataService {
   Future<Map<String, dynamic>> fetchAdminMemberDetails({
     required String appToken,
     required String memberId,
+    bool forceRefresh = false,
+  }) async {
+    final cacheKey = 'member_detail:$memberId';
+    final cached = await _readAdminCache<Map<String, dynamic>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => value,
+    );
+    if (cached != null) return cached;
+    final result = await _fetchAdminMemberDetailsFromServer(
+      appToken: appToken,
+      memberId: memberId,
+    );
+    await _writeAdminCache(appToken: appToken, key: cacheKey, value: result);
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _fetchAdminMemberDetailsFromServer({
+    required String appToken,
+    required String memberId,
   }) async {
     final response = await _supabaseService.invokeFunction(
       'api-member-details',
@@ -1340,6 +1587,27 @@ class LiveDataService {
   }
 
   Future<Map<String, dynamic>> fetchAdminCaseDetails({
+    required String appToken,
+    required String caseId,
+    bool forceRefresh = false,
+  }) async {
+    final cacheKey = 'case_detail:$caseId';
+    final cached = await _readAdminCache<Map<String, dynamic>>(
+      appToken: appToken,
+      key: cacheKey,
+      forceRefresh: forceRefresh,
+      decode: (value) => value,
+    );
+    if (cached != null) return cached;
+    final result = await _fetchAdminCaseDetailsFromServer(
+      appToken: appToken,
+      caseId: caseId,
+    );
+    await _writeAdminCache(appToken: appToken, key: cacheKey, value: result);
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _fetchAdminCaseDetailsFromServer({
     required String appToken,
     required String caseId,
   }) async {

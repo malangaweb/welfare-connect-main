@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/live_data_service.dart';
 import '../../core/widgets/async_error_view.dart';
+import '../auth/auth_controller.dart';
 import 'admin_shell.dart';
 
 class AdminMembersScreen extends ConsumerStatefulWidget {
@@ -46,7 +47,9 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
     _future = _loadPage();
   }
 
-  Future<List<Map<String, dynamic>>> _loadPage() async {
+  Future<List<Map<String, dynamic>>> _loadPage(
+      {bool forceRefresh = false}) async {
+    final token = ref.read(authControllerProvider).appToken ?? '';
     final rows = await _service
         .fetchAdminMembers(
           page: _page,
@@ -54,6 +57,8 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
           search: _search,
           status: _statusFilter,
           active: _activeFilter,
+          appToken: token,
+          forceRefresh: forceRefresh,
         )
         .timeout(const Duration(seconds: 20));
     _hasMore = rows.length == _pageSize;
@@ -63,7 +68,7 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
   Future<void> _refresh() async {
     setState(() {
       _selectedMemberIds.clear();
-      _future = _loadPage();
+      _future = _loadPage(forceRefresh: true);
     });
     await _future;
   }
