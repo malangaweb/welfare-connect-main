@@ -10,13 +10,9 @@ import '../../features/admin/admin_cases_screen.dart';
 import '../../features/admin/admin_transactions_screen.dart';
 import '../../features/admin/admin_settings_screen.dart';
 import '../../features/admin/suspense_queue_screen.dart';
-import '../../features/admin/admin_reports_screen.dart';
-import '../../features/admin/admin_users_screen.dart';
 import '../../features/admin/admin_member_details_screen.dart';
 import '../../features/admin/admin_case_details_screen.dart';
 import '../../features/admin/admin_accounts_screen.dart';
-import '../../features/admin/admin_fiscal_reports_screen.dart';
-import '../../features/admin/admin_compliance_reports_screen.dart';
 import '../../features/admin/admin_applications_screen.dart';
 import '../../features/member/wallet_screen.dart';
 import '../../features/member/dashboard_screen.dart';
@@ -90,20 +86,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/admin/settings',
           builder: (context, state) => const AdminSettingsScreen()),
       GoRoute(
-          path: '/admin/reports',
-          builder: (context, state) => const AdminReportsScreen()),
-      GoRoute(
-          path: '/admin/users',
-          builder: (context, state) => const AdminUsersScreen()),
-      GoRoute(
           path: '/admin/accounts',
           builder: (context, state) => const AdminAccountsScreen()),
-      GoRoute(
-          path: '/admin/fiscal-reports',
-          builder: (context, state) => const AdminFiscalReportsScreen()),
-      GoRoute(
-          path: '/admin/compliance-reports',
-          builder: (context, state) => const AdminComplianceReportsScreen()),
       GoRoute(
           path: '/admin/members/:memberId',
           builder: (context, state) => AdminMemberDetailsScreen(

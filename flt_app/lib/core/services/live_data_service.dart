@@ -1120,6 +1120,10 @@ class LiveDataService {
             (sum, t) => sum + _toDouble(t['amount']).clamp(0, double.infinity));
     final actualAmount =
         (contributions - refunds).clamp(0, double.infinity).toDouble();
+    final paymentStatusRows = await _client.rpc(
+      'get_case_payment_compliance_rows_for_case',
+      params: {'p_case_id': caseMap['id']},
+    );
 
     return {
       'case': {
@@ -1128,6 +1132,10 @@ class LiveDataService {
         'paid': null,
       },
       'transactions': txList,
+      'payment_status': (paymentStatusRows as List)
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
     };
   }
 

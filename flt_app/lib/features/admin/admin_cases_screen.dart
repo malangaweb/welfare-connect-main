@@ -42,48 +42,6 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
     await _future;
   }
 
-  Future<void> _deleteCase(Map<String, dynamic> row) async {
-    final caseId = (row['id'] ?? '').toString();
-    if (caseId.isEmpty) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Case'),
-        content: Text(
-            'Are you sure you want to delete case #${row['case_number'] ?? '-'}? This action cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => ctx.pop(false), child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => ctx.pop(true), child: const Text('Delete')),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      await _service.deleteCase(caseId: caseId);
-      Posthog().capture(
-        eventName: 'case_deleted',
-        properties: {
-          'case_type': (row['case_type'] ?? 'unknown').toString().toLowerCase(),
-        },
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Case deleted successfully.')),
-      );
-      await _refresh();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delete failed: $e')),
-      );
-    }
-  }
-
   Future<void> _toggleCase(Map<String, dynamic> row) async {
     final caseId = (row['id'] ?? '').toString();
     if (caseId.isEmpty) return;
@@ -125,6 +83,104 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
         SnackBar(content: Text('Action failed: $e')),
       );
     }
+  }
+
+  Future<void> _showFilters() async {
+    var status = _statusFilter;
+    var caseType = _caseTypeFilter;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Filter cases',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: status,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Status',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All')),
+                  DropdownMenuItem(value: 'active', child: Text('Active')),
+                  DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                  DropdownMenuItem(
+                      value: 'finalized', child: Text('Finalized')),
+                ],
+                onChanged: (value) =>
+                    setSheetState(() => status = value ?? 'all'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: caseType,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Case Type',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All')),
+                  DropdownMenuItem(
+                      value: 'education', child: Text('Education')),
+                  DropdownMenuItem(
+                      value: 'sickness', child: Text('Medical Emergencies')),
+                  DropdownMenuItem(
+                      value: 'death', child: Text('Funeral Contributions')),
+                ],
+                onChanged: (value) =>
+                    setSheetState(() => caseType = value ?? 'all'),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _statusFilter = 'all';
+                        _caseTypeFilter = 'all';
+                      });
+                      Navigator.of(sheetContext).pop();
+                    },
+                    child: const Text('Reset'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _statusFilter = status;
+                        _caseTypeFilter = caseType;
+                      });
+                      Navigator.of(sheetContext).pop();
+                    },
+                    child: const Text('Apply filters'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -190,265 +246,127 @@ class _AdminCasesScreenState extends State<AdminCasesScreen> {
               .where((r) => r['is_active'] != true && r['is_finalized'] != true)
               .length;
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 600;
-              final maxCardWidth = isWide ? 560.0 : 380.0;
-              final childAspectRatio = isWide ? 1.7 : 1.05;
-
-              return ListView(
-                padding: const EdgeInsets.all(AppConstants.marginEdge),
+          return ListView(
+            padding: const EdgeInsets.all(AppConstants.marginEdge),
+            children: [
+              Text(
+                'Case Management',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Total ${rows.length} • Active $activeCount • Inactive $inactiveCount • Finalized $finalizedCount',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 10),
+              Row(
                 children: [
-                  Text(
-                    'Case Management',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Total ${rows.length} • Active $activeCount • Inactive $inactiveCount • Finalized $finalizedCount',
-                    style: const TextStyle(color: Color(0xFF64748B)),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _searchCtrl,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Search by case number or type',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchCtrl.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() {});
-                              },
-                            ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      SizedBox(
-                        width: isWide
-                            ? (constraints.maxWidth - 10) / 2
-                            : constraints.maxWidth,
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _statusFilter,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'all', child: Text('All')),
-                            DropdownMenuItem(
-                                value: 'active', child: Text('Active')),
-                            DropdownMenuItem(
-                                value: 'inactive', child: Text('Inactive')),
-                            DropdownMenuItem(
-                                value: 'finalized', child: Text('Finalized')),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _statusFilter = v ?? 'all'),
-                        ),
-                      ),
-                      SizedBox(
-                        width: isWide
-                            ? (constraints.maxWidth - 10) / 2
-                            : constraints.maxWidth,
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _caseTypeFilter,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Case Type',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'all', child: Text('All')),
-                            DropdownMenuItem(
-                                value: 'education', child: Text('Education')),
-                            DropdownMenuItem(
-                                value: 'sickness',
-                                child: Text('Medical Emergencies')),
-                            DropdownMenuItem(
-                                value: 'death',
-                                child: Text('Funeral Contributions')),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _caseTypeFilter = v ?? 'all'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  if (filtered.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(
-                          child: Text('No cases match current filters.')),
-                    )
-                  else
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: maxCardWidth,
-                        childAspectRatio: childAspectRatio,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        final r = filtered[index];
-                        final isFinalized = r['is_finalized'] == true;
-                        final isActive = r['is_active'] == true;
-
-                        final expected = _toDouble(r['expected_amount']);
-                        final actual = _toDouble(r['actual_amount']);
-                        final contribution =
-                            _toDouble(r['contribution_per_member']);
-
-                        final progress = expected > 0
-                            ? (actual / expected).clamp(0.0, 1.0)
-                            : (isFinalized ? 1.0 : 0.0);
-                        final variance = actual - expected;
-                        final caseType = (r['case_type'] ?? 'unknown')
-                            .toString()
-                            .toLowerCase();
-
-                        return Card(
-                          elevation: AppConstants.elevationCard,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                                AppConstants.radiusMedium),
-                            side: const BorderSide(color: Color(0xFFE2E8F0)),
-                          ),
-                          child: InkWell(
-                            onTap: () => context.go('/admin/cases/${r['id']}'),
-                            borderRadius: BorderRadius.circular(
-                                AppConstants.radiusMedium),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '#${r['case_number'] ?? '-'}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                      _caseTypeBadge(caseType),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    children: [
-                                      _statusBadge(isFinalized, isActive),
-                                      if (contribution > 0)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius:
-                                                BorderRadius.circular(999),
-                                          ),
-                                          child: Text(
-                                            '${money.format(contribution)} / member',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: Color(0xFF475569),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  LinearProgressIndicator(
-                                    value: progress,
-                                    minHeight: 8,
-                                    borderRadius: BorderRadius.circular(999),
-                                    color: progress >= 1.0
-                                        ? const Color(0xFF16A34A)
-                                        : const Color(0xFF3B82F6),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        '${(progress * 100).toStringAsFixed(0)}% collected',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                      Text(
-                                        'Variance: ${variance >= 0 ? '+' : ''}${money.format(variance)}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: variance >= 0
-                                              ? const Color(0xFF16A34A)
-                                              : const Color(0xFFDC2626),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: FilledButton.tonal(
-                                          onPressed: () => _toggleCase(r),
-                                          child: Text(isFinalized
-                                              ? 'Reopen'
-                                              : 'Finalize'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        onPressed: () => _deleteCase(r),
-                                        icon: const Icon(Icons.delete_outline,
-                                            size: 18),
-                                        tooltip: 'Delete',
-                                        style: IconButton.styleFrom(
-                                          backgroundColor:
-                                              const Color(0xFFFEF2F2),
-                                          foregroundColor:
-                                              const Color(0xFFDC2626),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'Search by case number or type',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchCtrl.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {});
+                                },
                               ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Badge(
+                    isLabelVisible:
+                        _statusFilter != 'all' || _caseTypeFilter != 'all',
+                    child: IconButton.filledTonal(
+                      onPressed: _showFilters,
+                      tooltip: 'Filters',
+                      icon: const Icon(Icons.tune),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (filtered.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: Text('No cases match current filters.')),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filtered.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final r = filtered[index];
+                    final isFinalized = r['is_finalized'] == true;
+                    final isActive = r['is_active'] == true;
+                    final contribution =
+                        _toDouble(r['contribution_per_member']);
+                    final caseType =
+                        (r['case_type'] ?? 'unknown').toString().toLowerCase();
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      onTap: () => context.go('/admin/cases/${r['id']}'),
+                      title: Row(
+                        children: [
+                          Text(
+                            '#${r['case_number'] ?? '-'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
                             ),
                           ),
-                        );
-                      },
-                    ),
-                ],
-              );
-            },
+                          const SizedBox(width: 8),
+                          Flexible(child: _caseTypeBadge(caseType)),
+                        ],
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _statusBadge(isFinalized, isActive),
+                            if (contribution > 0)
+                              Text(
+                                '${money.format(contribution)} per member',
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      trailing: FilledButton.tonal(
+                        onPressed: () => _toggleCase(r),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(72, 34),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
+                        child: Text(isFinalized ? 'Reopen' : 'Close'),
+                      ),
+                    );
+                  },
+                ),
+            ],
           );
         },
       ),

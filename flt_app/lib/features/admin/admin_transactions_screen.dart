@@ -20,7 +20,7 @@ class _AdminTransactionsScreenState
     extends ConsumerState<AdminTransactionsScreen> {
   final _service = LiveDataService();
   final _searchCtrl = TextEditingController();
-  static const _pageSize = 10;
+  static const _pageSize = 20;
   int _page = 1;
   bool _hasMore = false;
   String _search = '';
@@ -400,7 +400,7 @@ class _AdminTransactionsScreenState
                 final reversed = '${r['status']}'.toLowerCase() == 'reversed';
                 final txId = '${r['id'] ?? ''}';
                 return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 5),
                   decoration: const BoxDecoration(
                     border: Border(
                       bottom: BorderSide(color: Color(0xFFE2E8F0)),
@@ -411,6 +411,8 @@ class _AdminTransactionsScreenState
                     children: [
                       Checkbox(
                         value: _selected.contains(txId),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         onChanged: reversed
                             ? null
                             : (v) {
@@ -435,7 +437,7 @@ class _AdminTransactionsScreenState
                                     '${r['description'] ?? r['transaction_type'] ?? '-'}',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 15,
+                                      fontSize: 14,
                                     ),
                                   ),
                                 ),
@@ -452,15 +454,15 @@ class _AdminTransactionsScreenState
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 2),
                             Text(
                               '${r['transaction_type'] ?? '-'} • ${date == null ? '-' : DateFormat('MMM d, yyyy • h:mm a').format(date.toLocal())}',
                               style: const TextStyle(color: Color(0xFF64748B)),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 3),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
+                                  horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(999),
                                 color: reversed
@@ -479,7 +481,7 @@ class _AdminTransactionsScreenState
                               ),
                             ),
                             if (!reversed) ...[
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 0),
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: Wrap(
@@ -487,10 +489,26 @@ class _AdminTransactionsScreenState
                                   children: [
                                     TextButton(
                                       onPressed: () => _editTransaction(r),
+                                      style: TextButton.styleFrom(
+                                        minimumSize: const Size(0, 30),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8),
+                                        visualDensity: VisualDensity.compact,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
                                       child: const Text('Edit'),
                                     ),
                                     TextButton(
                                       onPressed: () => _reverseTransaction(r),
+                                      style: TextButton.styleFrom(
+                                        minimumSize: const Size(0, 30),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8),
+                                        visualDensity: VisualDensity.compact,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
                                       child: const Text('Revert'),
                                     ),
                                   ],

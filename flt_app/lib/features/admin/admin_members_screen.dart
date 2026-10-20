@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -35,22 +36,12 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
   String _activeFilter = 'all';
   late Future<List<Map<String, dynamic>>> _future;
 
-  String? _sortField;
-  bool _sortAsc = true;
-  final Set<String> _selectedIds = {};
   final Map<String, int> _unpaidCounts = {};
-  bool _unpaidLoading = false;
-
-  final _deductCaseIdCtrl = TextEditingController();
-  final _deductMemberIdsCtrl = TextEditingController();
-  bool _deductSubmitting = false;
-  List<Map<String, dynamic>> _deductPreviewRows = [];
+  final Set<String> _selectedMemberIds = {};
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _deductCaseIdCtrl.dispose();
-    _deductMemberIdsCtrl.dispose();
     super.dispose();
   }
 
@@ -71,9 +62,6 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
         )
         .timeout(const Duration(seconds: 20));
     _hasMore = rows.length == _pageSize;
-    if (mounted) {
-      _selectedIds.clear();
-    }
     if (rows.isNotEmpty) {
       _loadUnpaidCounts(rows);
     }
@@ -81,7 +69,6 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
   }
 
   Future<void> _loadUnpaidCounts(List<Map<String, dynamic>> rows) async {
-    setState(() => _unpaidLoading = true);
     try {
       final results = await Future.wait(
         rows.map((r) async {
@@ -102,17 +89,182 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
       if (mounted) {
         setState(() {
           _unpaidCounts.addEntries(results.where((e) => e.value > 0));
-          _unpaidLoading = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _unpaidLoading = false);
-    }
+    } catch (_) {}
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _loadPage());
+    setState(() {
+      _selectedMemberIds.clear();
+      _future = _loadPage();
+    });
     await _future;
+  }
+
+  Future<void> _showFilters() async {
+    var active = _activeFilter;
+    var status = _statusFilter;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Filter members',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: active,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Account activity',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All')),
+                  DropdownMenuItem(value: 'active', child: Text('Active')),
+                  DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                ],
+                onChanged: (value) =>
+                    setSheetState(() => active = value ?? 'all'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: status,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Member status',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All statuses')),
+                  DropdownMenuItem(value: 'active', child: Text('ACTIVE')),
+                  DropdownMenuItem(value: 'inactive', child: Text('INACTIVE')),
+                  DropdownMenuItem(
+                      value: 'probation', child: Text('PROBATION')),
+                  DropdownMenuItem(value: 'deceased', child: Text('DECEASED')),
+                ],
+                onChanged: (value) =>
+                    setSheetState(() => status = value ?? 'all'),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _activeFilter = 'all';
+                        _statusFilter = 'all';
+                        _page = 1;
+                        _future = _loadPage();
+                        _selectedMemberIds.clear();
+                      });
+                      Navigator.of(sheetContext).pop();
+                    },
+                    child: const Text('Reset'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _activeFilter = active;
+                        _statusFilter = status;
+                        _page = 1;
+                        _future = _loadPage();
+                        _selectedMemberIds.clear();
+                      });
+                      Navigator.of(sheetContext).pop();
+                    },
+                    child: const Text('Apply filters'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _messageSelectedMembers(
+      List<Map<String, dynamic>> members) async {
+    final recipients = members
+        .where((member) =>
+            _selectedMemberIds.contains((member['id'] ?? '').toString()))
+        .toList();
+    if (recipients.isEmpty) return;
+    await _composeMessage(recipients);
+  }
+
+  Future<void> _messageMember(Map<String, dynamic> member) =>
+      _composeMessage([member]);
+
+  Future<void> _composeMessage(List<Map<String, dynamic>> recipients) async {
+    final phoneNumbers = recipients
+        .map((member) => (member['phone_number'] ?? '').toString().trim())
+        .where((phone) => phone.isNotEmpty)
+        .toList();
+    if (phoneNumbers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Selected members have no phone numbers.')),
+      );
+      return;
+    }
+
+    final messageController = TextEditingController();
+    final shouldShare = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Message ${recipients.length} selected members'),
+        content: TextField(
+          controller: messageController,
+          minLines: 3,
+          maxLines: 6,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Write your message',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    final message = messageController.text.trim();
+    messageController.dispose();
+    if (shouldShare != true || message.isEmpty || !mounted) return;
+
+    await Share.share(
+      'To: ${phoneNumbers.join(', ')}\n\n$message',
+      subject: 'Message to selected members',
+    );
   }
 
   Future<void> _exportFilteredMembers() async {
@@ -166,210 +318,6 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
       );
-    }
-  }
-
-  void _onSort(String field) {
-    setState(() {
-      if (_sortField == field) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortField = field;
-        _sortAsc = true;
-      }
-    });
-  }
-
-  void _toggleSelect(String id) {
-    setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
-      } else {
-        _selectedIds.add(id);
-      }
-    });
-  }
-
-  void _toggleSelectAll(bool? checked, List<Map<String, dynamic>> rows) {
-    setState(() {
-      if (checked == true) {
-        _selectedIds.addAll(rows.map((r) => (r['id'] ?? '').toString()));
-      } else {
-        _selectedIds.clear();
-      }
-    });
-  }
-
-  Future<void> _openBulkDeductDialog(
-      List<Map<String, dynamic>> rows, NumberFormat money) async {
-    final selectedRows = rows
-        .where((r) => _selectedIds.contains((r['id'] ?? '').toString()))
-        .toList();
-    if (selectedRows.isEmpty) return;
-
-    _deductPreviewRows = selectedRows;
-    _deductMemberIdsCtrl.text =
-        selectedRows.map((r) => r['id'] ?? '').join(', ');
-    _deductCaseIdCtrl.clear();
-    _deductSubmitting = false;
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Bulk Wallet Deduction'),
-          content: SizedBox(
-            width: 520,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _deductCaseIdCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Case ID or Case Number',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _deductMemberIdsCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Member IDs (comma-separated)',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Selected members preview:',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columns: const [
-                      DataColumn(label: Text('Name')),
-                      DataColumn(label: Text('Number')),
-                      DataColumn(label: Text('Balance'), numeric: true),
-                    ],
-                    rows: _deductPreviewRows.map((r) {
-                      return DataRow(cells: [
-                        DataCell(Text('${r['name'] ?? '-'}')),
-                        DataCell(Text('${r['member_number'] ?? '-'}')),
-                        DataCell(
-                          Text(
-                            money.format(_toDouble(r['wallet_balance'])),
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                            textAlign: TextAlign.right,
-                          ),
-                        ),
-                      ]);
-                    }).toList(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: _deductSubmitting
-                  ? null
-                  : () async {
-                      setLocal(() => _deductSubmitting = true);
-                      await _submitBulkDeduct(ctx, setLocal);
-                    },
-              child: _deductSubmitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Deduct'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _submitBulkDeduct(BuildContext ctx, StateSetter setLocal) async {
-    final caseId = _deductCaseIdCtrl.text.trim();
-    final memberIdTexts = _deductMemberIdsCtrl.text
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    if (caseId.isEmpty || memberIdTexts.isEmpty) {
-      setLocal(() => _deductSubmitting = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Case ID and member IDs are required')),
-        );
-      }
-      return;
-    }
-
-    try {
-      final token = ref.read(authControllerProvider).appToken ?? '';
-      final response = await Supabase.instance.client.functions.invoke(
-        'api-case-bulk-deduct',
-        body: {'case_id': caseId, 'member_ids': memberIdTexts},
-        headers: {'x-app-token': token},
-      );
-
-      final payload =
-          (response.data as Map?)?.cast<String, dynamic>() ?? const {};
-      final deducted = (payload['deducted'] as List?)?.length ?? 0;
-      final skippedPaid =
-          (payload['skipped_already_paid'] as List?)?.length ?? 0;
-      final skippedIneligible =
-          (payload['skipped_ineligible'] as List?)?.length ?? 0;
-      final skippedInsufficient =
-          (payload['skipped_insufficient'] as List?)?.length ?? 0;
-
-      if (!mounted) return;
-      if (deducted > 0) {
-        Posthog().capture(
-          eventName: 'admin_bulk_deduction_completed',
-          properties: {
-            'deducted_count': deducted,
-            'skipped_already_paid_count': skippedPaid,
-            'skipped_ineligible_count': skippedIneligible,
-            'skipped_insufficient_count': skippedInsufficient,
-          },
-        );
-        setState(() {});
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Deducted: $deducted. Already paid: $skippedPaid. Ineligible: $skippedIneligible. Insufficient: $skippedInsufficient.',
-              ),
-            ),
-          );
-        }
-        if (!ctx.mounted) return;
-        Navigator.of(ctx).pop();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No deductions applied')),
-          );
-        }
-        setLocal(() => _deductSubmitting = false);
-      }
-    } catch (e) {
-      setLocal(() => _deductSubmitting = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Bulk deduct failed: $e')),
-        );
-      }
     }
   }
 
@@ -466,38 +414,7 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
           }
 
           final rows = snapshot.data ?? const [];
-          var sortedRows = [...rows];
-          if (_sortField != null) {
-            sortedRows.sort((a, b) {
-              int cmp;
-              switch (_sortField) {
-                case 'member_number':
-                  final aNum =
-                      _memberNumberOrder((a['member_number'] ?? '').toString());
-                  final bNum =
-                      _memberNumberOrder((b['member_number'] ?? '').toString());
-                  cmp = aNum.compareTo(bNum);
-                  if (cmp != 0) return _sortAsc ? cmp : -cmp;
-                  cmp = (a['member_number'] ?? '')
-                      .toString()
-                      .compareTo((b['member_number'] ?? '').toString());
-                  return _sortAsc ? cmp : -cmp;
-                case 'name':
-                  cmp = (a['name'] ?? '')
-                      .toString()
-                      .compareTo((b['name'] ?? '').toString());
-                  return _sortAsc ? cmp : -cmp;
-                case 'wallet_balance':
-                  final aBal = _toDouble(a['wallet_balance']);
-                  final bBal = _toDouble(b['wallet_balance']);
-                  cmp = aBal.compareTo(bBal);
-                  return _sortAsc ? cmp : -cmp;
-                default:
-                  return 0;
-              }
-            });
-          } else {
-            sortedRows.sort((a, b) {
+          final sortedRows = [...rows]..sort((a, b) {
               final aNum =
                   _memberNumberOrder((a['member_number'] ?? '').toString());
               final bNum =
@@ -508,11 +425,6 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
                   .toString()
                   .compareTo((b['member_number'] ?? '').toString());
             });
-          }
-
-          final allSelected = sortedRows.isNotEmpty &&
-              sortedRows.every(
-                  (r) => _selectedIds.contains((r['id'] ?? '').toString()));
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppConstants.marginEdge),
@@ -544,302 +456,144 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
                             ),
                       ),
                     ),
-                    if (_selectedIds.isNotEmpty)
-                      ElevatedButton.icon(
-                        onPressed: () =>
-                            _openBulkDeductDialog(sortedRows, money),
-                        icon: const Icon(Icons.payments_rounded),
-                        label: Text('Bulk Deduct (${_selectedIds.length})'),
-                      ),
                   ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Search member number, name, phone',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _search.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {
-                                _search = '';
-                                _page = 1;
-                                _future = _loadPage();
-                              });
-                            },
-                          ),
-                  ),
-                  onSubmitted: (value) {
-                    setState(() {
-                      _search = value.trim();
-                      _page = 1;
-                      _future = _loadPage();
-                    });
-                  },
                 ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _activeFilter,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Active Filter',
-                          border: OutlineInputBorder(),
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Search member number, name, phone',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _search.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    setState(() {
+                                      _search = '';
+                                      _page = 1;
+                                      _selectedMemberIds.clear();
+                                      _future = _loadPage();
+                                    });
+                                  },
+                                ),
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All')),
-                          DropdownMenuItem(
-                              value: 'active', child: Text('Active')),
-                          DropdownMenuItem(
-                              value: 'inactive', child: Text('Inactive')),
-                        ],
-                        onChanged: (v) => setState(() {
-                          _activeFilter = v ?? 'all';
-                          _page = 1;
-                          _future = _loadPage();
-                        }),
+                        onSubmitted: (value) {
+                          setState(() {
+                            _search = value.trim();
+                            _page = 1;
+                            _selectedMemberIds.clear();
+                            _future = _loadPage();
+                          });
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _statusFilter,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Status Filter',
-                          border: OutlineInputBorder(),
+                    Badge(
+                      isLabelVisible:
+                          _activeFilter != 'all' || _statusFilter != 'all',
+                      child: IconButton.filledTonal(
+                        onPressed: _showFilters,
+                        tooltip: 'Filters',
+                        icon: const Icon(Icons.tune),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (_selectedMemberIds.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_selectedMemberIds.length} selected',
+                            style: const TextStyle(
+                              color: Color(0xFF475569),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'all', child: Text('All statuses')),
-                          DropdownMenuItem(
-                              value: 'active', child: Text('ACTIVE')),
-                          DropdownMenuItem(
-                              value: 'inactive', child: Text('INACTIVE')),
-                          DropdownMenuItem(
-                              value: 'probation', child: Text('PROBATION')),
-                          DropdownMenuItem(
-                              value: 'deceased', child: Text('DECEASED')),
-                        ],
-                        onChanged: (v) => setState(() {
-                          _statusFilter = v ?? 'all';
-                          _page = 1;
-                          _future = _loadPage();
+                        TextButton.icon(
+                          onPressed: () =>
+                              setState(() => _selectedMemberIds.clear()),
+                          icon: const Icon(Icons.close, size: 18),
+                          label: const Text('Clear'),
+                        ),
+                        const SizedBox(width: 4),
+                        FilledButton.icon(
+                          onPressed: () => _messageSelectedMembers(sortedRows),
+                          icon: const Icon(Icons.message_outlined, size: 18),
+                          label: const Text('Message'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: sortedRows.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final member = sortedRows[index];
+                    final id = (member['id'] ?? '').toString();
+                    final active = member['is_active'] == true;
+                    final unpaid = _unpaidCounts[id] ?? 0;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Checkbox(
+                        value: _selectedMemberIds.contains(id),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (selected) => setState(() {
+                          if (selected == true) {
+                            _selectedMemberIds.add(id);
+                          } else {
+                            _selectedMemberIds.remove(id);
+                          }
                         }),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Icon(Icons.swipe,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Swipe the table to see more columns',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    showCheckboxColumn: false,
-                    columnSpacing: 16,
-                    headingRowColor:
-                        WidgetStateProperty.all(const Color(0xFFF1F5F9)),
-                    columns: [
-                      DataColumn(
-                        label: Checkbox(
-                          value: allSelected,
-                          onChanged: (v) => _toggleSelectAll(v, sortedRows),
-                        ),
+                      onTap: () => context.go('/admin/members/$id'),
+                      title: Text(
+                        '${member['name'] ?? '-'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      DataColumn(
-                        label: InkWell(
-                          onTap: () => _onSort('member_number'),
-                          child: Row(
-                            children: [
-                              const Text('Member #'),
-                              if (_sortField == 'member_number')
-                                Icon(
-                                  _sortAsc
-                                      ? Icons.arrow_upward
-                                      : Icons.arrow_downward,
-                                  size: 16,
-                                ),
-                            ],
-                          ),
-                        ),
+                      subtitle: Text(
+                        '#${member['member_number'] ?? '-'} • ${money.format(_toDouble(member['wallet_balance']))} • ${member['status'] ?? (active ? 'ACTIVE' : 'INACTIVE')}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      DataColumn(
-                        label: InkWell(
-                          onTap: () => _onSort('name'),
-                          child: Row(
-                            children: [
-                              const Text('Name'),
-                              if (_sortField == 'name')
-                                Icon(
-                                  _sortAsc
-                                      ? Icons.arrow_upward
-                                      : Icons.arrow_downward,
-                                  size: 16,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const DataColumn(label: Text('Phone')),
-                      DataColumn(
-                        label: InkWell(
-                          onTap: () => _onSort('wallet_balance'),
-                          child: Row(
-                            children: [
-                              const Text('Balance'),
-                              if (_sortField == 'wallet_balance')
-                                Icon(
-                                  _sortAsc
-                                      ? Icons.arrow_upward
-                                      : Icons.arrow_downward,
-                                  size: 16,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const DataColumn(label: Text('Status')),
-                      DataColumn(label: _buildUnpaidHeader()),
-                      const DataColumn(label: Text('Actions')),
-                    ],
-                    rows: sortedRows.map((r) {
-                      final id = (r['id'] ?? '').toString();
-                      final active = r['is_active'] == true;
-                      final balance = _toDouble(r['wallet_balance']);
-                      final unpaid = _unpaidCounts[id] ?? 0;
-                      final selected = _selectedIds.contains(id);
-
-                      return DataRow(
-                        selected: selected,
-                        onSelectChanged: (v) => _toggleSelect(id),
-                        cells: [
-                          DataCell(Checkbox(
-                            value: selected,
-                            onChanged: (v) => _toggleSelect(id),
-                          )),
-                          DataCell(Text('${r['member_number'] ?? '-'}')),
-                          DataCell(
-                            InkWell(
-                              onTap: () => context.go('/admin/members/$id'),
-                              child: Text(
-                                '${r['name'] ?? '-'}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1F3556),
-                                  decoration: TextDecoration.underline,
-                                ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (unpaid > 0)
+                            IconButton(
+                              tooltip: '$unpaid unpaid obligations',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _showUnpaidObligations(
+                                  id, '${member['name'] ?? '-'}'),
+                              icon: Badge(
+                                label: Text('$unpaid'),
+                                child: const Icon(Icons.warning_amber_outlined),
                               ),
                             ),
-                          ),
-                          DataCell(Text('${r['phone_number'] ?? '-'}')),
-                          DataCell(
-                            Text(
-                              money.format(balance),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                          ),
-                          DataCell(_chip(
-                            label: active ? 'Active' : 'Inactive',
-                            fg: active
-                                ? const Color(0xFF166534)
-                                : const Color(0xFF9A3412),
-                            bg: active
-                                ? const Color(0xFFDCFCE7)
-                                : const Color(0xFFFFEDD5),
-                          )),
-                          DataCell(
-                            InkWell(
-                              onTap: unpaid > 0
-                                  ? () => _showUnpaidObligations(
-                                      id, '${r['name'] ?? '-'}')
-                                  : null,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: unpaid > 0
-                                      ? const Color(0xFFFEE2E2)
-                                      : const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: unpaid > 0
-                                        ? const Color(0xFFEF4444)
-                                        : const Color(0xFFE2E8F0),
-                                  ),
-                                ),
-                                child: Text(
-                                  unpaid > 0 ? '$unpaid unpaid' : '0',
-                                  style: TextStyle(
-                                    color: unpaid > 0
-                                        ? const Color(0xFF991B1B)
-                                        : const Color(0xFF64748B),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  tooltip: 'View Details',
-                                  icon: const Icon(Icons.visibility, size: 18),
-                                  onPressed: () =>
-                                      context.go('/admin/members/$id'),
-                                ),
-                                IconButton(
-                                  tooltip: 'SMS',
-                                  icon: const Icon(Icons.message, size: 18),
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content:
-                                              Text('SMS composer coming soon')),
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  tooltip: 'Transfer',
-                                  icon: const Icon(Icons.swap_horiz, size: 18),
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content:
-                                              Text('Transfer coming soon')),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
+                          IconButton(
+                            tooltip: 'Message member',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _messageMember(member),
+                            icon: const Icon(Icons.message_outlined),
                           ),
                         ],
-                      );
-                    }).toList(),
-                  ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -850,6 +604,7 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
                           ? () {
                               setState(() {
                                 _page -= 1;
+                                _selectedMemberIds.clear();
                                 _future = _loadPage();
                               });
                             }
@@ -862,6 +617,7 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
                           ? () {
                               setState(() {
                                 _page += 1;
+                                _selectedMemberIds.clear();
                                 _future = _loadPage();
                               });
                             }
@@ -874,45 +630,6 @@ class _AdminMembersScreenState extends ConsumerState<AdminMembersScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildUnpaidHeader() {
-    return Row(
-      children: [
-        const Text('Unpaid'),
-        if (_unpaidLoading)
-          const SizedBox(
-            width: 12,
-            height: 12,
-            child: Padding(
-              padding: EdgeInsets.all(2.0),
-              child: CircularProgressIndicator(strokeWidth: 1.5),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _chip({
-    required String label,
-    required Color fg,
-    required Color bg,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: fg,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
       ),
     );
   }

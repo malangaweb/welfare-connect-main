@@ -81,21 +81,6 @@ class AdminShell extends ConsumerWidget {
                   canAccessAdminPath('/admin/suspense-queue', role)) {
                 context.go('/admin/suspense-queue');
               }
-              if (v == 'reports' &&
-                  canAccessAdminPath('/admin/reports', role)) {
-                context.go('/admin/reports');
-              }
-              if (v == 'users' && canAccessAdminPath('/admin/users', role)) {
-                context.go('/admin/users');
-              }
-              if (v == 'fiscal' &&
-                  canAccessAdminPath('/admin/fiscal-reports', role)) {
-                context.go('/admin/fiscal-reports');
-              }
-              if (v == 'compliance' &&
-                  canAccessAdminPath('/admin/compliance-reports', role)) {
-                context.go('/admin/compliance-reports');
-              }
               if (v == 'logout') {
                 ref.read(authControllerProvider.notifier).logout();
                 context.go('/login');
@@ -113,14 +98,6 @@ class AdminShell extends ConsumerWidget {
               if (canAccessAdminPath('/admin/suspense-queue', role))
                 const PopupMenuItem(
                     value: 'suspense', child: Text('Suspense queue')),
-              if (canAccessAdminPath('/admin/reports', role))
-                const PopupMenuItem(value: 'reports', child: Text('Reports')),
-              if (canAccessAdminPath('/admin/users', role))
-                const PopupMenuItem(value: 'users', child: Text('Users')),
-              const PopupMenuItem(
-                  value: 'fiscal', child: Text('Fiscal Reports')),
-              const PopupMenuItem(
-                  value: 'compliance', child: Text('Compliance Reports')),
               const PopupMenuItem(value: 'logout', child: Text('Logout')),
             ],
           ),
@@ -144,7 +121,27 @@ class AdminShell extends ConsumerWidget {
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1120),
-              child: body,
+              child: DataTableTheme(
+                data: DataTableThemeData(
+                  headingRowHeight: 40,
+                  dataRowMinHeight: 36,
+                  dataRowMaxHeight: 48,
+                  horizontalMargin: 12,
+                  columnSpacing: 16,
+                  headingTextStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  dataTextStyle: const TextStyle(fontSize: 13),
+                ),
+                child: ListTileTheme(
+                  dense: true,
+                  minVerticalPadding: 4,
+                  horizontalTitleGap: 10,
+                  minLeadingWidth: 32,
+                  child: body,
+                ),
+              ),
             ),
           ),
         ),

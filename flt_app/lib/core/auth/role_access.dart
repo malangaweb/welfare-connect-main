@@ -36,14 +36,7 @@ bool canAccessAdminPath(String path, String? role) {
     AdminRole.secretary
   };
   final financeRoles = {AdminRole.superAdmin, AdminRole.treasurer};
-  final reportsRoles = {
-    AdminRole.superAdmin,
-    AdminRole.chairperson,
-    AdminRole.treasurer,
-    AdminRole.secretary
-  };
   final settingsRoles = {AdminRole.superAdmin};
-  final usersRoles = {AdminRole.superAdmin};
 
   if (path == '/admin/dashboard') return true;
   if (path == '/admin/members' ||
@@ -55,12 +48,6 @@ bool canAccessAdminPath(String path, String? role) {
     return txRoles.contains(normalized);
   }
   if (path == '/admin/accounts') return financeRoles.contains(normalized);
-  if (path == '/admin/reports' ||
-      path == '/admin/fiscal-reports' ||
-      path == '/admin/compliance-reports') {
-    return reportsRoles.contains(normalized);
-  }
-  if (path == '/admin/users') return usersRoles.contains(normalized);
   if (path == '/admin/settings') return settingsRoles.contains(normalized);
 
   return true;
