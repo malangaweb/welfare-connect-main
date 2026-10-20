@@ -88,6 +88,12 @@ interface Member {
   phone_number: string
 }
 
+interface MemberSearchResult extends Member {
+  type: 'member' | 'application'
+  application_status?: string
+  payment_code?: string | null
+}
+
 export function SuspenseManagement() {
   const [transactions, setTransactions] = useState<WrongMpesaTransaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -107,10 +113,11 @@ export function SuspenseManagement() {
   const [selectedTransaction, setSelectedTransaction] = useState<WrongMpesaTransaction | null>(null)
   const [memberSearchOpen, setMemberSearchOpen] = useState(false)
   const [memberSearchTerm, setMemberSearchTerm] = useState('')
-  const [searchResults, setSearchResults] = useState<Member[]>([])
+  const [searchResults, setSearchResults] = useState<MemberSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [registrationMatchOpen, setRegistrationMatchOpen] = useState(false)
   const [registrationCandidates, setRegistrationCandidates] = useState<RegistrationCandidate[]>([])
+  const [registrationSearchTerm, setRegistrationSearchTerm] = useState('')
   const [isRegistrationMatching, setIsRegistrationMatching] = useState(false)
 
   // Auto-match confirmation dialog
@@ -275,6 +282,30 @@ export function SuspenseManagement() {
     }
   }
 
+  const handleApplicationMatch = async (applicationId: string) => {
+    if (!selectedTransaction) return
+
+    setIsMatching(true)
+    try {
+      const result = await invokeWithAppToken<{ member_number: string; application: string }>('api-membership-applications', {
+        action: 'match_suspense_payment',
+        suspense_id: selectedTransaction.id,
+        application_id: applicationId,
+      })
+
+      toast.success('Registration payment matched', {
+        description: `Application ${result.application} activated as member ${result.member_number}.`,
+      })
+      setMemberSearchOpen(false)
+      setSelectedTransaction(null)
+      await fetchSuspenseTransactions()
+    } catch (error: any) {
+      toast.error('Registration match failed', { description: error.message })
+    } finally {
+      setIsMatching(false)
+    }
+  }
+
   const handleReverse = async (transactionId: string) => {
     if (!confirm('Are you sure you want to mark this transaction as reversed?')) return
 
@@ -331,6 +362,7 @@ export function SuspenseManagement() {
   const openRegistrationMatch = (transaction: WrongMpesaTransaction) => {
     setSelectedTransaction(transaction)
     setRegistrationCandidates(transaction.registration_candidates || [])
+    setRegistrationSearchTerm('')
     setRegistrationMatchOpen(true)
   }
 
@@ -359,22 +391,48 @@ export function SuspenseManagement() {
   }
 
   const searchMembers = async () => {
-    if (!memberSearchTerm.trim()) {
+    const searchText = memberSearchTerm.trim()
+    if (!searchText) {
       setSearchResults([])
       return
     }
 
     setIsSearching(true)
     try {
-      const { data, error } = await supabase
-        .from('members')
-        .select('id, member_number, name, phone_number')
-        .or(`phone_number.ilike.%${memberSearchTerm}%,member_number.ilike.%${memberSearchTerm}%,name.ilike.%${memberSearchTerm}%`)
-        .limit(10)
+      const searchPattern = `%${searchText}%`
+      const [membersResult, applicantsResult] = await Promise.all([
+        supabase
+          .from('members')
+          .select('id, member_number, name, phone_number')
+          .ilike('name', searchPattern)
+          .limit(10),
+        invokeWithAppToken<{ applicants: Array<{
+          id: string
+          application_reference: string
+          full_name: string
+          phone_number: string
+          status: string
+          payment_code?: string | null
+        }> }>('api-membership-applications', {
+          action: 'search_applicants',
+          search: searchText,
+        }),
+      ])
 
-      if (error) throw error
+      if (membersResult.error) throw membersResult.error
 
-      setSearchResults(data || [])
+      setSearchResults([
+        ...(applicantsResult.applicants || []).map((application) => ({
+          id: application.id,
+          member_number: application.application_reference,
+          name: application.full_name,
+          phone_number: application.phone_number,
+          type: 'application' as const,
+          application_status: application.status,
+          payment_code: application.payment_code,
+        })),
+        ...(membersResult.data || []).map((member) => ({ ...member, type: 'member' as const })),
+      ])
     } catch (error: any) {
       toast.error('Search failed', {
         description: error.message,
@@ -803,10 +861,17 @@ END $$;`}
                 <p><strong>Receipt:</strong> {selectedTransaction.mpesa_receipt_number || 'N/A'}</p>
                 <p><strong>Sender phone:</strong> {selectedTransaction.phone_number || 'N/A'}</p>
                 <p><strong>Amount:</strong> KES {Number(selectedTransaction.amount || 0).toLocaleString()}</p>
-                <p className="text-muted-foreground">Candidates are suggested by the payer phone. Confirm the applicant before activating.</p>
+                <p className="text-muted-foreground">Search by applicant name and confirm the applicant before activating the registration payment.</p>
               </div>
+              <Input
+                placeholder="Search applicant name..."
+                value={registrationSearchTerm}
+                onChange={(event) => setRegistrationSearchTerm(event.target.value)}
+              />
               <div className="divide-y rounded-lg border">
-                {registrationCandidates.map((candidate) => (
+                {registrationCandidates
+                  .filter((candidate) => candidate.full_name.toLowerCase().includes(registrationSearchTerm.trim().toLowerCase()))
+                  .map((candidate) => (
                   <div key={candidate.id} className="flex items-center justify-between gap-3 p-3">
                     <div className="min-w-0">
                       <p className="font-medium truncate">{candidate.full_name}</p>
@@ -830,7 +895,7 @@ END $$;`}
       <Dialog open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>
         <DialogContent className="w-[95vw] sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Match to Member</DialogTitle>
+            <DialogTitle>Match to Member or Applicant</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -866,9 +931,9 @@ END $$;`}
 
             {/* Search Input */}
             <div className="space-y-2">
-              <Label>Search Member</Label>
+                <Label>Search member or applicant name</Label>
               <Input
-                placeholder="Search by name, member number, or phone..."
+                placeholder="Search by name..."
                 value={memberSearchTerm}
                 onChange={(e) => setMemberSearchTerm(e.target.value)}
               />
@@ -891,14 +956,26 @@ END $$;`}
                     <button
                       key={member.id}
                       className="w-full p-3 text-left hover:bg-muted transition-colors flex items-center justify-between"
-                      onClick={() => handleManualMatch(member.id, selectedTransaction?.intended_case_id || undefined)}
+                      onClick={() => member.type === 'application'
+                        ? void handleApplicationMatch(member.id)
+                        : void handleManualMatch(member.id, selectedTransaction?.intended_case_id || undefined)}
                       disabled={isMatching}
                     >
                       <div>
-                        <p className="font-medium">{member.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{member.name}</p>
+                          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            {member.type === 'application' ? 'Applicant' : 'Member'}
+                          </span>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {member.member_number} • {member.phone_number}
                         </p>
+                        {member.type === 'application' && (
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                            {member.application_status?.replaceAll('_', ' ')}
+                          </p>
+                        )}
                       </div>
                       <User className="h-4 w-4 text-muted-foreground" />
                     </button>

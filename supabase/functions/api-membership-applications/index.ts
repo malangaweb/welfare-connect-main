@@ -125,20 +125,35 @@ serve(async (req) => {
       return response(origin, 200, { applications: data || [] });
     }
 
+    if (action === "search_applicants") {
+      const searchTerm = String(body.search || body.query || "").trim();
+      if (!searchTerm) return response(origin, 200, { applicants: [] });
+
+      const { data, error } = await supabase
+        .from("membership_applications")
+        .select("id, application_reference, full_name, phone_number, status, payment_code")
+        .ilike("full_name", `%${searchTerm}%`)
+        .in("status", ["pending_review", "approved", "payment_pending"])
+        .order("application_date", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return response(origin, 200, { applicants: data || [] });
+    }
+
     if (action === "match_suspense_payment") {
       const suspenseId = String(body.suspense_id || "").trim();
       const applicationId = String(body.application_id || "").trim();
       if (!suspenseId || !applicationId) return response(origin, 400, { error: "suspense_id and application_id are required" });
 
       const [{ data: suspense, error: suspenseError }, { data: application, error: applicationError }, { data: settings }] = await Promise.all([
-        supabase.from("wrong_mpesa_transactions").select("id, amount, mpesa_receipt_number, phone_number, status").eq("id", suspenseId).single(),
+        supabase.from("wrong_mpesa_transactions").select("id, amount, mpesa_receipt_number, phone_number, reference, status").eq("id", suspenseId).single(),
         supabase.from("membership_applications").select("*").eq("id", applicationId).single(),
         supabase.from("settings").select("registration_fee").limit(1).maybeSingle(),
       ]);
       if (suspenseError || !suspense) return response(origin, 404, { error: "Suspense payment not found" });
       if (applicationError || !application) return response(origin, 404, { error: "Application not found" });
       if (!["pending", "PENDING_REVIEW"].includes(String(suspense.status))) return response(origin, 400, { error: "Suspense payment is no longer pending" });
-      if (!["pending_review", "payment_pending"].includes(String(application.status))) return response(origin, 400, { error: "Application is no longer awaiting payment" });
+      if (!["pending_review", "approved", "payment_pending"].includes(String(application.status))) return response(origin, 400, { error: "Application is no longer awaiting payment" });
 
       const expectedAmount = Number(settings?.registration_fee || 0);
       if (!expectedAmount || Number(suspense.amount || 0) !== expectedAmount) {
@@ -150,7 +165,7 @@ serve(async (req) => {
       const { data: existingTransaction } = await supabase.from("transactions").select("id").eq("mpesa_reference", receipt).maybeSingle();
       if (existingTransaction) return response(origin, 409, { error: "This M-Pesa receipt has already been processed" });
 
-      const { error: paymentUpdateError } = await supabase.from("membership_applications").update({
+      const { data: updatedApplication, error: paymentUpdateError } = await supabase.from("membership_applications").update({
         status: "payment_pending",
         payment_status: "received",
         payment_received_at: new Date().toISOString(),
@@ -159,8 +174,9 @@ serve(async (req) => {
         payment_phone_number: suspense.phone_number || null,
         payment_metadata: { source: "suspense_registration_match", suspense_id: suspenseId, matched_by: String(claims.sub || "") },
         updated_at: new Date().toISOString(),
-      }).eq("id", applicationId).in("status", ["pending_review", "payment_pending"]);
+      }).eq("id", applicationId).in("status", ["pending_review", "approved", "payment_pending"]).select("id").maybeSingle();
       if (paymentUpdateError) throw paymentUpdateError;
+      if (!updatedApplication) return response(origin, 409, { error: "Application was changed by another administrator. Refresh and try again." });
 
       const { data: activationResult, error: activationError } = await supabase.rpc("activate_membership_application", { p_application_id: applicationId });
       if (activationError || !activationResult?.success) throw activationError || new Error(activationResult?.message || "Membership activation failed");

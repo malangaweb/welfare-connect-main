@@ -11,14 +11,6 @@ function jsonResponse(req: Request, status: number, payload: Record<string, unkn
   });
 }
 
-function normalizePhone(value: unknown): string {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (digits.startsWith("254")) return digits;
-  if (digits.startsWith("0")) return `254${digits.slice(1)}`;
-  if (digits.length === 9 && digits.startsWith("7")) return `254${digits}`;
-  return digits;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsFor(req) });
   if (!["GET", "POST"].includes(req.method)) return jsonResponse(req, 405, { error: "Method not allowed" });
@@ -47,25 +39,32 @@ serve(async (req) => {
     const { data: applications } = await supabase
       .from("membership_applications")
       .select("id, application_reference, full_name, phone_number, status, payment_code")
-      .in("status", ["pending_review", "payment_pending"])
+      .in("status", ["pending_review", "approved", "payment_pending"])
       .order("application_date", { ascending: false })
       .limit(500);
 
-    const withCandidates = (data || []).map((transaction) => ({
-      ...transaction,
-      registration_candidates: (applications || [])
-        .filter((application) => normalizePhone(application.phone_number) === normalizePhone(transaction.phone_number))
-        .map((application) => ({
-          id: application.id,
-          application_reference: application.application_reference,
-          full_name: application.full_name,
-          phone_number: application.phone_number,
-          status: application.status,
-          payment_code: application.payment_code,
-          amount_matches: registrationFee > 0 && Number(transaction.amount || 0) === registrationFee,
-          expected_amount: registrationFee,
-        })),
-    }));
+    const withCandidates = (data || []).map((transaction) => {
+      const txRef = String(transaction.reference || "").trim().toUpperCase();
+
+      return {
+        ...transaction,
+        registration_candidates: (applications || [])
+          .filter((application) => {
+            const appRef = String(application.payment_code || "").trim().toUpperCase();
+            return !!txRef && !!appRef && txRef === appRef;
+          })
+          .map((application) => ({
+            id: application.id,
+            application_reference: application.application_reference,
+            full_name: application.full_name,
+            phone_number: application.phone_number,
+            status: application.status,
+            payment_code: application.payment_code,
+            amount_matches: registrationFee > 0 && Number(transaction.amount || 0) === registrationFee,
+            expected_amount: registrationFee,
+          })),
+      };
+    });
 
     return jsonResponse(req, 200, { transactions: withCandidates });
   } catch (e) {
